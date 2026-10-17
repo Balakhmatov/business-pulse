@@ -77,7 +77,9 @@
     try{
       const answer=await request('/import',{source:'Синтетический тестовый отчёт',rows:sampleRows()});
       state.mineReport=answer.report;
+      state.mineAI=null;
       renderMine();
+      void loadAI();
     }catch(e){
       state.mineError=e.message||'Не удалось загрузить тестовый отчёт.';
       renderMine();
@@ -88,6 +90,36 @@
     }
   };
 
+  // Cached OpenAI analysis. The browser never accesses OpenAI or any API key.
+  state.mineAI=null;
+  let analysisSeq=0;
+  async function loadAI(){
+    if(!state.mineReport?.source)return;
+    const current=++analysisSeq;
+    state.mineAI={status:'pending'};
+    if(state.business==='mine')renderMine();
+    for(let attempt=0;attempt<18;attempt++){
+      try{
+        const result=await request('/analysis');
+        if(current!==analysisSeq)return;
+        state.mineAI=result;
+        if(state.business==='mine')renderMine();
+        if(result.status!=='pending')return;
+      }catch(error){
+        if(current!==analysisSeq)return;
+        console.warn('AI analysis unavailable:',error.message);
+        state.mineAI={status:'error'};
+        if(state.business==='mine')renderMine();
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,2500));
+    }
+    // Long-running analysis will be loaded on the next Mini App opening.
+    if(current===analysisSeq){
+      state.mineAI={status:'pending'};
+      if(state.business==='mine')renderMine();
+    }
+  }
   function fmtK(x){return Number.isFinite(x)?money(x/100):'—'}
   async function request(route,body){
     const response=await fetch(URL_ROOT+route,{
@@ -151,12 +183,31 @@
     if(imported)bad.push({title:'Проверьте полноту отчёта',desc:'Дни без операций считаются нулевыми. Пропуски могут исказить сравнение периодов.'});
     if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV с датой, суммой и названиями товаров или услуг.'});
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV увидите результаты и изменения.'});
+    const ai=state.mineAI;
+    const ready=imported&&ai?.status==='ready'&&ai.analysis;
+    if(ready){
+      const asItem=x=>({
+        title:x.title,
+        desc:[x.explanation,...(x.evidence||[]),'Что проверить: '+x.recommendation].join(' ')
+      });
+      bad.splice(0,bad.length,...ai.analysis.issues.map(asItem));
+      good.splice(0,good.length,...ai.analysis.positives.map(asItem));
+      if(!good.length)good.push({title:'Пока нет подтверждённых позитивных сигналов',desc:'ИИ не обнаружил достаточно оснований для отдельного позитивного вывода.'});
+    }
+    for(const [id] of [['concerns'],['positives']]){
+      const chip=$(id).closest('.panel')?.querySelector('.subtle-chip');
+      if(chip)chip.textContent=ready?'ИИ-анализ':imported&&ai?.status==='pending'?'ИИ готовит выводы':'По правилам';
+    }
     $('concerns').innerHTML=insightHTML(bad.slice(0,3),true);
     $('positives').innerHTML=insightHTML(good.slice(0,2),false);
     $('warningBanner').classList.toggle('show',!!state.mineError);
     $('warningBanner').textContent=state.mineError||'';
     $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по сохранённому CSV.':(loading?'Получаем показатели…':'Загрузите первый отчёт вашей компании.');
     $('bottomDataHint').textContent=imported?'Источник: '+r.source.name+'. Новый импорт заменит ранее загруженные операции.':'Для проверки используйте обезличенный тестовый CSV. Данные сохраняются на сервере.';
+    if(imported){
+      const message=ready?' Выводы сформированы OpenAI и сохранены.':ai?.status==='pending'?' OpenAI анализирует обновлённые показатели…':ai?.status==='disabled'?' ИИ-анализ ещё не подключён: показаны выводы по правилам.':ai?.status==='error'?' ИИ-анализ временно недоступен: показаны выводы по правилам.':'';
+      $('bottomDataHint').textContent+=message;
+    }
     $('clearImport').hidden=true;
     document.querySelector('.side-foot').textContent='Прототип · Личные данные компании';
     document.querySelector('.foot').textContent='Бизнес Пульс · Личная панель · Проверяйте полноту и корректность выгрузки';
@@ -170,7 +221,7 @@
     try{
       state.mineReport=await request('/report');
     }catch(error){state.mineError=error.message||'Не удалось получить данные.';}
-    finally{state.mineLoading=false;if(state.business==='mine')renderMine();}
+    finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }
 
   tab.onclick=()=>{
@@ -212,9 +263,11 @@
       $('importAlert').textContent='Сохраняем отчёт на сервере…';
       const answer=await request('/import',{source:state.fileTable.name.slice(0,120),rows});
       state.mineReport=answer.report;
+      state.mineAI=null;
       state.mineError='';
       showModal(false);
       renderMine();
+      void loadAI();
     }catch(error){$('importAlert').textContent=error.message||'Не удалось сохранить CSV.';}
     finally{state.mineSaving=false;if($('modal').classList.contains('show'))$('confirmImport').disabled=false;}
   };
