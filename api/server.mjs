@@ -5,6 +5,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
+import { resetTestData } from './test-reset.mjs';
 
 // Localhost-only service. Nginx provides HTTPS. Telegram initData is ALWAYS signed and verified.
 const port = Number(process.env.BP_API_PORT || 3117);
@@ -176,6 +177,12 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c},origin);
     if(req.method==='GET'&&url.pathname==='/api/report')return reply(res,200,report(c),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
+    if(req.method==='POST'&&url.pathname==='/api/reset-test-data'){
+      const input=await readJSON(req);
+      if(input?.confirm!=='DELETE_TEST_DATA')return reply(res,400,{error:'Подтвердите удаление тестовых операций.'},origin);
+      const result=resetTestData(db,c.id);
+      return reply(res,200,{...result,report:report(c)},origin);
+    }
     if(req.method==='POST'&&url.pathname==='/api/import'){
       const input=await readJSON(req);
       const stats=ingest(c,input);
