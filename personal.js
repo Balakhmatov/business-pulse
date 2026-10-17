@@ -234,6 +234,10 @@
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
+      const concernsChip=$('concerns').closest('.panel')?.querySelector('.subtle-chip');
+      const positivesChip=$('positives').closest('.panel')?.querySelector('.subtle-chip');
+      if(concernsChip)concernsChip.textContent='Анализ';
+      if(positivesChip)positivesChip.textContent='Позитив';
       updateQuickButton();
     });
   });
