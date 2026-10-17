@@ -1,0 +1,30 @@
+// Clear only a personal company's recognizable synthetic fixtures, never arbitrary business data.
+// The API authenticates the Telegram user and chooses the company before calling this function.
+const TEST_SOURCE = /синтетич|тестов|demo|sample|пример/i;
+const TEST_ID = /^(?:DEMO-(?:\d{1,2}-\d+|\d{4}-\d{2}-\d{2}-\d+)|REF-(?:\d{1,2}|\d{4}-\d{2}-\d{2}))$/;
+
+export function resetTestData(db, companyId) {
+  const getSource=db.prepare('SELECT source FROM imports WHERE company_id=?');
+  const rows=db.prepare('SELECT source_id FROM operations WHERE company_id=?');
+  const delOperations=db.prepare('DELETE FROM operations WHERE company_id=?');
+  const delImports=db.prepare('DELETE FROM imports WHERE company_id=?');
+  const delAI=db.prepare('DELETE FROM ai_analyses WHERE company_id=?');
+  const source=getSource.get(companyId)?.source || '';
+  const entries=rows.all(companyId);
+  if (!TEST_SOURCE.test(source) || !entries.length || !entries.every(x=>TEST_ID.test(x.source_id))) {
+    const error=new Error('Очистка доступна только для полностью тестового набора данных. Другие операции не изменены.');
+    error.status=409;
+    throw error;
+  }
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const removed=delOperations.run(companyId).changes;
+    delImports.run(companyId);
+    delAI.run(companyId);
+    db.exec('COMMIT');
+    return {removed};
+  } catch(e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
