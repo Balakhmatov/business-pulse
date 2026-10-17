@@ -58,14 +58,11 @@ function briefAI(database, companyId, importTime) {
   if (!title || !explanation) return '';
   return [
     '📌 <b>Ключевой аналитический вывод</b>',
-    '',
     '<b>1. ' + escapeHTML(title) + '</b>',
-    '',
     escapeHTML(explanation),
     evidence ? '<i>Основание:</i> ' + escapeHTML(evidence) : '',
-    action ? '' : '',
     action ? '<b>Рекомендация:</b>\n' + escapeHTML(action) : ''
-  ].filter((value, index, arr) => value !== '' || (index > 0 && arr[index - 1] !== '')).join('\n');
+  ].filter(Boolean).join('\n\n');
 }
 
 export function dailyDigestFor(telegramId, {
