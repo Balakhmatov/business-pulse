@@ -19,16 +19,33 @@ if [[ -n "$(git -C "$REPO" status --porcelain --untracked-files=no)" ]]; then
   echo "Uncommitted tracked changes in production checkout, refusing deployment"; exit 1
 fi
 
-OLD=$(git -C "$REPO" rev-parse HEAD)
+CURRENT=$(git -C "$REPO" rev-parse HEAD)
+OLD="$CURRENT"
+# Deploy marker represents the running revision, even when someone pulled
+# git manually without restarting the services.
+if [[ -f "$MARKER" ]]; then
+  CANDIDATE=$(cat "$MARKER")
+  if [[ "$CANDIDATE" =~ ^[a-f0-9]{40}$ ]] && git -C "$REPO" cat-file -e "$CANDIDATE^{commit}" 2>/dev/null; then
+    OLD="$CANDIDATE"
+  fi
+else
+  # First deployment may happen after a manual git pull. Recover the
+  # previous checkout from reflog to enable a real rollback on failure.
+  CANDIDATE=$(git -C "$REPO" rev-parse --verify 'HEAD@{1}' 2>/dev/null || true)
+  if [[ "$CANDIDATE" =~ ^[a-f0-9]{40}$ ]] && git -C "$REPO" merge-base --is-ancestor "$CANDIDATE" "$CURRENT"; then
+    OLD="$CANDIDATE"
+  fi
+fi
 git -C "$REPO" fetch --quiet origin main
 NEW=$(git -C "$REPO" rev-parse origin/main)
-if [[ "$NEW" == "$OLD" && -f "$MARKER" && "$(cat "$MARKER")" == "$NEW" ]]; then
+if [[ "$NEW" == "$CURRENT" && -f "$MARKER" && "$(cat "$MARKER")" == "$NEW" ]]; then
   echo "Business Pulse services are already deployed at $NEW"; exit 0
 fi
-# A manual git pull changes the checkout but NOT the running processes.
-# Without a deployment marker, still restart/migrate safely on the first run.
-git -C "$REPO" merge-base --is-ancestor "$OLD" "$NEW" || {
+git -C "$REPO" merge-base --is-ancestor "$CURRENT" "$NEW" || {
   echo "Non-fast-forward update refused"; exit 1;
+}
+git -C "$REPO" merge-base --is-ancestor "$OLD" "$NEW" || {
+  echo "Running revision cannot be safely rolled back; refusing deployment"; exit 1;
 }
 
 install -d -o root -g root -m 700 "$STORE/backups"
