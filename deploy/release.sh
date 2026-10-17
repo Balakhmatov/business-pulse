@@ -97,7 +97,7 @@ git -C "$REPO" merge --ff-only origin/main
 cd "$REPO"
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check api/server.mjs
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check bot/index.mjs
-runuser -u business-pulse -- /usr/local/bin/node-business-pulse --experimental-sqlite --test api/accumulate.test.mjs bot/digest.test.mjs
+runuser -u business-pulse -- /usr/local/bin/node-business-pulse --experimental-sqlite --test api/accumulate.test.mjs api/test-reset.test.mjs bot/digest.test.mjs
 
 systemctl start "$API_SERVICE"
 ready=0
