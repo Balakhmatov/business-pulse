@@ -1,0 +1,12 @@
+[Unit]
+Description=Business Pulse GitHub polling and local deployment
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/opt/business-pulse/.git
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/business-pulse-poll
+TimeoutStartSec=180
+UMask=0077
