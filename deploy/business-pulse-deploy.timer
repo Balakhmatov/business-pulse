@@ -1,0 +1,13 @@
+[Unit]
+Description=Check Business Pulse GitHub main every 15 seconds
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=business-pulse-deploy.service
+
+[Install]
+WantedBy=timers.target
