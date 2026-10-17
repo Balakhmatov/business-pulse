@@ -114,11 +114,56 @@ function ingest(c,input){
   }catch(e){db.exec('ROLLBACK');throw e;}
   return rows.length;
 }
+
+const sampleCatalog={
+  clinic:[['Консультация терапевта',2800],['УЗИ',3500],['Анализы',1500],['Профилактический чек-ап',6200],['Консультация невролога',3200]],
+  store:[['Футболка',1900],['Джинсы',4200],['Худи',5100],['Рубашка',3500],['Брюки',4600]],
+  cafe:[['Капучино',290],['Латте',350],['Круассан',260],['Сэндвич',420],['Чизкейк',390]]
+};
+function generateSample(type='clinic'){
+  const catalog=sampleCatalog[type]||sampleCatalog.clinic;
+  const lines=['Дата;Номер чека;Товар или услуга;Сумма;Статус'];
+  const end=shift(mskToday(),-1);
+  for(let day=59;day>=0;day--){
+    const date=shift(end,-day);
+    for(let i=0;i<7;i++){
+      const idx=(day*7+i*3)%catalog.length;
+      const [item,price]=catalog[idx];
+      const amount=Math.max(1,price+((day*17+i*31)%9-4)*30);
+      lines.push([date,'DEMO-'+day+'-'+i,item,amount,'оплата'].join(';'));
+    }
+    if(day%12===0){
+      const [item,price]=catalog[0];
+      lines.push([date,'REF-'+day,item,-price,'возврат'].join(';'));
+    }
+  }
+  return '\uFEFF'+lines.join('\r\n')+'\r\n';
+}
+function sendSample(req,res,url){
+  const type=['clinic','store','cafe'].includes(url.searchParams.get('type'))?url.searchParams.get('type'):'clinic';
+  const fileName='business_pulse_sample_'+type+'.csv';
+  const body=Buffer.from(generateSample(type),'utf8');
+  res.writeHead(200,{
+    'Content-Type':'text/csv; charset=utf-8',
+    'Content-Disposition':'attachment; filename="'+fileName+'"',
+    'Content-Length':String(body.length),
+    'Access-Control-Allow-Origin':'https://web.telegram.org',
+    'Cache-Control':'no-store',
+    'X-Content-Type-Options':'nosniff'
+  });
+  res.end(req.method==='HEAD'?undefined:body);
+}
+
 const server=http.createServer(async(req,res)=>{
+  const url=new URL(req.url,'http://127.0.0.1');
+  if(url.pathname==='/api/sample.csv'){
+    if(req.method==='GET'||req.method==='HEAD')return sendSample(req,res,url);
+    if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':'https://web.telegram.org','Access-Control-Allow-Methods':'GET, HEAD, OPTIONS','Vary':'Origin'});res.end();return;}
+    return reply(res,405,{error:'Method not allowed'});
+  }
   const origin=req.headers.origin;
   if(origin&&!allowedOrigins.has(origin))return reply(res,403,{error:'Origin not allowed'});
   if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':origin||'https://balakhmatov.github.io','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'X-Telegram-Init-Data, Content-Type','Access-Control-Max-Age':'600','Vary':'Origin'});res.end();return;}
-  const url=new URL(req.url,'http://127.0.0.1');
   if(req.method==='GET'&&url.pathname==='/api/health')return reply(res,200,{status:'ok',service:'business-pulse-api',db:db.prepare('SELECT 1 AS ok').get().ok===1},origin);
   if(!url.pathname.startsWith('/api/'))return reply(res,404,{error:'Not found'},origin);
   let id;try{id=telegramID(req.headers['x-telegram-init-data']);}catch{return reply(res,401,{error:'Open the app in Telegram again'},origin);}
