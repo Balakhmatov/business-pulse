@@ -50,7 +50,7 @@ function briefAI(database, companyId, importTime) {
   const evidence = safeText(finding.evidence?.[0], 250);
   const action = safeText(finding.recommendation, 240);
   if (!title || !explanation) return '';
-  return ['Главный вывод ИИ', title, explanation, evidence, action ? 'Что проверить: ' + action : '']
+  return ['Ключевой аналитический вывод', title, explanation, evidence, action ? 'Рекомендация: ' + action : '']
     .filter(Boolean).join('\n');
 }
 
@@ -125,7 +125,7 @@ export function dailyDigestFor(telegramId, {
     lines.push('Загружено: ' + importLabel + ' МСК.');
     const analysis = briefAI(database, company.id, company.imported_at);
     if (analysis) lines.push('', analysis);
-    else lines.push('', 'ИИ-анализ пока не готов. Показаны расчётные показатели.');
+    else lines.push('', 'Аналитическое заключение пока формируется. Ниже представлены расчётные показатели.');
     return lines.join('\n');
   } finally {
     database.close();
