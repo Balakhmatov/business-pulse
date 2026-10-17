@@ -73,6 +73,9 @@ function report(c){
   const sum=rows=>rows.reduce((a,x)=>a+x.amount_kopecks,0);
   const receipts=new Set(cur.filter(x=>x.status==='sale').map(x=>x.sold_on+'\u0000'+x.source_id)).size;
   const revenue=sum(cur),previous=sum(prev);
+  const currentCoverage=new Set(cur.map(x=>x.sold_on)).size;
+  const previousCoverage=new Set(prev.map(x=>x.sold_on)).size;
+  const comparable=currentCoverage>=25 && previousCoverage>=25 && previous>0;
   const day7=shift(end,-6);
   const chart7=Array.from({length:7},(_,i)=>{const date=shift(day7,i);return {date,amount_kopecks:sum(entries.filter(x=>x.sold_on===date))};});
   const totals=new Map();
@@ -80,7 +83,8 @@ function report(c){
   const top3=[...totals].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([item,amount_kopecks])=>({item,amount_kopecks}));
   const src=st.latest.get(c.id);
   return {company:c,as_of:end,period:{from:cut,to:end},revenue30_kopecks:revenue,previous30_kopecks:previous,
-    change_percent:previous>0?Math.round((revenue-previous)/previous*1000)/10:null,
+    change_percent:comparable?Math.round((revenue-previous)/previous*1000)/10:null,
+    coverage:{current_days:currentCoverage,previous_days:previousCoverage,comparable},
     yesterday_kopecks:chart7[6].amount_kopecks,receipt_count:receipts,
     average_receipt_kopecks:receipts>0?Math.round(revenue/receipts):null,chart7,top3,
     source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,last_import_rows:src.row_count,last_change_at:src.last_change_at}:null,
