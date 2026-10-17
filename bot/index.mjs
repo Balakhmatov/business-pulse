@@ -57,7 +57,10 @@ async function saveSubscribers() {
 
 function launchButton() {
   return {
-    inline_keyboard: [[{text: 'Открыть Бизнес Пульс', web_app: {url: APP_URL}}]]
+    inline_keyboard: [
+      [{text: 'Открыть Бизнес Пульс', web_app: {url: APP_URL}}],
+      [{text: 'Проверить уведомление', callback_data: 'bp:test'}]
+    ]
   };
 }
 
@@ -77,6 +80,22 @@ function dailyText() {
 }
 
 async function handle(update) {
+  const callback = update.callback_query;
+  if (callback) {
+    const chat = callback.message?.chat;
+    if (chat?.type !== 'private' || String(callback.from?.id) !== String(chat.id)) return;
+    if (callback.data === 'bp:test') {
+      await api('answerCallbackQuery', {
+        callback_query_id: callback.id,
+        text: 'Отправляю тестовое уведомление'
+      });
+      await send(String(chat.id), 'Проверка уведомлений:\n\n' + dailyText());
+    } else {
+      await api('answerCallbackQuery', {callback_query_id: callback.id});
+    }
+    return;
+  }
+
   const message = update.message;
   if (!message || message.chat?.type !== 'private' || typeof message.text !== 'string') return;
   const chatId = String(message.chat.id);
@@ -189,7 +208,7 @@ async function run() {
   let offset = 0;
   while (true) {
     try {
-      const updates = await api('getUpdates', {offset, timeout: 28, allowed_updates: ['message']});
+      const updates = await api('getUpdates', {offset, timeout: 28, allowed_updates: ['message', 'callback_query']});
       for (const update of updates) {
         offset = update.update_id + 1;
         try { await handle(update); }
