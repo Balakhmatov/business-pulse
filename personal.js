@@ -59,12 +59,13 @@
     const rows=[];
     for(let day=59;day>=0;day--){
       const date=dateShift(end,-day);
+      const dayNumber=Math.floor(Date.parse(date+'T00:00:00Z')/86400000);
       for(let i=0;i<7;i++){
-        const [item,price]=goods[(day*7+i*3)%goods.length];
-        const amount=Math.max(1,price+((day*17+i*31)%9-4)*30);
-        rows.push({date,id:'DEMO-'+day+'-'+i,item,amount_kopecks:amount*100,status:'sale'});
+        const [item,price]=goods[((dayNumber*7+i*3)%goods.length+goods.length)%goods.length];
+        const amount=Math.max(1,price+((((dayNumber*17+i*31)%9+9)%9)-4)*30);
+        rows.push({date,id:'DEMO-'+date+'-'+i,item,amount_kopecks:amount*100,status:'sale'});
       }
-      if(day%12===0)rows.push({date,id:'REF-'+day,item:goods[0][0],amount_kopecks:-goods[0][1]*100,status:'refund'});
+      if(dayNumber%12===0)rows.push({date,id:'REF-'+date,item:goods[0][0],amount_kopecks:-goods[0][1]*100,status:'refund'});
     }
     return rows;
   }
