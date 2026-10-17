@@ -55,7 +55,8 @@ export function createAI({ db, report, listOperations }) {
     if (refunds) add('refunds', 'За 30 дней отмечено ' + refunds + ' строк возврата; суммы возвратов учтены в выручке.');
     if (r.top3.length && r.revenue30_kopecks > 0) {
       const topAmount = r.top3.filter(x => x.amount_kopecks > 0).reduce((v, x) => v + x.amount_kopecks, 0);
-      add('top_share', 'Доля трёх лидирующих позиций в чистой выручке: ' + percent(topAmount / r.revenue30_kopecks * 100).replace(/^\+/, '') + '.');
+      const share = topAmount / r.revenue30_kopecks * 100;
+      if (share >= 0 && share <= 100) add('top_share', 'Доля трёх лидирующих позиций в чистой выручке: ' + percent(share).replace(/^\+/, '') + '.');
     }
     // Only aggregate figures. Never send item names, transaction IDs, file names, people or customers.
     return { facts, stats: {
@@ -156,29 +157,42 @@ export function createAI({ db, report, listOperations }) {
   }
   function schedule(c, fresh = false) {
     if (!hasImport.get(c.id) || !apiKey) return;
-    if (running.has(c.id)) return;
     let record = read.get(c.id);
-    if (!fresh && record?.status === 'ready') return;
-    if (!fresh && record?.status === 'error' && Date.now() - record.updated_ms < backoffMs) return;
-    const version = fresh ? randomUUID() : record?.version || randomUUID();
-    upsert.run(c.id, version, 'pending', null, Date.now());
+    let version;
+    if (fresh) {
+      version = randomUUID();
+      upsert.run(c.id, version, 'pending', null, Date.now());
+    } else {
+      if (record?.status === 'ready') return;
+      if (record?.status === 'error' && Date.now() - record.updated_ms < backoffMs) return;
+      version = record?.version || randomUUID();
+      if (record?.status !== 'pending') upsert.run(c.id, version, 'pending', null, Date.now());
+    }
+    // A second import supersedes any earlier in-flight response.
+    // The older completion cannot overwrite the new version.
+    if (running.has(c.id)) return;
     running.add(c.id);
     void generate(c, version).then(value => {
       finish.run('ready', JSON.stringify(value), Date.now(), c.id, version);
     }).catch(error => {
       console.error('Business Pulse AI analysis: ' + error.message);
       finish.run('error', null, Date.now(), c.id, version);
-    }).finally(() => running.delete(c.id));
+    }).finally(() => {
+      running.delete(c.id);
+      const latest = read.get(c.id);
+      if (latest?.status === 'pending' && latest.version !== version) schedule(c);
+    });
   }
   function get(c) {
     if (!hasImport.get(c.id)) return { status: 'no_data', analysis: null };
+    const saved = read.get(c.id);
+    if (saved?.status === 'ready' && saved.payload) {
+      try { return { status: 'ready', analysis: JSON.parse(saved.payload), model }; }
+      catch { return { status: 'error', analysis: null }; }
+    }
     if (!apiKey) return { status: 'disabled', analysis: null };
     schedule(c);
     const record = read.get(c.id);
-    if (record?.status === 'ready' && record.payload) {
-      try { return { status: 'ready', analysis: JSON.parse(record.payload), model }; }
-      catch { return { status: 'error', analysis: null }; }
-    }
     return { status: record?.status === 'error' ? 'error' : 'pending', analysis: null };
   }
   function onImport(c) {
