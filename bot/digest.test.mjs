@@ -64,7 +64,7 @@ test('Own-company data isolation, full-period comparison, cached AI',t=>{
     'c101','ready',JSON.stringify(cached),Date.parse('2026-10-17T05:00:00Z')
   );
   const result=f.read('101');
-  assert.match(result,/Моя клиника \(тестовые данные\)/);
+  assert.match(result,/<b>Моя клиника<\/b> \(тестовые данные\)/);
   assert.match(result,/1\. Выручка за 30 дней: <b>60.?000 ₽<\/b>/u);
   assert.match(result,/2\. Чеков \/ визитов за 30 дней: <b>30<\/b>/);
   assert.match(result,/4\. Изменение к предыдущим 30 дням: <b>\+100,0%<\/b>/);
