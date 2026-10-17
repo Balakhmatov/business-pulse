@@ -73,8 +73,8 @@ test('A failed import is fully rolled back: operations and metadata unchanged',t
   const f=makeFixture();t.after(f.close);const engine=f.importer();
   f.run(engine,[f.row('2026-10-15','safe',15000)]);
   assert.throws(()=>f.run(engine,[
-    f.row('2026-10-16','new',9000),f.row('2026-10-17','bad',Number.MAX_SAFE_INTEGER)
-  ]),/cannot store|overflow|safe integer|out of range|Too big|BigInt|integer/i);
+    f.row('2026-10-16','new',9000),f.row('2026-10-17','bad',Symbol('invalid bind'))
+  ]),/symbol|type|bind|unsupported|invalid/i);
   assert.equal(f.all().length,1);
   assert.equal(f.amount(),15000);
 });
