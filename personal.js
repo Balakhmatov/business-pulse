@@ -49,10 +49,51 @@
   quick.textContent='Загрузить тестовые данные';
   quick.hidden=true;
   $('bottomImport').parentElement.insertBefore(quick,$('bottomImport'));
+  const clearTests=document.createElement('button');
+  clearTests.type='button';
+  clearTests.id='clearTestData';
+  clearTests.className='ghost-btn';
+  clearTests.textContent='Очистить тестовые данные';
+  clearTests.hidden=true;
+  $('bottomImport').parentElement.insertBefore(clearTests,$('bottomImport'));
   function updateQuickButton(){
+    const busy=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving||state.mineClearing);
     quick.hidden=state.business!=='mine'||!!state.mineReport?.source;
-    quick.disabled=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving);
+    quick.disabled=busy;
+    const src=state.mineReport?.source;
+    clearTests.hidden=state.business!=='mine'||!src||!src.rows||
+      !/синтетич|тестов|demo|sample|пример/i.test(src.name);
+    clearTests.disabled=busy;
   }
+  clearTests.onclick=async()=>{
+    if(clearTests.hidden||state.mineClearing||state.mineSaving)return;
+    const prompt='Удалить все синтетические операции из «Моя компания»? Данные других компаний не затрагиваются. Это действие нельзя отменить.';
+    const confirmed=await new Promise(resolve=>{
+      if(typeof tg.showConfirm==='function')tg.showConfirm(prompt,resolve);
+      else resolve(window.confirm(prompt));
+    });
+    if(!confirmed)return;
+    state.mineClearing=true;
+    state.mineError='';
+    clearTests.textContent='Удаляем…';
+    updateQuickButton();
+    try{
+      const result=await request('/reset-test-data',{confirm:'DELETE_TEST_DATA'});
+      ++analysisSeq; // cancel any stale pending analysis responses
+      state.mineReport=result.report;
+      state.mineAI=null;
+      state.mineImportStats=null;
+      renderMine();
+      if(typeof tg.showAlert==='function')tg.showAlert('Удалено тестовых операций: '+result.removed+'. Теперь можно загрузить чистый набор.');
+    }catch(error){
+      state.mineError=error.message||'Не удалось очистить тестовые данные.';
+      renderMine();
+    }finally{
+      state.mineClearing=false;
+      clearTests.textContent='Очистить тестовые данные';
+      updateQuickButton();
+    }
+  };
   function sampleRows(){
     const end=yesterday;
     const goods=[['Консультация терапевта',2800],['УЗИ',3500],['Анализы',1500],['Профилактический чек-ап',6200],['Консультация невролога',3200]];
