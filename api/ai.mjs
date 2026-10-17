@@ -196,7 +196,11 @@ export function createAI({ db, report, listOperations }) {
     return { status: record?.status === 'error' ? 'error' : 'pending', analysis: null };
   }
   function onImport(c) {
-    if (!apiKey) return;
+    // Invalidate stale analysis on EVERY import, including when the key is absent.
+    if (!apiKey) {
+      upsert.run(c.id, randomUUID(), 'pending', null, Date.now());
+      return;
+    }
     schedule(c, true);
   }
   return { get, onImport };
