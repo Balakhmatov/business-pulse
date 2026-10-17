@@ -15,11 +15,11 @@
 
 ## Как запустить
 
-1. Создать **отдельного** бота через [@BotFather](https://t.me/BotFather) командой `/newbot`.
+1. Бот уже создан: [@business_pules_bot](https://t.me/business_pules_bot). Если меняете его username, обновите `BP_BOT_USERNAME` в `.env`.
 2. На VPS установить Node.js версии **20.6+** (или использовать установленную подходящую версию).
 3. Скачать репозиторий в отдельную папку (не в папку CityAI): `git clone https://github.com/Balakhmatov/business-pulse.git`.
 4. Перейти в директорию `business-pulse/bot` и создать локальный `.env` из `.env.example`.
-5. Записать в `.env` токен от BotFather. Токен **никогда не отправлять в чат и не коммитить**.
+5. Записать в `.env` токен от BotFather, сохранить `BP_BOT_USERNAME=business_pules_bot`. Токен **никогда не отправлять в чат и не коммитить**.
 6. Запустить: `node --env-file=.env index.mjs` (запускать из директории `bot`).
 7. В Telegram открыть бота, отправить `/start`, затем `/test` и `/subscribe`.
 
@@ -27,6 +27,7 @@
 
 ### Настройки
 
+- `BP_BOT_USERNAME` — username конкретного бота. Код проверяет имя через `getMe` до изменения команд и меню, чтобы не затронуть чужого бота.
 - `BP_APP_URL` — HTTPS-адрес Pages.
 - `BP_TIMEZONE` — часовой пояс доставки по умолчанию (`Europe/Moscow`).
 - `BP_SEND_HOUR` — час доставки от 0 до 23 (по умолчанию 9).
