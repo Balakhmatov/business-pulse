@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { createAI } from './ai.mjs';
 
 // Localhost-only service. Nginx provides HTTPS. Telegram initData is ALWAYS signed and verified.
 const port = Number(process.env.BP_API_PORT || 3117);
@@ -115,6 +116,9 @@ function ingest(c,input){
   return rows.length;
 }
 
+// The interpreter receives ONLY aggregates, never rows or user identity.
+const ai=createAI({db,report,listOperations:c=>{const r=report(c);return st.rows.all(c.id,shift(r.period.from,-30),r.as_of);}});
+
 const sampleCatalog={
   clinic:[['Консультация терапевта',2800],['УЗИ',3500],['Анализы',1500],['Профилактический чек-ап',6200],['Консультация невролога',3200]],
   store:[['Футболка',1900],['Джинсы',4200],['Худи',5100],['Рубашка',3500],['Брюки',4600]],
@@ -171,7 +175,14 @@ const server=http.createServer(async(req,res)=>{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c},origin);
     if(req.method==='GET'&&url.pathname==='/api/report')return reply(res,200,report(c),origin);
-    if(req.method==='POST'&&url.pathname==='/api/import'){const input=await readJSON(req);const saved=ingest(c,input);return reply(res,200,{saved,report:report(c)},origin);}
+    if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
+    if(req.method==='POST'&&url.pathname==='/api/import'){
+      const input=await readJSON(req);
+      const saved=ingest(c,input);
+      const updated=report(c);
+      ai.onImport(c); // asynchronous; import never waits on OpenAI
+      return reply(res,200,{saved,report:updated},origin);
+    }
     return reply(res,404,{error:'Unknown API route'},origin);
   }catch(e){console.error('API request rejected:',e.message);return reply(res,e.status||400,{error:e.status===413?'File too large':e.message},origin);}
 });
