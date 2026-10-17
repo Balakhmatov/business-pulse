@@ -128,15 +128,17 @@ function generateSample(type='clinic'){
   const end=shift(mskToday(),-1);
   for(let day=59;day>=0;day--){
     const date=shift(end,-day);
+    const dayNumber=Math.floor(Date.parse(date+'T00:00:00Z')/86400000);
     for(let i=0;i<7;i++){
-      const idx=(day*7+i*3)%catalog.length;
+      const idx=((dayNumber*7+i*3)%catalog.length+catalog.length)%catalog.length;
       const [item,price]=catalog[idx];
-      const amount=Math.max(1,price+((day*17+i*31)%9-4)*30);
-      lines.push([date,'DEMO-'+day+'-'+i,item,amount,'оплата'].join(';'));
+      const shiftAmount=((dayNumber*17+i*31)%9+9)%9-4;
+      const amount=Math.max(1,price+shiftAmount*30);
+      lines.push([date,'DEMO-'+date+'-'+i,item,amount,'оплата'].join(';'));
     }
-    if(day%12===0){
+    if(dayNumber%12===0){
       const [item,price]=catalog[0];
-      lines.push([date,'REF-'+day,item,-price,'возврат'].join(';'));
+      lines.push([date,'REF-'+date,item,-price,'возврат'].join(';'));
     }
   }
   return '\uFEFF'+lines.join('\r\n')+'\r\n';
