@@ -68,7 +68,7 @@ test('Own-company data isolation, full-period comparison, cached AI',t=>{
   assert.match(result,/Выручка за 30 дней по загруженным операциям: 60.?000 ₽/u);
   assert.match(result,/Чеков \/ визитов за 30 дней: 30/);
   assert.match(result,/Изменение к предыдущим 30 дням: \+100,0%/);
-  assert.match(result,/Главный вывод ИИ/);
+  assert.match(result,/Ключевой аналитический вывод/);
   assert.match(result,/Проверьте динамику визитов/);
   assert.doesNotMatch(result,/Чужой магазин|Чужой источник|secret/);
 });
@@ -95,5 +95,5 @@ test('Cached conclusions from older imports never leak into new digest',t=>{
   );
   const result=f.read('101');
   assert.doesNotMatch(result,/УСТАРЕВШИЙ ВЫВОД/);
-  assert.match(result,/ИИ-анализ пока не готов/);
+  assert.match(result,/Аналитическое заключение пока формируется/);
 });
