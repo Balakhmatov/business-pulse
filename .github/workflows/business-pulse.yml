@@ -1,0 +1,67 @@
+name: Business Pulse CI and deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'bot/**'
+      - 'deploy/**'
+      - 'index.html'
+      - 'personal.js'
+      - '.github/workflows/business-pulse.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: business-pulse-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Validate Business Pulse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check api/server.mjs
+          node --check api/accumulate.mjs
+          node --check api/ai.mjs
+          node --check bot/index.mjs
+          node --check bot/digest.mjs
+          node --check personal.js
+      - name: Test migrations and daily summaries
+        run: node --experimental-sqlite --test api/accumulate.test.mjs bot/digest.test.mjs
+
+  deploy:
+    name: Deploy isolated BP services to VPS
+    needs: [test]
+    if: ${{ vars.BP_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: business-pulse-production
+    steps:
+      - name: Deploy through restricted SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.BP_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.BP_DEPLOY_KNOWN_HOSTS }}
+          BP_DEPLOY_HOST: ${{ secrets.BP_DEPLOY_HOST }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test -n "$SSH_PRIVATE_KEY" || { echo "Missing BP_DEPLOY_SSH_KEY"; exit 1; }
+          test -n "$SSH_KNOWN_HOSTS" || { echo "Missing BP_DEPLOY_KNOWN_HOSTS"; exit 1; }
+          test -n "$BP_DEPLOY_HOST" || { echo "Missing BP_DEPLOY_HOST"; exit 1; }
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/bp_key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/bp_known_hosts"
+          ssh -T -i "$RUNNER_TEMP/bp_key" \
+              -o UserKnownHostsFile="$RUNNER_TEMP/bp_known_hosts" \
+              -o StrictHostKeyChecking=yes -o BatchMode=yes \
+              -o ConnectTimeout=15 -o IdentitiesOnly=yes \
+              "bp-deploy@$BP_DEPLOY_HOST" deploy
