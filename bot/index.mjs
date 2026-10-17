@@ -5,7 +5,7 @@ import path from 'node:path';
 // Requires Node.js 20.6+, a separate BotFather bot and a running server process.
 // NEVER put the bot token or subscriber storage into GitHub Pages.
 const TOKEN = process.env.BP_BOT_TOKEN;
-const EXPECTED_USERNAME = (process.env.BP_BOT_USERNAME || 'business_pules_bot').replace(/^@/, '').toLowerCase();
+const EXPECTED_USERNAME = (process.env.BP_BOT_USERNAME || 'business_pulse_app_bot').replace(/^@/, '').toLowerCase();
 const APP_URL = process.env.BP_APP_URL || 'https://balakhmatov.github.io/business-pulse/';
 const TIMEZONE = process.env.BP_TIMEZONE || 'Europe/Moscow';
 const SEND_HOUR = Number(process.env.BP_SEND_HOUR || 9);
