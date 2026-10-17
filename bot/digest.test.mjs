@@ -65,11 +65,13 @@ test('Own-company data isolation, full-period comparison, cached AI',t=>{
   );
   const result=f.read('101');
   assert.match(result,/Моя клиника \(тестовые данные\)/);
-  assert.match(result,/Выручка за 30 дней по загруженным операциям: 60.?000 ₽/u);
-  assert.match(result,/Чеков \/ визитов за 30 дней: 30/);
-  assert.match(result,/Изменение к предыдущим 30 дням: \+100,0%/);
-  assert.match(result,/Ключевой аналитический вывод/);
-  assert.match(result,/Проверьте динамику визитов/);
+  assert.match(result,/1\. Выручка за 30 дней: <b>60.?000 ₽<\/b>/u);
+  assert.match(result,/2\. Чеков \/ визитов за 30 дней: <b>30<\/b>/);
+  assert.match(result,/4\. Изменение к предыдущим 30 дням: <b>\+100,0%<\/b>/);
+  assert.match(result,/📌 <b>Ключевой аналитический вывод<\/b>/);
+  assert.match(result,/<b>1\. Проверьте динамику визитов<\/b>/);
+  assert.match(result,/<b>Рекомендация:<\/b>\nСопоставить количество записей/);
+  assert.match(result,/\n\n<i>Основание:<\/i>/);
   assert.doesNotMatch(result,/Чужой магазин|Чужой источник|secret/);
 });
 
@@ -78,10 +80,10 @@ test('Stale import does not show missing yesterday as zero or claim trustworthy 
   f.addImport('c101','Ручная выгрузка');
   f.addOperation('c101','2026-10-13',420000,'a');
   const result=f.read('101');
-  assert.match(result,/За 16 октября 2026 г\. операций в выгрузке нет/);
+  assert.match(result,/3\. За 16 октября 2026 г\. <b>нет операций в выгрузке<\/b>/);
   assert.match(result,/последняя дата операции — 13 октября 2026 г/);
-  assert.match(result,/Сравнение с предыдущим периодом ненадёжно/);
-  assert.doesNotMatch(result,/Выручка за 16 октября 2026 г\.: 0 ₽/);
+  assert.match(result,/Сравнение с предыдущим периодом ограничено:/);
+  assert.doesNotMatch(result,/Выручка за 16 октября 2026 г\.: <b>0 ₽<\/b>/);
 });
 
 test('Cached conclusions from older imports never leak into new digest',t=>{
@@ -95,5 +97,26 @@ test('Cached conclusions from older imports never leak into new digest',t=>{
   );
   const result=f.read('101');
   assert.doesNotMatch(result,/УСТАРЕВШИЙ ВЫВОД/);
-  assert.match(result,/Аналитическое заключение пока формируется/);
+  assert.match(result,/Заключение пока формируется/);
+});
+
+test('Telegram HTML safely escapes untrusted company names and cached AI fields', t => {
+  const f=fixture(); t.after(f.cleanup);
+  f.addImport('c101');
+  f.db.prepare('UPDATE companies SET name=? WHERE id=?').run('Clinic & <Main>','c101');
+  f.addOperation('c101','2026-10-16',150000,'receipt-1');
+  f.db.prepare('INSERT INTO ai_analyses VALUES(?,?,?,?)').run(
+    'c101','ready',JSON.stringify({
+      issues:[{title:'Проверить <склад> & продажи',explanation:'Раздел <A> требует проверки.',
+        recommendation:'Сверить <отчёт> & остатки.',evidence:['Объём <10> & выше.']}],
+      positives:[]
+    }),Date.parse('2026-10-17T05:00:00Z')
+  );
+  const result=f.read('101');
+  assert.match(result,/<b>Clinic &amp; &lt;Main&gt;<\/b>/);
+  assert.match(result,/<b>1\. Проверить &lt;склад&gt; &amp; продажи<\/b>/);
+  assert.match(result,/<b>Рекомендация:<\/b>\nСверить &lt;отчёт&gt; &amp; остатки\./);
+  assert.doesNotMatch(result,/Clinic & <Main>/);
+  assert.equal((result.match(/📊/g)||[]).length,1);
+  assert.equal((result.match(/📌/g)||[]).length,1);
 });
