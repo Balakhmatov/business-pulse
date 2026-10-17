@@ -37,7 +37,7 @@ function fixture() {
 
 test('No report for users without imports; never invent revenue',t=>{
   const f=fixture();t.after(f.cleanup);
-  assert.match(f.read('101'),/пока не загружен/);
+  assert.match(f.read('101'),/Нет загруженного отчёта/);
   assert.doesNotMatch(f.read('101'),/Выручка за 30 дней/);
 });
 
