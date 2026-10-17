@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#11162f">
+<title>Бизнес Пульс — вся компания на одном экране</title>
+<meta name="description" content="Бизнес Пульс превращает выгрузку из учётной системы в понятную ежедневную сводку для собственника: выручка, чеки, средний чек, динамика и важные сигналы.">
+<meta property="og:title" content="Бизнес Пульс — вся компания на одном экране">
+<meta property="og:description" content="Понятная ежедневная сводка для собственника бизнеса без сложной BI-системы.">
+<meta property="og:type" content="website">
+<style>
+:root{
+  --ink:#171c36;--ink-2:#29304f;--muted:#747d98;--soft:#98a0b6;
+  --bg:#f7f8fc;--card:#fff;--line:#e7eaf2;--purple:#6864e9;--purple-dark:#5651dc;
+  --mint:#19a887;--rose:#df6678;--gold:#d99d38;--navy:#12172f;
+  --shadow:0 24px 80px rgba(29,35,78,.08);
+  --shadow-soft:0 10px 35px rgba(31,38,82,.06);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,a{touch-action:manipulation}
+svg{display:block}
+.wrap{width:min(1180px,calc(100% - 40px));margin:0 auto}
+.header{position:sticky;top:0;z-index:20;background:rgba(247,248,252,.83);backdrop-filter:blur(18px);border-bottom:1px solid rgba(231,234,242,.78)}
+.header-inner{height:74px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.brand{display:flex;align-items:center;gap:11px;font-size:20px;font-weight:850;letter-spacing:-.65px}
+.logo{width:37px;height:37px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,#9693ff,#635ee5);box-shadow:0 7px 18px rgba(99,94,229,.26)}
+.logo svg{width:25px;height:25px}
+.nav{display:flex;align-items:center;gap:28px;color:#5f6884;font-size:13px;font-weight:700}
+.nav a:hover{color:var(--ink)}
+.header-cta{display:flex;align-items:center;gap:10px}
+.btn{min-height:44px;border-radius:14px;padding:0 17px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:13px;font-weight:800;transition:.18s ease;border:1px solid transparent}
+.btn svg{width:17px;height:17px}
+.btn-primary{background:var(--purple);color:#fff;box-shadow:0 8px 22px rgba(104,100,233,.24)}
+.btn-primary:hover{background:var(--purple-dark);transform:translateY(-1px)}
+.btn-secondary{background:#fff;border-color:var(--line);color:#3a4261;box-shadow:0 4px 14px rgba(25,31,66,.04)}
+.btn-secondary:hover{background:#f3f4fa}
+.hero{position:relative;overflow:hidden;padding:96px 0 96px}
+.hero:before{content:"";position:absolute;top:-180px;right:-160px;width:620px;height:620px;border-radius:50%;background:radial-gradient(circle,rgba(110,105,238,.15),rgba(110,105,238,0) 68%);pointer-events:none}
+.hero:after{content:"";position:absolute;left:-190px;bottom:-240px;width:540px;height:540px;border-radius:50%;background:radial-gradient(circle,rgba(25,168,135,.085),rgba(25,168,135,0) 69%);pointer-events:none}
+.hero-grid{position:relative;display:grid;grid-template-columns:minmax(0,.88fr) minmax(520px,1.12fr);gap:64px;align-items:center}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;background:#efefff;color:#5d58d7;border:1px solid #e2e0ff;padding:8px 11px;border-radius:999px;font-size:11px;font-weight:850;letter-spacing:.5px;text-transform:uppercase}
+.eyebrow:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--mint)}
+h1{font-size:clamp(46px,5.35vw,73px);line-height:.99;letter-spacing:-3.5px;margin:22px 0 22px;font-weight:890;max-width:690px}
+.hero-copy{font-size:18px;line-height:1.65;color:#69728e;max-width:610px;margin:0 0 31px}
+.hero-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.hero-actions .btn{min-height:50px;padding:0 20px;font-size:14px}
+.hero-note{margin-top:17px;color:#969eb3;font-size:12px;display:flex;align-items:center;gap:8px}
+.hero-note svg{width:15px;height:15px;color:#7983a0}
+.product-stage{position:relative}
+.glow{position:absolute;inset:8% 6% -8% 15%;background:linear-gradient(135deg,rgba(108,103,235,.16),rgba(25,168,135,.05));filter:blur(28px);border-radius:40px}
+.dashboard{position:relative;border:1px solid #e4e7f0;background:#fff;border-radius:27px;box-shadow:0 35px 90px rgba(27,34,75,.13);padding:22px;transform:rotate(.5deg)}
+.dash-top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:17px}
+.dash-brand{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:850}
+.dash-brand .logo{width:27px;height:27px;border-radius:9px;box-shadow:none}
+.dash-brand .logo svg{width:18px;height:18px}
+.live{display:flex;align-items:center;gap:7px;background:#edf8f4;color:#30806d;border:1px solid #deeee8;padding:7px 9px;border-radius:999px;font-size:9px;font-weight:820}
+.live:before{content:"";width:6px;height:6px;border-radius:50%;background:#1db48c}
+.dash-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:4px 2px 16px}
+.dash-intro span{font-size:9px;letter-spacing:.9px;text-transform:uppercase;font-weight:850;color:#a0a7ba}
+.dash-intro strong{display:block;font-size:20px;letter-spacing:-.6px;margin-top:6px}
+.dash-intro small{font-size:9px;color:#a1a8ba}
+.kpis{display:grid;grid-template-columns:1.55fr .9fr .9fr;gap:10px}
+.revenue{grid-row:span 2;min-height:220px;padding:20px;border-radius:18px;background:linear-gradient(135deg,#5f5be1,#7c77ef);color:#fff;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between}
+.revenue:after{content:"";position:absolute;width:230px;height:230px;border:50px solid rgba(255,255,255,.07);right:-100px;top:-120px;border-radius:50%}
+.metric-label{font-size:10px;font-weight:750;opacity:.78}
+.revenue-value{font-size:38px;font-weight:880;letter-spacing:-2px;margin-top:12px}
+.delta{display:inline-flex;width:max-content;margin-top:10px;border-radius:8px;padding:6px 8px;font-size:10px;font-weight:800;background:rgba(255,255,255,.18)}
+.revenue-foot{font-size:9px;padding-top:13px;border-top:1px solid rgba(255,255,255,.22);opacity:.82}
+.mini-card{border:1px solid #edf0f6;border-radius:17px;padding:16px;min-height:105px;background:#fff}
+.mini-icon{width:29px;height:29px;border-radius:10px;background:#f0efff;color:#6762df;display:grid;place-items:center;margin-bottom:12px}
+.mini-icon svg{width:16px;height:16px}
+.mini-card span{font-size:9px;color:#7f879f;font-weight:750}
+.mini-card strong{display:block;font-size:20px;letter-spacing:-.7px;margin-top:6px}
+.lower{display:grid;grid-template-columns:1.25fr .75fr;gap:10px;margin-top:10px}
+.chart-card,.signal-card{border:1px solid #edf0f6;border-radius:17px;padding:15px;background:#fff}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.card-head strong{font-size:10px}
+.card-head span{font-size:8px;color:#9ba3b8}
+.chart{height:87px;position:relative;display:flex;align-items:flex-end;gap:7px;padding-top:12px}
+.chart:before,.chart:after{content:"";position:absolute;left:0;right:0;border-top:1px dashed #edf0f5}
+.chart:before{top:32%}.chart:after{top:66%}
+.bar{position:relative;z-index:1;flex:1;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,#8580f3,#c1befa)}
+.signal{display:flex;gap:9px;padding:8px 0;border-top:1px solid #f0f2f7}
+.signal:first-of-type{border-top:0}
+.signal-dot{width:25px;height:25px;border-radius:9px;display:grid;place-items:center;flex:0 0 25px}
+.signal-dot.good{background:#edf8f4;color:#1a9d7e}.signal-dot.warn{background:#fff4ed;color:#d28743}
+.signal-dot svg{width:14px;height:14px}
+.signal strong{font-size:9px;display:block}.signal p{font-size:8px;line-height:1.45;color:#8b94aa;margin:3px 0 0}
+.section{padding:96px 0}
+.section.alt{background:#fff;border-top:1px solid #eef0f5;border-bottom:1px solid #eef0f5}
+.section-head{max-width:760px;margin-bottom:46px}
+.section-kicker{font-size:11px;color:#6b66e5;font-weight:850;letter-spacing:1px;text-transform:uppercase}
+h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:13px 0 15px}
+.section-head p{font-size:16px;line-height:1.65;color:#747d97;margin:0}
+.features{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.feature{background:#fff;border:1px solid var(--line);border-radius:20px;padding:23px;box-shadow:0 7px 25px rgba(27,34,75,.035)}
+.feature-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:#f0efff;color:#6460df;margin-bottom:22px}
+.feature-icon svg{width:21px;height:21px}
+.feature h3{font-size:15px;margin:0 0 9px;letter-spacing:-.3px}
+.feature p{font-size:13px;line-height:1.6;color:#7d859d;margin:0}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.step{position:relative;padding:29px;background:#f8f9fc;border:1px solid #e8ebf2;border-radius:21px}
+.step-num{width:31px;height:31px;border-radius:10px;background:#1b2140;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:850;margin-bottom:22px}
+.step h3{font-size:17px;letter-spacing:-.45px;margin:0 0 9px}
+.step p{font-size:13px;line-height:1.65;color:#7b849b;margin:0}
+.why-grid{display:grid;grid-template-columns:.92fr 1.08fr;gap:64px;align-items:center}
+.quote-card{background:var(--navy);border-radius:26px;padding:34px;color:#fff;min-height:390px;position:relative;overflow:hidden}
+.quote-card:after{content:"";position:absolute;width:290px;height:290px;right:-125px;bottom:-145px;border:55px solid rgba(255,255,255,.045);border-radius:50%}
+.quote-label{font-size:10px;color:#8d98bf;font-weight:800;text-transform:uppercase;letter-spacing:1px}
+.quote-card h3{font-size:34px;line-height:1.15;letter-spacing:-1.5px;margin:21px 0 18px;max-width:420px}
+.quote-card p{font-size:14px;color:#aeb6d1;line-height:1.65;max-width:430px}
+.quote-tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:34px}
+.quote-tags span{font-size:10px;font-weight:750;color:#dce1f5;border:1px solid #343b61;padding:8px 10px;border-radius:999px}
+.checks{display:flex;flex-direction:column;gap:19px}
+.check{display:flex;gap:14px}
+.check-icon{margin-top:1px;width:31px;height:31px;flex:0 0 31px;border-radius:10px;background:#edf8f4;color:#188e74;display:grid;place-items:center}
+.check-icon svg{width:16px;height:16px}
+.check strong{display:block;font-size:14px;margin-bottom:5px}
+.check p{margin:0;font-size:13px;line-height:1.55;color:#7b849c}
+.trust{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.trust-card{border:1px solid var(--line);background:#fff;border-radius:21px;padding:26px}
+.trust-card .feature-icon{margin-bottom:18px}
+.trust-card h3{margin:0 0 9px;font-size:17px}
+.trust-card p{margin:0;color:#7b849c;font-size:13px;line-height:1.65}
+.final{padding:72px 0 92px}
+.final-box{position:relative;overflow:hidden;border-radius:30px;background:linear-gradient(135deg,#151b38,#22284c);color:#fff;padding:55px}
+.final-box:before{content:"";position:absolute;right:-120px;top:-160px;width:430px;height:430px;border-radius:50%;background:radial-gradient(circle,rgba(116,111,244,.34),rgba(116,111,244,0) 70%)}
+.final-box h2{position:relative;max-width:720px;margin-top:0}
+.final-box p{position:relative;color:#aeb6cf;max-width:650px;font-size:15px;line-height:1.65;margin:0 0 27px}
+.final-box .hero-actions{position:relative}
+.footer{padding:0 0 38px;color:#929aaf;font-size:11px}
+.footer-inner{border-top:1px solid #e3e6ef;padding-top:20px;display:flex;justify-content:space-between;gap:18px}
+.footer a:hover{color:#5f6884}
+@media(max-width:980px){
+  .nav{display:none}
+  .hero{padding-top:70px}
+  .hero-grid{grid-template-columns:1fr;gap:50px}
+  .hero-copy{max-width:720px}
+  .product-stage{max-width:720px}
+  .features{grid-template-columns:1fr 1fr}
+  .why-grid{grid-template-columns:1fr;gap:30px}
+}
+@media(max-width:680px){
+  .wrap{width:min(100% - 26px,1180px)}
+  .header-inner{height:66px}
+  .brand{font-size:17px}.logo{width:33px;height:33px;border-radius:10px}
+  .header-cta .btn-secondary{display:none}
+  .header-cta .btn-primary{min-height:40px;padding:0 13px;font-size:11px}
+  .hero{padding:59px 0 70px}
+  h1{font-size:43px;letter-spacing:-2.3px}
+  .hero-copy{font-size:16px}
+  .hero-actions{align-items:stretch}
+  .hero-actions .btn{flex:1 1 180px}
+  .dashboard{padding:13px;border-radius:20px;transform:none}
+  .dash-intro strong{font-size:17px}
+  .kpis{grid-template-columns:1fr 1fr}
+  .revenue{grid-column:1/-1;grid-row:auto;min-height:185px}
+  .lower{grid-template-columns:1fr}
+  .features,.steps,.trust{grid-template-columns:1fr}
+  .section{padding:72px 0}
+  .section-head{margin-bottom:32px}
+  h2{font-size:35px;letter-spacing:-1.5px}
+  .quote-card{min-height:0;padding:28px}
+  .quote-card h3{font-size:29px}
+  .final{padding:56px 0 72px}
+  .final-box{padding:34px 24px;border-radius:23px}
+  .footer-inner{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#top" aria-label="Бизнес Пульс">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 30 30" fill="none"><path d="M3 16h5l3-7 6 14 4-10 2 3h4" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span>Бизнес Пульс</span>
+    </a>
+    <nav class="nav" aria-label="Навигация">
+      <a href="#value">Возможности</a>
+      <a href="#how">Как работает</a>
+      <a href="#security">Данные</a>
+    </nav>
+    <div class="header-cta">
+      <a class="btn btn-secondary" href="./index.html">Демо</a>
+      <a class="btn btn-primary" href="https://t.me/business_pulse_app_bot" target="_blank" rel="noopener">
+        Открыть в Telegram
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">Панель собственника</div>
+      <h1>Вся компания. Одним взглядом.</h1>
+      <p class="hero-copy">Бизнес Пульс превращает обычную выгрузку из учётной системы в короткую управленческую сводку: что происходит с выручкой, чеками и динамикой — и где действительно стоит обратить внимание.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://t.me/business_pulse_app_bot" target="_blank" rel="noopener">
+          Открыть Бизнес Пульс
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-secondary" href="./index.html">
+          Посмотреть демо
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 5 8 7-8 7"/></svg>
+        </a>
+      </div>
+      <div class="hero-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 6v6c0 5 3.3 8 8 9 4.7-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-5"/></svg>
+        Без тяжёлого BI-внедрения и многоэтажных отчётов
+      </div>
+    </div>
+
+    <div class="product-stage" aria-label="Пример интерфейса Бизнес Пульс">
+      <div class="glow"></div>
+      <div class="dashboard">
+        <div class="dash-top">
+          <div class="dash-brand">
+            <span class="logo"><svg viewBox="0 0 30 30" fill="none"><path d="M3 16h5l3-7 6 14 4-10 2 3h4" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            Бизнес Пульс
+          </div>
+          <div class="live">Данные обновлены</div>
+        </div>
+        <div class="dash-intro">
+          <div><span>Сегодняшний обзор</span><strong>Доброе утро</strong></div>
+          <small>по 16 октября включительно</small>
+        </div>
+        <div class="kpis">
+          <div class="revenue">
+            <div>
+              <div class="metric-label">Выручка за 30 дней</div>
+              <div class="revenue-value">4 286 400 ₽</div>
+              <div class="delta">+8,4% к прошлому периоду</div>
+            </div>
+            <div class="revenue-foot">Рост подтверждается полной историей за оба периода</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+            <span>Визитов</span><strong>1 247</strong>
+          </div>
+          <div class="mini-card">
+            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+            <span>Средний чек</span><strong>3 437 ₽</strong>
+          </div>
+          <div class="mini-card">
+            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/></svg></div>
+            <span>Вчера</span><strong>182 600 ₽</strong>
+          </div>
+          <div class="mini-card">
+            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg></div>
+            <span>Сигналы</span><strong>2 важных</strong>
+          </div>
+        </div>
+        <div class="lower">
+          <div class="chart-card">
+            <div class="card-head"><strong>Выручка за 7 дней</strong><span>полные сутки</span></div>
+            <div class="chart">
+              <div class="bar" style="height:54%"></div><div class="bar" style="height:68%"></div><div class="bar" style="height:48%"></div>
+              <div class="bar" style="height:77%"></div><div class="bar" style="height:63%"></div><div class="bar" style="height:91%"></div><div class="bar" style="height:72%"></div>
+            </div>
+          </div>
+          <div class="signal-card">
+            <div class="card-head"><strong>Что важно</strong><span>автоанализ</span></div>
+            <div class="signal"><div class="signal-dot good"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 12 3 3 7-7"/></svg></div><div><strong>Выручка растёт</strong><p>+8,4% к предыдущим 30 дням.</p></div></div>
+            <div class="signal"><div class="signal-dot warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4 3 20h18L12 4Z"/><path d="M12 9v5m0 3h.01"/></svg></div><div><strong>Просадка по вторникам</strong><p>Стоит проверить загрузку в этот день.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" id="value">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-kicker">Не ещё один отчёт</div>
+      <h2>Цифры, которые можно понять до первого кофе</h2>
+      <p>Вместо десятков таблиц и экранов — только показатели, которые помогают быстро понять состояние бизнеса и решить, куда смотреть дальше.</p>
+    </div>
+    <div class="features">
+      <article class="feature">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/></svg></div>
+        <h3>Динамика бизнеса</h3>
+        <p>Выручка, чеки, средний чек и сравнение с предыдущим периодом без ручных формул.</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg></div>
+        <h3>Важные сигналы</h3>
+        <p>Система выделяет отклонения и изменения, которые легко пропустить в обычной выгрузке.</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V8l8-4 8 4v12"/><path d="M8 20v-6h8v6M9 9h.01M15 9h.01"/></svg></div>
+        <h3>Картина для собственника</h3>
+        <p>Не бухгалтерский интерфейс и не аналитический конструктор, а короткий обзор состояния компании.</p>
+      </article>
+      <article class="feature">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 12h8M12 8v8"/><rect x="4" y="4" width="16" height="16" rx="4"/></svg></div>
+        <h3>AI-интерпретация</h3>
+        <p>OpenAI помогает сформулировать краткие выводы по агрегированным показателям — без доступа к строкам вашей выгрузки.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-kicker">Просто начать</div>
+      <h2>От выгрузки до понятного экрана — три шага</h2>
+      <p>На первом этапе не нужно подключать сложные интеграции или менять учётную систему.</p>
+    </div>
+    <div class="steps">
+      <article class="step">
+        <div class="step-num">01</div>
+        <h3>Открываете Бизнес Пульс</h3>
+        <p>Сервис работает через Telegram Mini App, поэтому отдельный логин и ещё одно приложение не нужны.</p>
+      </article>
+      <article class="step">
+        <div class="step-num">02</div>
+        <h3>Загружаете CSV</h3>
+        <p>Выгружаете привычный отчёт из вашей системы и сопоставляете основные столбцы.</p>
+      </article>
+      <article class="step">
+        <div class="step-num">03</div>
+        <h3>Получаете пульс компании</h3>
+        <p>Бизнес Пульс считает показатели, сравнивает периоды и показывает короткие управленческие выводы.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section alt">
+  <div class="wrap why-grid">
+    <div class="quote-card">
+      <div class="quote-label">Главная идея</div>
+      <h3>Собственнику не нужен ещё один дашборд. Ему нужен ответ: «Всё нормально?»</h3>
+      <p>Бизнес Пульс создаётся именно для этого — быстро дать ощущение контроля и показать, где ситуация требует внимания.</p>
+      <div class="quote-tags"><span>Без перегруза</span><span>Без десятков KPI</span><span>По делу</span></div>
+    </div>
+    <div class="checks">
+      <div class="check">
+        <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 12 3 3 7-7"/></svg></div>
+        <div><strong>Точные расчёты делает код</strong><p>Выручка, количество операций, средний чек и сравнения считаются программно, а не языковой моделью.</p></div>
+      </div>
+      <div class="check">
+        <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 12 3 3 7-7"/></svg></div>
+        <div><strong>ИИ объясняет, а не придумывает цифры</strong><p>Модель получает уже рассчитанные агрегаты и помогает превратить их в короткий человеческий вывод.</p></div>
+      </div>
+      <div class="check">
+        <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 12 3 3 7-7"/></svg></div>
+        <div><strong>Начать можно без проекта на несколько месяцев</strong><p>Для прототипа достаточно выгрузки CSV. Интеграции с учётными системами можно подключать позже.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="security">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-kicker">Данные и приватность</div>
+      <h2>Минимум данных — максимум пользы</h2>
+      <p>Архитектура прототипа специально отделяет расчёты от AI-интерпретации.</p>
+    </div>
+    <div class="trust">
+      <article class="trust-card">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 6v6c0 5 3.3 8 8 9 4.7-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-5"/></svg></div>
+        <h3>В OpenAI уходят только агрегаты</h3>
+        <p>Строки CSV, Telegram ID, имена покупателей и исходные файлы не отправляются модели. Для интерпретации используются рассчитанные показатели.</p>
+      </article>
+      <article class="trust-card">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 5V3m8 2V3M4 10h16"/></svg></div>
+        <h3>Никакой магии вместо фактов</h3>
+        <p>Если данных недостаточно для сравнения, сервис так и говорит. Выводы ИИ — подсказка для внимания, а не замена финансовому аудиту.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap">
+    <div class="final-box">
+      <h2>Утро владельца бизнеса должно начинаться не с поиска цифр.</h2>
+      <p>Откройте Бизнес Пульс, загрузите отчёт и посмотрите на компанию одним экраном.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://t.me/business_pulse_app_bot" target="_blank" rel="noopener">
+          Открыть в Telegram
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-secondary" href="./index.html">Посмотреть демо</a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span>© 2026 Бизнес Пульс</span>
+    <span>Прототип панели собственника бизнеса</span>
+  </div>
+</footer>
+</body>
+</html>
