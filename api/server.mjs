@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAI } from './ai.mjs';
+import { createAccumulator } from './accumulate.mjs';
 
 // Localhost-only service. Nginx provides HTTPS. Telegram initData is ALWAYS signed and verified.
 const port = Number(process.env.BP_API_PORT || 3117);
@@ -28,10 +29,8 @@ const st={
   first:db.prepare('SELECT id,name,industry FROM companies WHERE owner_id=? ORDER BY created_at LIMIT 1'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),
   rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
-  wipe:db.prepare('DELETE FROM operations WHERE company_id=?'),
-  add:db.prepare('INSERT INTO operations(company_id,sold_on,source_id,item,amount_kopecks,status) VALUES(?,?,?,?,?,?)'),
-  upsert:db.prepare('INSERT INTO imports(company_id,source,row_count) VALUES(?,?,?) ON CONFLICT(company_id) DO UPDATE SET imported_at=CURRENT_TIMESTAMP,source=excluded.source,row_count=excluded.row_count'),
-  latest:db.prepare('SELECT imported_at,source,row_count FROM imports WHERE company_id=?')
+  latest:db.prepare('SELECT imported_at,source,row_count,last_change_at FROM imports WHERE company_id=?'),
+  total:db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?')
 };
 function reply(res,status,data,origin){
   const h={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Vary':'Origin'};
@@ -57,6 +56,7 @@ function telegramID(raw){
   if(!user||!Number.isSafeInteger(user.id)||user.id<1)throw Error('Invalid user');
   return String(user.id);
 }
+const accumulator=createAccumulator(db);
 function companyFor(id){
   st.user.run(id);
   let c=st.first.get(id);
@@ -70,7 +70,7 @@ function report(c){
   const end=shift(mskToday(),-1),start=shift(end,-59),cut=shift(end,-29);
   const entries=st.rows.all(c.id,start,end),cur=entries.filter(x=>x.sold_on>=cut),prev=entries.filter(x=>x.sold_on<cut);
   const sum=rows=>rows.reduce((a,x)=>a+x.amount_kopecks,0);
-  const receipts=new Set(cur.filter(x=>x.status==='sale').map(x=>x.source_id)).size;
+  const receipts=new Set(cur.filter(x=>x.status==='sale').map(x=>x.sold_on+'\u0000'+x.source_id)).size;
   const revenue=sum(cur),previous=sum(prev);
   const day7=shift(end,-6);
   const chart7=Array.from({length:7},(_,i)=>{const date=shift(day7,i);return {date,amount_kopecks:sum(entries.filter(x=>x.sold_on===date))};});
@@ -82,7 +82,7 @@ function report(c){
     change_percent:previous>0?Math.round((revenue-previous)/previous*1000)/10:null,
     yesterday_kopecks:chart7[6].amount_kopecks,receipt_count:receipts,
     average_receipt_kopecks:receipts>0?Math.round(revenue/receipts):null,chart7,top3,
-    source:src?{name:src.source,imported_at:src.imported_at,rows:src.row_count}:null,
+    source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,last_import_rows:src.row_count,last_change_at:src.last_change_at}:null,
     warning:src?null:'Отчёт ещё не загружен. Здесь пока нет финансовых данных.'};
 }
 async function readJSON(req){
@@ -106,14 +106,7 @@ function normalize(input){
 }
 function ingest(c,input){
   const rows=normalize(input);
-  db.exec('BEGIN IMMEDIATE');
-  try{
-    st.wipe.run(c.id);
-    for(const x of rows)st.add.run(c.id,x.date,x.id,x.item,x.amount_kopecks,x.status);
-    st.upsert.run(c.id,input.source.trim(),rows.length);
-    db.exec('COMMIT');
-  }catch(e){db.exec('ROLLBACK');throw e;}
-  return rows.length;
+  return accumulator.ingest(c,input,rows);
 }
 
 // The interpreter receives ONLY aggregates, never rows or user identity.
@@ -178,10 +171,10 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
     if(req.method==='POST'&&url.pathname==='/api/import'){
       const input=await readJSON(req);
-      const saved=ingest(c,input);
+      const stats=ingest(c,input);
       const updated=report(c);
-      ai.onImport(c); // asynchronous; import never waits on OpenAI
-      return reply(res,200,{saved,report:updated},origin);
+      if(stats.added || stats.updated) ai.onImport(c); // no redundant paid analysis
+      return reply(res,200,{saved:stats.received,stats,report:updated},origin);
     }
     return reply(res,404,{error:'Unknown API route'},origin);
   }catch(e){console.error('API request rejected:',e.message);return reply(res,e.status||400,{error:e.status===413?'File too large':e.message},origin);}
