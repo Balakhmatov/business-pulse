@@ -26,6 +26,12 @@ function displayDate(date) {
 function safeText(v, max = 360) {
   return typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '';
 }
+function escapeHTML(value) {
+  // All source/company/model strings must be escaped before Telegram HTML formatting.
+  return String(value).replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+}
 function briefAI(database, companyId, importTime) {
   // The table may be absent on an older backend. Never break a financial digest.
   let record;
@@ -50,8 +56,16 @@ function briefAI(database, companyId, importTime) {
   const evidence = safeText(finding.evidence?.[0], 250);
   const action = safeText(finding.recommendation, 240);
   if (!title || !explanation) return '';
-  return ['Ключевой аналитический вывод', title, explanation, evidence, action ? 'Рекомендация: ' + action : '']
-    .filter(Boolean).join('\n');
+  return [
+    '📌 <b>Ключевой аналитический вывод</b>',
+    '',
+    '<b>1. ' + escapeHTML(title) + '</b>',
+    '',
+    escapeHTML(explanation),
+    evidence ? '<i>Основание:</i> ' + escapeHTML(evidence) : '',
+    action ? '' : '',
+    action ? '<b>Рекомендация:</b>\n' + escapeHTML(action) : ''
+  ].filter((value, index, arr) => value !== '' || (index > 0 && arr[index - 1] !== '')).join('\n');
 }
 
 export function dailyDigestFor(telegramId, {
@@ -68,9 +82,9 @@ export function dailyDigestFor(telegramId, {
       'LEFT JOIN imports i ON i.company_id=c.id ' +
       'WHERE u.telegram_id=? ORDER BY c.created_at,c.id LIMIT 1'
     ).get(String(telegramId));
-    const prelude = 'Бизнес Пульс · утренний обзор\n';
+    const prelude = '📊 <b>Бизнес Пульс · утренний обзор</b>';
     if (!company || !company.imported_at) {
-      return prelude + '\nОтчёт компании пока не загружен.\n' +
+      return prelude + '\n\n<b>Нет загруженного отчёта</b>\n\n' +
         'Откройте «Моя компания» и загрузите CSV — тогда здесь появятся ваши показатели.';
     }
     const ops = database.prepare(
@@ -92,40 +106,42 @@ export function dailyDigestFor(telegramId, {
     const source = /синтетич|тестов|demo|sample/i.test(company.source) ? ' (тестовые данные)' : '';
     const lines = [
       prelude,
-      safeText(company.name, 100) + source,
       '',
+      '<b>' + escapeHTML(safeText(company.name, 100)) + '</b>' + source,
       'Период: ' + displayDate(cut) + ' — ' + displayDate(end),
-      'Выручка за 30 дней по загруженным операциям: ' + money(currentRevenue),
-      'Чеков / визитов за 30 дней: ' + salesCount
+      '',
+      '<b>Основные показатели</b>',
+      '1. Выручка за 30 дней: <b>' + money(currentRevenue) + '</b>',
+      '2. Чеков / визитов за 30 дней: <b>' + salesCount + '</b>'
     ];
     if (yesterday.length) {
-      lines.push('Выручка за ' + displayDate(end) + ': ' + money(sum(yesterday)));
+      lines.push('3. Выручка за ' + displayDate(end) + ': <b>' + money(sum(yesterday)) + '</b>');
     } else {
-      lines.push('За ' + displayDate(end) + ' операций в выгрузке нет (не считаем это нулевой выручкой).');
+      lines.push('3. За ' + displayDate(end) + ' <b>нет операций в выгрузке</b> (это не подтверждённая нулевая выручка).');
     }
     if (comparable) {
-      lines.push('Изменение к предыдущим 30 дням: ' + signedPercent((currentRevenue - previousRevenue) / previousRevenue * 100));
+      lines.push('4. Изменение к предыдущим 30 дням: <b>' + signedPercent((currentRevenue - previousRevenue) / previousRevenue * 100) + '</b>');
     } else {
-      lines.push('Сравнение с предыдущим периодом ненадёжно: данных недостаточно.');
+      lines.push('4. <b>Сравнение с предыдущим периодом ограничено:</b> данных недостаточно.');
     }
     if (currentCoverage < 30 || previousCoverage < 30) {
-      lines.push('Покрытие выгрузки: ' + currentCoverage + '/30 дней сейчас, ' +
-        previousCoverage + '/30 дней ранее.');
+      lines.push('', '<i>Полнота данных:</i> ' + currentCoverage + '/30 дней в текущем периоде, ' +
+        previousCoverage + '/30 дней в предыдущем.');
     }
     if (latest && latest < end) {
-      lines.push('\nВнимание: последняя дата операции — ' + displayDate(latest) +
-        '. Это не отчёт с подтверждёнными данными за вчера.');
+      lines.push('', '<b>Обратите внимание:</b> последняя дата операции — ' + displayDate(latest) +
+        '. Данные за вчера не подтверждены.');
     } else if (!latest) {
-      lines.push('\nВнимание: в отчёте нет операций до ' + displayDate(end) + '.');
+      lines.push('', '<b>Обратите внимание:</b> в отчёте нет операций до ' + displayDate(end) + '.');
     }
     const importDate = String(company.imported_at).replace(' ', 'T') + 'Z';
     const parsedImport = new Date(importDate);
     const importLabel = Number.isNaN(parsedImport.getTime()) ? safeText(company.imported_at, 20) :
       parsedImport.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', dateStyle: 'short', timeStyle: 'short' });
-    lines.push('Загружено: ' + importLabel + ' МСК.');
+    lines.push('', '<i>Отчёт загружен: ' + escapeHTML(importLabel) + ' МСК.</i>');
     const analysis = briefAI(database, company.id, company.imported_at);
     if (analysis) lines.push('', analysis);
-    else lines.push('', 'Аналитическое заключение пока формируется. Ниже представлены расчётные показатели.');
+    else lines.push('', '<b>Аналитическое заключение</b>', '', 'Заключение пока формируется. Выше представлены расчётные показатели.');
     return lines.join('\n');
   } finally {
     database.close();
