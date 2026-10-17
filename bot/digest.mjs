@@ -74,7 +74,7 @@ export function dailyDigestFor(telegramId, {
   const database = new DatabaseSync(dbPath, { readOnly: true });
   try {
     const company = database.prepare(
-      'SELECT c.id,c.name,i.source,i.imported_at,i.row_count FROM companies c ' +
+      'SELECT c.id,c.name,i.source,i.imported_at,i.last_change_at,i.row_count FROM companies c ' +
       'INNER JOIN users u ON u.telegram_id=c.owner_id ' +
       'LEFT JOIN imports i ON i.company_id=c.id ' +
       'WHERE u.telegram_id=? ORDER BY c.created_at,c.id LIMIT 1'
@@ -98,7 +98,7 @@ export function dailyDigestFor(telegramId, {
     const currentCoverage = days(current), previousCoverage = days(previous);
     const currentRevenue = sum(current), previousRevenue = sum(previous);
     const yesterday = current.filter(row => row.sold_on === end);
-    const salesCount = new Set(current.filter(row => row.status === 'sale').map(row => row.source_id)).size;
+    const salesCount = new Set(current.filter(row => row.status === 'sale').map(row => row.sold_on + '\u0000' + row.source_id)).size;
     const comparable = currentCoverage >= 25 && previousCoverage >= 25 && previousRevenue > 0;
     const source = /синтетич|тестов|demo|sample/i.test(company.source) ? ' (тестовые данные)' : '';
     const lines = [
@@ -136,7 +136,7 @@ export function dailyDigestFor(telegramId, {
     const importLabel = Number.isNaN(parsedImport.getTime()) ? safeText(company.imported_at, 20) :
       parsedImport.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', dateStyle: 'short', timeStyle: 'short' });
     lines.push('', '<i>Отчёт загружен: ' + escapeHTML(importLabel) + ' МСК.</i>');
-    const analysis = briefAI(database, company.id, company.imported_at);
+    const analysis = briefAI(database, company.id, company.last_change_at || company.imported_at);
     if (analysis) lines.push('', analysis);
     else lines.push('', '<b>Аналитическое заключение</b>', '', 'Заключение пока формируется. Выше представлены расчётные показатели.');
     return lines.join('\n');
