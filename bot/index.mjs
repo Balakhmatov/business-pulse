@@ -65,10 +65,11 @@ function launchButton() {
   };
 }
 
-async function send(chatId, text) {
+async function send(chatId, text, options = {}) {
   return api('sendMessage', {
     chat_id: chatId,
     text,
+    ...(options.html ? {parse_mode: 'HTML'} : {}),
     reply_markup: launchButton(),
     disable_web_page_preview: true
   });
@@ -85,10 +86,10 @@ async function sendReport(chatId, test = false) {
     body = dailyText(chatId);
   } catch (error) {
     console.error('Business Pulse digest:', error.message);
-    body = 'Бизнес Пульс · утренний обзор\n\n' +
+    body = '📊 <b>Бизнес Пульс · утренний обзор</b>\n\n' +
       'Сводка сейчас временно недоступна. Попробуйте позже или откройте панель.';
   }
-  return send(chatId, test ? 'Проверка уведомлений:\n\n' + body : body);
+  return send(chatId, test ? '<b>Проверка уведомлений</b>\n\n' + body : body, {html: true});
 }
 
 async function handle(update) {
@@ -177,7 +178,7 @@ async function morningTick() {
     for (const [chatId, record] of subscribers) {
       if (record.lastSent === now.date) continue;
       try {
-        await send(chatId, dailyText(chatId));
+        await sendReport(chatId);
         record.lastSent = now.date;
         await saveSubscribers();
       } catch (error) {
