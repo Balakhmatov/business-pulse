@@ -24,6 +24,8 @@ db.exec(
   'CREATE INDEX IF NOT EXISTS ix_ops_company_day ON operations(company_id,sold_on);' +
   'CREATE TABLE IF NOT EXISTS imports (company_id TEXT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,source TEXT NOT NULL,row_count INTEGER NOT NULL);'
 );
+// Upgrade existing SQLite schema before preparing statements that use the new columns.
+const accumulator=createAccumulator(db);
 const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   first:db.prepare('SELECT id,name,industry FROM companies WHERE owner_id=? ORDER BY created_at LIMIT 1'),
@@ -56,7 +58,6 @@ function telegramID(raw){
   if(!user||!Number.isSafeInteger(user.id)||user.id<1)throw Error('Invalid user');
   return String(user.id);
 }
-const accumulator=createAccumulator(db);
 function companyFor(id){
   st.user.run(id);
   let c=st.first.get(id);
