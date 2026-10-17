@@ -1,0 +1,5 @@
+# Telegram bot secrets and local subscriber data
+bot/.env
+bot/data/
+*.log
+.DS_Store
