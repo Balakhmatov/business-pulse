@@ -77,6 +77,7 @@
     try{
       const answer=await request('/import',{source:'Синтетический тестовый отчёт',rows:sampleRows()});
       state.mineReport=answer.report;
+      state.mineImportStats=answer.stats||null;
       state.mineAI=null;
       renderMine();
       void loadAI();
@@ -151,7 +152,7 @@
     $('businessDesc').textContent='Ваши показатели · сохранены в отдельной базе компании';
     $('companyName').textContent=r&&r.company?r.company.name:'Моя компания';
     $('asOf').textContent='По '+verboseDate(end)+' включительно (МСК)';
-    $('rowsInfo').textContent=imported?'Загружено '+number(r.source.rows)+' строк':(loading?'Загружаем данные…':'Нет загруженных отчётов');
+    $('rowsInfo').textContent=imported?'В базе '+number(r.source.rows)+' операций':(loading?'Загружаем данные…':'Нет загруженных отчётов');
     $('dataBadge').textContent=imported?'Ваши данные':'Личная панель';
     $('dataBadge').style.cssText='color:#6252a4;background:#f1edff;border-color:#e5dfff';
     $('revenue30').textContent=imported?fmtK(r.revenue30_kopecks):'—';
@@ -202,9 +203,13 @@
     $('positives').innerHTML=insightHTML(good.slice(0,2),false);
     $('warningBanner').classList.toggle('show',!!state.mineError);
     $('warningBanner').textContent=state.mineError||'';
-    $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по сохранённому CSV.':(loading?'Получаем показатели…':'Загрузите первый отчёт вашей компании.');
-    $('bottomDataHint').textContent=imported?'Источник: '+r.source.name+'. Новый импорт заменит ранее загруженные операции.':'Для проверки используйте обезличенный тестовый CSV. Данные сохраняются на сервере.';
+    $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по накопленной истории.':(loading?'Получаем показатели…':'Загрузите первый отчёт вашей компании.');
+    $('bottomDataHint').textContent=imported?'Последняя загрузка: '+r.source.name+'. Всего операций в базе: '+number(r.source.rows)+'. Новые файлы дополняют историю.':'Для проверки используйте обезличенный тестовый CSV. Данные сохраняются на сервере.';
     if(imported){
+      if(state.mineImportStats){
+        const x=state.mineImportStats;
+        $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' обновлено, '+number(x.unchanged)+' без изменений.';
+      }
       const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Интеллектуальная аналитика не подключена: доступны расчётные выводы.':ai?.status==='error'?' Интеллектуальная аналитика временно недоступна: показаны расчётные выводы.':'';
       $('bottomDataHint').textContent+=message;
     }
@@ -246,7 +251,7 @@
   const localIntro=intro.textContent;
   function refreshIntro(){
     intro.textContent=state.business==='mine'
-      ?'Отчёт будет сохранён на защищённом сервере и заменит предыдущий набор данных. Для теста используйте обезличенный CSV: не загружайте сведения о пациентах и клиентах.'
+      ?'Новые операции дополнят историю, совпадающие обновятся. Необходим стабильный ID чека или визита. Используйте обезличенный CSV без данных клиентов.'
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','bottomImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
@@ -255,7 +260,10 @@
     if(state.business!=='mine'){intro.textContent=localIntro;return originalConfirm();}
     if(state.mineSaving)return;
     try{
-      const result=parseImported(state.fileTable,mapping());
+      const columns=mapping();
+      if(columns.id<0)throw Error('Для накопительной загрузки выберите столбец «ID чека / визита». Без него нельзя надёжно исключить дубли.');
+      if(state.fileTable.rows.some(values=>!String(values[columns.id]??'').trim()))throw Error('В столбце ID есть пустые значения. Нужны стабильные идентификаторы.');
+      const result=parseImported(state.fileTable,columns);
       if(result.rows.length>10000)throw Error('Сервер принимает до 10 000 операций за одну загрузку.');
       const rows=result.rows.map(x=>({
         date:x.date,id:String(x.id),item:String(x.item),
@@ -266,6 +274,7 @@
       $('confirmImport').disabled=true;
       $('importAlert').textContent='Сохраняем отчёт на сервере…';
       const answer=await request('/import',{source:state.fileTable.name.slice(0,120),rows});
+      state.mineImportStats=answer.stats||null;
       state.mineReport=answer.report;
       state.mineAI=null;
       state.mineError='';
