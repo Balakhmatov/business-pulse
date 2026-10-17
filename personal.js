@@ -188,7 +188,7 @@
     if(ready){
       const asItem=x=>({
         title:x.title,
-        desc:[x.explanation,...(x.evidence||[]),'Что проверить: '+x.recommendation].join(' ')
+        desc:[x.explanation,...(x.evidence||[]),'Рекомендация: '+x.recommendation].join(' ')
       });
       bad.splice(0,bad.length,...ai.analysis.issues.map(asItem));
       good.splice(0,good.length,...ai.analysis.positives.map(asItem));
@@ -196,7 +196,7 @@
     }
     for(const [id] of [['concerns'],['positives']]){
       const chip=$(id).closest('.panel')?.querySelector('.subtle-chip');
-      if(chip)chip.textContent=ready?'ИИ-анализ':imported&&ai?.status==='pending'?'ИИ готовит выводы':'По правилам';
+      if(chip)chip.textContent=ready?'Интеллектуальная аналитика':imported&&ai?.status==='pending'?'Анализируется':'Расчётная аналитика';
     }
     $('concerns').innerHTML=insightHTML(bad.slice(0,3),true);
     $('positives').innerHTML=insightHTML(good.slice(0,2),false);
@@ -205,7 +205,7 @@
     $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по сохранённому CSV.':(loading?'Получаем показатели…':'Загрузите первый отчёт вашей компании.');
     $('bottomDataHint').textContent=imported?'Источник: '+r.source.name+'. Новый импорт заменит ранее загруженные операции.':'Для проверки используйте обезличенный тестовый CSV. Данные сохраняются на сервере.';
     if(imported){
-      const message=ready?' Выводы сформированы OpenAI и сохранены.':ai?.status==='pending'?' OpenAI анализирует обновлённые показатели…':ai?.status==='disabled'?' ИИ-анализ ещё не подключён: показаны выводы по правилам.':ai?.status==='error'?' ИИ-анализ временно недоступен: показаны выводы по правилам.':'';
+      const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Интеллектуальная аналитика не подключена: доступны расчётные выводы.':ai?.status==='error'?' Интеллектуальная аналитика временно недоступна: показаны расчётные выводы.':'';
       $('bottomDataHint').textContent+=message;
     }
     $('clearImport').hidden=true;
