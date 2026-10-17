@@ -8,6 +8,7 @@ Type=simple
 User=business-pulse
 WorkingDirectory=/opt/business-pulse/api
 EnvironmentFile=/etc/business-pulse/bot.env
+EnvironmentFile=-/etc/business-pulse/openai.env
 Environment=BP_API_PORT=3117
 Environment=BP_DB_FILE=/var/lib/business-pulse/pulse.db
 ExecStart=/usr/local/bin/node-business-pulse --experimental-sqlite /opt/business-pulse/api/server.mjs
