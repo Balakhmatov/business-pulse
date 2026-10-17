@@ -10,7 +10,7 @@
   const URL_ROOT='https://pulse.cityai.site/api';
 
   const style=document.createElement('style');
-  style.textContent='@media(max-width:680px){.in-telegram .company-switch{grid-template-columns:repeat(2,minmax(0,1fr))}}';
+  style.textContent='@media(max-width:680px){.in-telegram .company-switch{grid-template-columns:repeat(2,minmax(0,1fr))}} #quickDemoImport[hidden]{display:none!important}';
   document.head.appendChild(style);
   const tab=document.createElement('button');
   tab.type='button';
@@ -20,6 +20,73 @@
   const bar=document.querySelector('.company-switch');
   bar.insertBefore(tab,bar.firstChild);
   bar.setAttribute('aria-label','Выбор компании');
+
+
+  // A reliable sample link, with headers Telegram's native downloader expects.
+  const originalSampleDownload=$('downloadSample').onclick;
+  $('downloadSample').onclick=()=>{
+    const type=['store','cafe'].includes(state.business)?state.business:'clinic';
+    const filename='business_pulse_sample_'+type+'.csv';
+    const fileURL=URL_ROOT+'/sample.csv?type='+type;
+    try{
+      if(typeof tg.downloadFile==='function' && typeof tg.isVersionAtLeast==='function' && tg.isVersionAtLeast('8.0')){
+        tg.downloadFile({url:fileURL,file_name:filename},accepted=>{
+          if(!accepted)console.info('Download declined or not supported by Telegram client.');
+        });
+        return;
+      }
+      if(typeof tg.openLink==='function'){tg.openLink(fileURL);return;}
+    }catch(e){console.warn('Telegram download unavailable, opening sample link:',e);}
+    try{window.open(fileURL,'_blank','noopener,noreferrer')}catch{originalSampleDownload();}
+  };
+
+  // No file download is needed to test saving KPI data.
+  // This action is offered only for an empty personal workspace.
+  const quick=document.createElement('button');
+  quick.type='button';
+  quick.id='quickDemoImport';
+  quick.className='ghost-btn';
+  quick.textContent='Загрузить тестовые данные';
+  quick.hidden=true;
+  $('bottomImport').parentElement.insertBefore(quick,$('bottomImport'));
+  function updateQuickButton(){
+    quick.hidden=state.business!=='mine'||!!state.mineReport?.source;
+    quick.disabled=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving);
+  }
+  function sampleRows(){
+    const end=yesterday;
+    const goods=[['Консультация терапевта',2800],['УЗИ',3500],['Анализы',1500],['Профилактический чек-ап',6200],['Консультация невролога',3200]];
+    const rows=[];
+    for(let day=59;day>=0;day--){
+      const date=dateShift(end,-day);
+      for(let i=0;i<7;i++){
+        const [item,price]=goods[(day*7+i*3)%goods.length];
+        const amount=Math.max(1,price+((day*17+i*31)%9-4)*30);
+        rows.push({date,id:'DEMO-'+day+'-'+i,item,amount_kopecks:amount*100,status:'sale'});
+      }
+      if(day%12===0)rows.push({date,id:'REF-'+day,item:goods[0][0],amount_kopecks:-goods[0][1]*100,status:'refund'});
+    }
+    return rows;
+  }
+  quick.onclick=async()=>{
+    if(state.business!=='mine'||state.mineReport?.source||state.mineQuickSaving)return;
+    state.mineQuickSaving=true;
+    state.mineError='';
+    quick.disabled=true;
+    quick.textContent='Загружаем…';
+    try{
+      const answer=await request('/import',{source:'Синтетический тестовый отчёт',rows:sampleRows()});
+      state.mineReport=answer.report;
+      renderMine();
+    }catch(e){
+      state.mineError=e.message||'Не удалось загрузить тестовый отчёт.';
+      renderMine();
+    }finally{
+      state.mineQuickSaving=false;
+      quick.textContent='Загрузить тестовые данные';
+      updateQuickButton();
+    }
+  };
 
   function fmtK(x){return Number.isFinite(x)?money(x/100):'—'}
   async function request(route,body){
@@ -94,6 +161,7 @@
     document.querySelector('.side-foot').textContent='Прототип · Личные данные компании';
     document.querySelector('.foot').textContent='Бизнес Пульс · Личная панель · Проверяйте полноту и корректность выгрузки';
     activeTab();
+    updateQuickButton();
   }
   async function loadMine(){
     state.mineLoading=true;
@@ -115,6 +183,7 @@
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
+      updateQuickButton();
     });
   });
 
