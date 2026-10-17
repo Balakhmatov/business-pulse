@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { dailyDigestFor } from './digest.mjs';
 
 // Independent, dependency-free Telegram bridge for the Business Pulse prototype.
 // Requires Node.js 20.6+, a separate BotFather bot and a running server process.
@@ -73,10 +74,21 @@ async function send(chatId, text) {
   });
 }
 
-function dailyText() {
-  return 'Бизнес Пульс · утренний обзор\n\n' +
-    'Демонстрационная панель доступна для просмотра: выручка, динамика и ключевые изменения.\n\n' +
-    'Это тестовая рассылка с синтетическими данными. Реальные показатели и автоматическое обновление подключим после настройки источника данных.';
+function dailyText(chatId) {
+  // Each recipient sees only the company owned by their verified Telegram ID.
+  return dailyDigestFor(chatId);
+}
+
+async function sendReport(chatId, test = false) {
+  let body;
+  try {
+    body = dailyText(chatId);
+  } catch (error) {
+    console.error('Business Pulse digest:', error.message);
+    body = 'Бизнес Пульс · утренний обзор\n\n' +
+      'Сводка сейчас временно недоступна. Попробуйте позже или откройте панель.';
+  }
+  return send(chatId, test ? 'Проверка уведомлений:\n\n' + body : body);
 }
 
 async function handle(update) {
@@ -89,7 +101,7 @@ async function handle(update) {
         callback_query_id: callback.id,
         text: 'Отправляю тестовое уведомление'
       });
-      await send(String(chat.id), 'Проверка уведомлений:\n\n' + dailyText());
+      await sendReport(String(chat.id), true);
     } else {
       await api('answerCallbackQuery', {callback_query_id: callback.id});
     }
@@ -104,23 +116,23 @@ async function handle(update) {
   switch (cmd) {
     case '/start':
       await send(chatId, 'Добро пожаловать в Бизнес Пульс.\n\n' +
-        'Откройте демо на кнопке ниже. Чтобы каждое утро получать тестовое уведомление, отправьте /subscribe.\n\n' +
-        'Пока в панели только демонстрационные данные.');
+        'Откройте «Моя компания» на кнопке ниже. Чтобы ежедневно получать сводку по загруженному отчёту, отправьте /subscribe.\n\n' +
+        'Без загруженного CSV бот напомнит о настройке отчёта.');
       break;
     case '/report':
-      await send(chatId, dailyText());
+      await sendReport(chatId);
       break;
     case '/test':
-      await send(chatId, 'Проверка уведомлений:\n\n' + dailyText());
+      await sendReport(chatId, true);
       break;
     case '/subscribe':
       if (!subscribers.has(chatId)) {
         subscribers.set(chatId, {since: new Date().toISOString(), lastSent: ''});
         await saveSubscribers();
       }
-      await send(chatId, 'Тестовая утренняя рассылка включена: ежедневно в ' +
+      await send(chatId, 'Утренняя рассылка подключена: ежедневно в ' +
         String(SEND_HOUR).padStart(2, '0') + ':00 (' + TIMEZONE + ').\n' +
-        'Отключение — /unsubscribe. Пока это напоминание открыть демо, а не отчёт по реальным продажам.');
+        'Отключение — /unsubscribe. Сообщения строятся по последней загрузке вашей компании; если данных за вчера нет, это будет отмечено.');
       break;
     case '/unsubscribe':
     case '/stop':
@@ -130,7 +142,7 @@ async function handle(update) {
       break;
     case '/status':
       await send(chatId, subscribers.has(chatId) ?
-        'Ежедневные тестовые уведомления включены. Отключение — /unsubscribe.' :
+        'Ежедневные сводки включены. Отключение — /unsubscribe.' :
         'Ежедневные уведомления выключены. Подключить — /subscribe.');
       break;
     case '/help':
@@ -165,7 +177,7 @@ async function morningTick() {
     for (const [chatId, record] of subscribers) {
       if (record.lastSent === now.date) continue;
       try {
-        await send(chatId, dailyText());
+        await send(chatId, dailyText(chatId));
         record.lastSent = now.date;
         await saveSubscribers();
       } catch (error) {
@@ -193,11 +205,11 @@ async function run() {
   if (hook.url) throw new Error('This bot already uses a webhook. Use a dedicated bot, do not replace its webhook.');
   await api('setMyCommands', {commands: [
     {command: 'start', description: 'Открыть Бизнес Пульс'},
-    {command: 'report', description: 'Посмотреть обзор'},
+    {command: 'report', description: 'Сводка по моей компании'},
     {command: 'subscribe', description: 'Включить утренние уведомления'},
     {command: 'unsubscribe', description: 'Отключить уведомления'},
     {command: 'status', description: 'Статус уведомлений'},
-    {command: 'test', description: 'Проверить сообщение'}
+    {command: 'test', description: 'Проверить сводку'}
   ]});
   await api('setChatMenuButton', {
     menu_button: {type: 'web_app', text: 'Бизнес Пульс', web_app: {url: APP_URL}}
