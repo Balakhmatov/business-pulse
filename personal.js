@@ -158,7 +158,7 @@
     $('revenue30').textContent=imported?fmtK(r.revenue30_kopecks):'—';
     $('revenueChange').textContent=change===null?'Нет данных для сравнения':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
-    $('comparisonDesc').textContent='Последние 30 полных дней с учётом возвратов';
+    $('comparisonDesc').textContent=imported&&r.coverage&&!r.coverage.comparable?'Сравнение ограничено: данные за '+r.coverage.current_days+'/30 и '+r.coverage.previous_days+'/30 дней':'Последние 30 завершённых дней с учётом возвратов';
     $('revenueYesterday').textContent=imported?fmtK(r.yesterday_kopecks):'—';
     $('yesterdayDate').textContent=verboseDate(end);
     $('countLabel').textContent='Чеков / операций за 30 дней';
