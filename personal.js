@@ -49,6 +49,14 @@
   quick.textContent='Загрузить тестовые данные';
   quick.hidden=true;
   $('bottomImport').parentElement.insertBefore(quick,$('bottomImport'));
+  const retryLoad=document.createElement('button');
+  retryLoad.type='button';
+  retryLoad.className='ghost-btn';
+  retryLoad.textContent='Повторить загрузку';
+  retryLoad.hidden=true;
+  $('bottomImport').parentElement.insertBefore(retryLoad,$('bottomImport'));
+  retryLoad.onclick=()=>{ if(!state.mineLoading)void loadMine(); };
+
   const clearTests=document.createElement('button');
   clearTests.type='button';
   clearTests.id='clearTestData';
@@ -58,8 +66,10 @@
   $('bottomImport').parentElement.insertBefore(clearTests,$('bottomImport'));
   function updateQuickButton(){
     const busy=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving||state.mineClearing);
-    quick.hidden=state.business!=='mine'||!!state.mineReport?.source;
+    quick.hidden=state.business!=='mine'||!!state.mineReport?.source||!!state.mineError;
     quick.disabled=busy;
+    retryLoad.hidden=state.business!=='mine'||!state.mineError;
+    retryLoad.disabled=busy;
     const src=state.mineReport?.source;
     clearTests.hidden=state.business!=='mine'||!src||!src.rows||
       !/синтетич|тестов|demo|sample|пример/i.test(src.name);
@@ -165,12 +175,26 @@
   }
   function fmtK(x){return Number.isFinite(x)?money(x/100):'—'}
   async function request(route,body){
-    const response=await fetch(URL_ROOT+route,{
-      method:body?'POST':'GET',
-      headers:{'X-Telegram-Init-Data':tg.initData,...(body?{'Content-Type':'application/json'}:{})},
-      body:body?JSON.stringify(body):undefined,
-      cache:'no-store'
-    });
+    // VPS may briefly restart the API after a new commit. Retry READS only.
+    // Never retry POST: repeating financial imports or deletion is unsafe.
+    const tries=body?1:4;
+    let response;
+    for(let attempt=0;attempt<tries;attempt++){
+      try{
+        response=await fetch(URL_ROOT+route,{
+          method:body?'POST':'GET',
+          headers:{'X-Telegram-Init-Data':tg.initData,...(body?{'Content-Type':'application/json'}:{})},
+          body:body?JSON.stringify(body):undefined,
+          cache:'no-store'
+        });
+        break;
+      }catch(error){
+        if(attempt===tries-1){
+          throw Error('Не удалось связаться с сервером Бизнес Пульс. Проверьте соединение и повторите попытку.');
+        }
+        await new Promise(resolve=>setTimeout(resolve,800*(attempt+1)));
+      }
+    }
     let result;
     try{result=await response.json()}catch{throw Error('Сервер вернул некорректный ответ.')}
     if(!response.ok)throw Error(response.status===401?'Авторизация Telegram устарела. Закройте и снова откройте Mini App.':result.error||'Ошибка сервера '+response.status);
@@ -194,7 +218,7 @@
     $('businessDesc').textContent='Ваши показатели · сохранены в отдельной базе компании';
     $('companyName').textContent=r&&r.company?r.company.name:'Моя компания';
     $('asOf').textContent='По '+verboseDate(end)+' включительно (МСК)';
-    $('rowsInfo').textContent=imported?'В базе '+number(r.source.rows)+' операций':(loading?'Загружаем данные…':'Нет загруженных отчётов');
+    $('rowsInfo').textContent=imported?'В базе '+number(r.source.rows)+' операций':(loading?'Загружаем данные…':state.mineError?'Данные временно недоступны':'Нет загруженных отчётов');
     $('dataBadge').textContent=imported?'Ваши данные':'Личная панель';
     $('dataBadge').style.cssText='color:#6252a4;background:#f1edff;border-color:#e5dfff';
     $('revenue30').textContent=imported?fmtK(r.revenue30_kopecks):'—';
@@ -245,8 +269,8 @@
     $('positives').innerHTML=insightHTML(good.slice(0,2),false);
     $('warningBanner').classList.toggle('show',!!state.mineError);
     $('warningBanner').textContent=state.mineError||'';
-    $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по накопленной истории.':(loading?'Получаем показатели…':'Загрузите первый отчёт вашей компании.');
-    $('bottomDataHint').textContent=imported?'Последняя загрузка: '+r.source.name+'. Всего операций в базе: '+number(r.source.rows)+'. Новые файлы дополняют историю.':'Для проверки используйте обезличенный тестовый CSV. Данные сохраняются на сервере.';
+    $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по накопленной истории.':(loading?'Получаем показатели…':state.mineError?'Не удалось получить сохранённые данные.':'Загрузите первый отчёт вашей компании.');
+    $('bottomDataHint').textContent=imported?'Последняя загрузка: '+r.source.name+'. Всего операций в базе: '+number(r.source.rows)+'. Новые файлы дополняют историю.':state.mineError?'Сохранённые операции не удалены. Повторите запрос, когда соединение восстановится.':'Для проверки используйте обезличенный тестовый CSV. Данные сохраняются на сервере.';
     if(imported){
       if(state.mineImportStats){
         const x=state.mineImportStats;
