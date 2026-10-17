@@ -16,7 +16,7 @@ function fixture() {
     'PRAGMA foreign_keys=ON;' +
     'CREATE TABLE users (telegram_id TEXT PRIMARY KEY);' +
     'CREATE TABLE companies (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL);' +
-    'CREATE TABLE imports (company_id TEXT PRIMARY KEY, source TEXT, imported_at TEXT, row_count INTEGER);' +
+    'CREATE TABLE imports (company_id TEXT PRIMARY KEY, source TEXT, imported_at TEXT, row_count INTEGER, last_change_at TEXT);' +
     'CREATE TABLE operations (company_id TEXT, sold_on TEXT, source_id TEXT, amount_kopecks INTEGER, status TEXT);' +
     'CREATE TABLE ai_analyses (company_id TEXT PRIMARY KEY, status TEXT, payload TEXT, updated_ms INTEGER);'
   );
@@ -26,8 +26,8 @@ function fixture() {
   db.prepare('INSERT INTO companies VALUES (?,?,?,?)').run('c202','202','Чужой магазин','2026-10-10 00:00:00');
   const cleanup=()=>{db.close();rmSync(folder,{recursive:true,force:true});};
   const addImport=(id,source='Синтетический тестовый отчёт',when='2026-10-17 04:00:00')=>db.prepare(
-    'INSERT OR REPLACE INTO imports(company_id,source,imported_at,row_count) VALUES(?,?,?,?)'
-  ).run(id,source,when,60);
+    'INSERT OR REPLACE INTO imports(company_id,source,imported_at,row_count,last_change_at) VALUES(?,?,?,?,?)'
+  ).run(id,source,when,60,when);
   const addOperation=(id,date,amount,sourceId,status='sale')=>db.prepare(
     'INSERT INTO operations(company_id,sold_on,source_id,amount_kopecks,status) VALUES(?,?,?,?,?)'
   ).run(id,date,sourceId,amount,status);
