@@ -354,7 +354,7 @@
     if(imported){
       if(state.mineImportStats){
         const x=state.mineImportStats;
-        $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' обновлено, '+number(x.unchanged)+' без изменений.';
+        $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' исправлено'+(x.deleted?', '+number(x.deleted)+' отменено':'')+', '+number(x.unchanged)+' без изменений.';
         if(state.mineTemplateNotice)$('bottomDataHint').textContent+=state.mineTemplateNotice;
       }
       const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Интеллектуальная аналитика не подключена: доступны расчётные выводы.':ai?.status==='error'?' Интеллектуальная аналитика временно недоступна: показаны расчётные выводы.':'';
