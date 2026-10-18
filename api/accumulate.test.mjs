@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { createAccumulator } from './accumulate.mjs';
 import excel from '../excel-adapter.js';
+import smart from '../smart-import.js';
 
 function makeFixture(){
   const dir=mkdtempSync(path.join(tmpdir(),'bp-accumulate-'));
@@ -120,4 +121,53 @@ test('Excel empty and malformed sheets are refused rather than imported',()=>{
   assert.throws(()=>excel.table([['Дата'],['2026-10-17']],'one-column.xlsx'),/меньше двух/);
   assert.equal(excel.text(null),'');
   assert.equal(excel.text(0),'0');
+});
+
+test('Smart import finds actual header below title/preamble, maps synonyms, skips totals',()=>{
+  const matrix=[
+    ['Выгрузка из учетной системы. Отчет 01.10–18.10'],
+    ['Подразделение: офис'],[],
+    ['Дата закрытия','Код реализации','Номенклатура','Фактически оплачено','Вид движения','Ответственный'],
+    ['2026-10-15','R100','МРТ','4500','оплата','Менеджер'],
+    ['2026-10-16','R101','УЗИ','2500','оплата','Менеджер'],
+    ['Итого','','','7000','','']
+  ];
+  const info=smart.detect(matrix,'real-export.xlsx');
+  assert.equal(info.headerRow,4);
+  assert.equal(info.head.length,6);
+  assert.equal(info.rows.length,2);
+  assert.equal(info.excludedRows,1);
+  assert.equal(info.reportType,'operations');
+  assert.deepEqual(info.mappingGuess,{date:0,id:1,item:2,amount:3,status:4});
+});
+test('Smart import handles many extraneous columns and unknown headers using content',()=>{
+  const head=['Date X','Receipt X','Service X','Amount X','Status X',...Array.from({length:22},(_,i)=>'Extra '+i)];
+  const rows=[
+    ['2026-10-15','00012','Стоматология','2500','оплата',...Array(22).fill('abc')],
+    ['2026-10-16','00013','Терапевт','3500','возврат',...Array(22).fill('abc')],
+    ['2026-10-17','00014','УЗИ','4500','оплата',...Array(22).fill('abc')]
+  ];
+  const result=smart.detect([head,...rows],'many.csv');
+  assert.equal(result.head.length,27);
+  assert.equal(result.headerRow,1);
+  assert.equal(result.rows.length,3);
+  assert.equal(result.mappingGuess.date,0);
+  assert.equal(result.mappingGuess.amount,3);
+  assert.equal(result.mappingGuess.id,1);
+  assert.equal(result.hasManyColumns,true);
+});
+test('Smart import rejects summary financial reports before any import',()=>{
+  const file=smart.detect([
+    ['Сводный отчёт по дням'],
+    ['Дата','Выручка','Количество чеков'],
+    ['2026-10-15','50000','20'],
+    ['2026-10-16','46000','18']
+  ],'unknown.xlsx');
+  assert.equal(file.reportType,'aggregate');
+  assert.equal(file.mappingGuess.id,-1);
+  assert.ok(file.warnings.some(x=>x.includes('сводный')));
+});
+test('Smart import refuses single-line report and impossible preamble',()=>{
+  assert.throws(()=>smart.detect([['Только заголовок']],'broken.csv'),/нет строк/i);
+  assert.throws(()=>smart.detect([['Отчёт'],['Строка']],'broken.xlsx'),/Не удалось найти строку заголовков/);
 });
