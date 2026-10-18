@@ -190,7 +190,7 @@
       accrual:/начислен|выставлен|счет к оплате|счёт к оплате|сумма к оплате|стоимость по прайсу|по прайсу|billed|invoiced|accrual|invoice amount/i,
       debt:/задолж|дебитор|сумма долга|остаток долга|неоплачен|receivable|outstanding balance|remaining debt/i,
       advance:/аванс|предоплат|депозит|задаток|prepay|pre.payment|advance payment|deposit/i,
-      partial:/частичн.{0,20}оплат|оплат.{0,20}частич|неполн.{0,20}оплат|partial payment|installment/i,
+      partial:/частичн.{0,20}опла[тч]|опла[тч].{0,20}частич|неполн.{0,20}опла[тч]|partial payment|installment/i,
       refund:/возврат|refund|сторно|reversal|chargeback/i,
       tax:/ндс|сумма налог|налоговая сумма|сумма vat|vat amount|tax amount/i,
       price:/цена за|тариф|unit price|price per|за единиц|скидка|discount|количест|quantity/i
