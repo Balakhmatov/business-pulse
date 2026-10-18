@@ -191,3 +191,56 @@ test('Smart import must ask a human when multiple equal monetary columns could b
   assert.equal(file.mappingGuess.amount,-1);
   assert.ok(file.warnings.some(x=>x.includes('Несколько столбцов')));
 });
+
+test('Fallback Excel reader recovers explicit blank cells and shorter total row',async()=>{
+  const oldReader=globalThis.readXlsxFile;
+  const oldExcel=globalThis.ExcelJS;
+  const oldSmart=globalThis.BP_SmartImport;
+  const names=['Дата закрытия','Код реализации','Номенклатура','Стоимость','Фактически оплачено',
+    'Вид движения','Цена за единицу','Количество',...Array.from({length:19},(_,i)=>'Доп. '+i)];
+  const matrix=[
+    ['Тестовая выгрузка продаж'],
+    ['Период 17.10.2026'],[],
+    names,
+    [new Date('2026-10-17T00:00:00.000Z'),'SMART-101','Первичный приём',3500,3200,'оплата',3500,1,...Array(19).fill('x')],
+    [new Date('2026-10-17T00:00:00.000Z'),'SMART-102','УЗИ',2800,2500,'оплата',2800,1,...Array(19).fill('x')],
+    [new Date('2026-10-17T00:00:00.000Z'),'SMART-103','Анализы',2000,1500,'оплата',2000,1,...Array(19).fill('x')],
+    ['Итого','','',8300,7200]
+  ];
+  let fallbackLoads=0;
+  globalThis.BP_SmartImport=smart;
+  globalThis.readXlsxFile=async(_file,opts)=>{
+    if(opts.getSheets)return [{name:'Детальные продажи'}];
+    throw new TypeError("Cannot read properties of undefined (reading 'trim')");
+  };
+  globalThis.ExcelJS={
+    Workbook:class {
+      worksheets=[];
+      xlsx={load:async()=>{
+        fallbackLoads++;
+        this.worksheets=[{
+          name:'Детальные продажи',rowCount:matrix.length,columnCount:27,
+          getRow:i=>({getCell:j=>({value:matrix[i-1]?.[j-1]??null})})
+        }];
+      }};
+    }
+  };
+  try{
+    const file={name:'business_pulse_smart_import_test.xlsx',arrayBuffer:async()=>new ArrayBuffer(8)};
+    const workbook=await excel.workbook(file);
+    const report=await workbook.readSheet('Детальные продажи');
+    assert.equal(report.headerRow,4);
+    assert.equal(report.head.length,27);
+    assert.equal(report.rows.length,3);
+    assert.equal(report.mappingGuess.amount,4);
+    assert.equal(report.excludedRows,1);
+    assert.equal(report.rows.map(x=>Number(x[4])).reduce((a,b)=>a+b,0),7200);
+    // Once a damaged sheet switched to fallback, parse the file only once.
+    await workbook.readSheet('Детальные продажи');
+    assert.equal(fallbackLoads,1);
+  }finally{
+    if(oldReader===undefined)delete globalThis.readXlsxFile;else globalThis.readXlsxFile=oldReader;
+    if(oldExcel===undefined)delete globalThis.ExcelJS;else globalThis.ExcelJS=oldExcel;
+    if(oldSmart===undefined)delete globalThis.BP_SmartImport;else globalThis.BP_SmartImport=oldSmart;
+  }
+});
