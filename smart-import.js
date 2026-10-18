@@ -179,5 +179,68 @@
       hasManyColumns:cols>12
     };
   }
-  return {detect,guess,dateLike,numberLike};
+  // Financial semantics are heuristics over labels, not evidence about actual
+  // money movement. Never declare accounting profit or recognized revenue here.
+  function financialSemantics(head,mapping){
+    const amountIndex=Number.isInteger(mapping?.amount)?mapping.amount:-1;
+    const amount=norm(amountIndex>=0?head[amountIndex]:'').toLowerCase();
+    const normalized=head.map(x=>norm(x).toLowerCase());
+    const cues={
+      cash:/факт.{0,25}(поступ|оплат)|фактически оплач|поступлен.{0,15}ден|получен.{0,15}ден|сумма.{0,10}оплат|оплачено|денежн.{0,10}поступ|paid amount|amount paid|received payment|cash received|эквайринг/i,
+      accrual:/начислен|выставлен|счет к оплате|счёт к оплате|сумма к оплате|стоимость по прайсу|по прайсу|billed|invoiced|accrual|invoice amount/i,
+      debt:/задолж|дебитор|сумма долга|остаток долга|неоплачен|receivable|outstanding balance|remaining debt/i,
+      advance:/аванс|предоплат|депозит|задаток|prepay|pre.payment|advance payment|deposit/i,
+      partial:/частичн.{0,20}оплат|оплат.{0,20}частич|неполн.{0,20}оплат|partial payment|installment/i,
+      refund:/возврат|refund|сторно|reversal|chargeback/i,
+      tax:/ндс|сумма налог|налоговая сумма|сумма vat|vat amount|tax amount/i,
+      price:/цена за|тариф|unit price|price per|за единиц|скидка|discount|количест|quantity/i
+    };
+    let basis='unknown',severity='none';
+    const notes=[],flags=[];
+    const flag=(code,note,kind='warning')=>{
+      if(flags.includes(code))return;
+      flags.push(code);notes.push(note);
+      if(kind==='blocked')severity='blocked';
+      else if(severity!=='blocked')severity='warning';
+    };
+    if(amount){
+      if(cues.advance.test(amount)){
+        basis='advance';
+        flag('advance_amount','Выбранная сумма обозначает аванс или предоплату: это не автоматически признанная выручка. Выберите детализацию фактических оплат.', 'blocked');
+      }else if(cues.debt.test(amount)){
+        basis='debt';
+        flag('debt_amount','Выбранный столбец отражает задолженность, а не поступление денег.', 'blocked');
+      }else if(cues.tax.test(amount)){
+        basis='tax';
+        flag('tax_amount','Выбран налог или НДС, а не денежная сумма продажи.', 'blocked');
+      }else if(cues.price.test(amount)){
+        basis='unit_price';
+        flag('unit_price_amount','Выбрана цена, скидка или количество, а не сумма операции.', 'blocked');
+      }else if(cues.accrual.test(amount)&&!cues.cash.test(amount)){
+        basis='accrual';
+        flag('accrual_amount','Выбрана начисленная или выставленная сумма, а не подтверждённая оплата. Не добавляем её к денежным поступлениям.', 'blocked');
+      }else if(cues.cash.test(amount)){
+        basis='cash_receipts';
+      }else if(/выручк|revenue|продаж|sales/i.test(amount)){
+        basis='reported_revenue';
+      }
+    }
+    if(normalized.some((x,i)=>i!==amountIndex&&cues.advance.test(x))){
+      flag('advance_present','Выгрузка содержит поле аванса/предоплаты. Проверьте, исключены ли авансы и повторный зачёт из выбранной суммы.');
+    }
+    if(normalized.some((x,i)=>i!==amountIndex&&cues.debt.test(x))){
+      flag('debt_present','Выгрузка содержит задолженность. Не приравнивайте начисленную сумму к полученным деньгам.');
+    }
+    if(normalized.some(x=>cues.partial.test(x))){
+      flag('partial_present','Есть признаки частичной оплаты или рассрочки: проверьте, что каждая сумма означает отдельное поступление.');
+    }
+    if(normalized.some(x=>cues.refund.test(x))){
+      flag('refund_present','Выгрузка содержит возвраты/сторно: проверьте их статусы и знаки сумм, чтобы не удвоить выручку.');
+    }
+    if(normalized.some(x=>cues.tax.test(x))){
+      flag('tax_present','Есть столбцы НДС/налогов: определите, включает ли денежный показатель налог, прежде чем сравнивать отчёты.');
+    }
+    return {basis,severity,flags,notes,requiresConfirmation:severity==='warning',blocksImport:severity==='blocked'};
+  }
+  return {detect,guess,dateLike,numberLike,financialSemantics};
 });
