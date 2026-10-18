@@ -778,6 +778,7 @@
   $('confirmImport').onclick=async()=>{
     if(state.business!=='mine'){intro.textContent=localIntro;return originalConfirm();}
     if(state.mineSaving)return;
+    let submitError='';
     try{
       const columns=mapping();
       const financial=state.fileTable?._bpFinancialReview;
@@ -850,6 +851,7 @@
       void loadAI();
     }catch(error){
       const message=error.message||'Не удалось сохранить отчёт.';
+      submitError=message;
       $('importAlert').textContent=message;
       const actionError=$('importActionError');
       if(actionError){actionError.textContent=message;actionError.hidden=false;}
@@ -859,6 +861,11 @@
       if($('modal').classList.contains('show')){
         demo.preview(state.fileTable);
         if(correctionMode.checked)setCorrectionButton();
+        if(submitError){
+          $('importAlert').textContent=submitError;
+          const actionError=$('importActionError');
+          if(actionError){actionError.textContent=submitError;actionError.hidden=false;}
+        }
       }
     }
   };
