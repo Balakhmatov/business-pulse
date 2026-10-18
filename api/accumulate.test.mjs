@@ -280,3 +280,23 @@ test('Normal existing CSV import is still allowed without forcing financial chec
   assert.equal(info.blocksImport,false);
   assert.equal(info.requiresConfirmation,false);
 });
+
+
+test('Previously AI-only ledger export now identifies actual paid amount and stable ledger row ID locally',()=>{
+  const matrix=[
+    ['Синтетическая выгрузка'],[],
+    ['Дата фиксации','№ записи журнала','Предмет выполнения',
+      'Начислено по прайсу','Факт поступления денег','Событие',
+      'Кол-во единиц','Скидка','Точка','Маркер группы','Метод расчёта','Программа'],
+    ['2026-10-17','LEDGER-AI-101','Консультация',2500,2100,'Продажа',1,400,'Основная','Тест','Карта','Демонстрация'],
+    ['2026-10-17','LEDGER-AI-102','УЗИ',4700,4300,'Продажа',1,400,'Основная','Тест','Карта','Демонстрация'],
+    ['2026-10-17','LEDGER-AI-103','Анализы',1800,1500,'Продажа',1,300,'Основная','Тест','Карта','Демонстрация'],
+    ['Итого','','',9000,7900]
+  ];
+  const result=smart.detect(matrix,'unusual.xlsx');
+  assert.deepEqual(result.mappingGuess,{date:0,id:1,item:2,amount:4,status:5});
+  assert.equal(result.rows.length,3);
+  assert.equal(result.rows.reduce((sum,row)=>sum+Number(row[result.mappingGuess.amount]),0),7900);
+  assert.equal(result.excludedRows,1);
+  assert.equal(smart.financialSemantics(result.head,result.mappingGuess).basis,'cash_receipts');
+});
