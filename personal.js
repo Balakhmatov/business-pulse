@@ -229,7 +229,7 @@
     $('yesterdayDate').textContent=verboseDate(end);
     $('countLabel').textContent='Чеков / операций за 30 дней';
     $('salesCount').textContent=imported?number(r.receipt_count):'—';
-    $('salesCaption').textContent='Уникальные ID из CSV (без ID — по строкам)';
+    $('salesCaption').textContent='Уникальные ID из CSV / Excel';
     $('averageLabel').textContent='Средняя сумма чека';
     $('averageTicket').textContent=imported&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
     $('averageCaption').textContent='Выручка / количество чеков';
@@ -240,7 +240,7 @@
     $('topTitle').textContent='Топ-3 позиции';
     const top=imported?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
     const highest=top.length?top[0].amount_kopecks:1;
-    $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV.</p>';
+    $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
     $('chartCaption').textContent='Суммы за дни по сохранённым операциям с учётом возвратов';
     const bad=[],good=[];
@@ -248,8 +248,8 @@
     if(imported&&change!==null&&change>0)good.push({title:'Выручка выросла',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
     if(imported&&top.length)good.push({title:'Лидер по выручке — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
     if(imported)bad.push({title:'Проверьте полноту отчёта',desc:'Дни без операций считаются нулевыми. Пропуски могут исказить сравнение периодов.'});
-    if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV с датой, суммой и названиями товаров или услуг.'});
-    if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV увидите результаты и изменения.'});
+    if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV или Excel (.xlsx) с датой, суммой и названиями товаров или услуг.'});
+    if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
     const ready=imported&&ai?.status==='ready'&&ai.analysis;
     if(ready){
@@ -270,7 +270,7 @@
     $('warningBanner').classList.toggle('show',!!state.mineError);
     $('warningBanner').textContent=state.mineError||'';
     $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по накопленной истории.':(loading?'Получаем показатели…':state.mineError?'Не удалось получить сохранённые данные.':'Загрузите первый отчёт вашей компании.');
-    $('bottomDataHint').textContent=imported?'Последняя загрузка: '+r.source.name+'. Всего операций в базе: '+number(r.source.rows)+'. Новые файлы дополняют историю.':state.mineError?'Сохранённые операции не удалены. Повторите запрос, когда соединение восстановится.':'Для проверки используйте обезличенный тестовый CSV. Данные сохраняются на сервере.';
+    $('bottomDataHint').textContent=imported?'Последняя загрузка: '+r.source.name+'. Всего операций в базе: '+number(r.source.rows)+'. Новые файлы дополняют историю.':state.mineError?'Сохранённые операции не удалены. Повторите запрос, когда соединение восстановится.':'Загрузите обезличенный CSV или Excel (.xlsx). Данные сохраняются на сервере.';
     if(imported){
       if(state.mineImportStats){
         const x=state.mineImportStats;
@@ -317,7 +317,7 @@
   const localIntro=intro.textContent;
   function refreshIntro(){
     intro.textContent=state.business==='mine'
-      ?'Новые операции дополнят историю, совпадающие обновятся. Необходим стабильный ID чека или визита. Используйте обезличенный CSV без данных клиентов.'
+      ?'CSV и Excel (.xlsx) дополняют историю: совпадающие операции обновляются. Обязателен стабильный ID чека или визита. Не загружайте персональные данные клиентов.'
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','bottomImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
@@ -347,7 +347,7 @@
       showModal(false);
       renderMine();
       void loadAI();
-    }catch(error){$('importAlert').textContent=error.message||'Не удалось сохранить CSV.';}
+    }catch(error){$('importAlert').textContent=error.message||'Не удалось сохранить отчёт.';}
     finally{state.mineSaving=false;if($('modal').classList.contains('show'))$('confirmImport').disabled=false;}
   };
 
