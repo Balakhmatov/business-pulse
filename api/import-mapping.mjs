@@ -31,6 +31,14 @@ export function validateMapping(head,mapping){
     }
     result[key]=i;
   }
+  // Quantity is optional. Keep it with saved company templates, but do not
+  // require it from historical/AI mappings, which only know five fields.
+  if(Object.hasOwn(mapping,'quantity')){
+    const i=mapping.quantity;
+    if(!Number.isInteger(i)||i < -1||i>=head.length||(i>=0&&occupied.has(i)))
+      throw safeError('Неверно выбран столбец «Количество».');
+    result.quantity=i;
+  }
   return result;
 }
 function savedFinancial(value){

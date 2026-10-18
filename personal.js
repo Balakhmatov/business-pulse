@@ -289,6 +289,15 @@
       button.setAttribute('aria-pressed',String(active));
     });
   }
+  const industryMoneyLabels={
+    clinic:{paid:'Оплачено пациентами',done:'Оказано услуг на сумму'},
+    store:{paid:'Оплачено покупателями',done:'Продано товаров на сумму'},
+    auto:{paid:'Оплачено клиентами',done:'Выполнено работ на сумму'},
+    cafe:{paid:'Оплачено гостями',done:'Продано на сумму'},
+    other:{paid:'Получено от клиентов',done:'Выполнено на сумму'}
+  };
+  const industryLabels={clinic:'Клиника',store:'Магазин',auto:'Автосервис',cafe:'Кафе',other:'Универсальный'};
+  const industryFor=report=>industryMoneyLabels[report?.company?.industry]||industryMoneyLabels.other;
   const financialTitles={
     cash_receipts:'Поступления',
     recognized_revenue:'Продажи',
@@ -296,12 +305,21 @@
   };
   function renderFinanceBooks(report){
     const holder=$('financeBooks');
-    if(state.business!=='mine'||!report?.financial_books){holder.hidden=true;return;}
+    const review=$('unverifiedReview');
+    const picker=$('industryPicker');
+    if(state.business!=='mine'||!report?.financial_books){
+      holder.hidden=true;review.hidden=true;picker.hidden=true;
+      $('debtInfo').hidden=true;
+      return;
+    }
     holder.hidden=false;
+    picker.hidden=false;
+    const industry=report.company?.industry||'other';
+    $('industrySelect').value=Object.hasOwn(industryLabels,industry)?industry:'other';
+    const copy=industryFor(report);
     const labels=[
-      ['cash_receipts','Поступления за 30 дней','Все полученные деньги, включая авансы'],
-      ['recognized_revenue','Продажи за 30 дней','Оказанные услуги и проданные товары — даже если ещё не оплачены'],
-      ['unverified','Тип сумм пока неизвестен','Старые отчёты: нужно уточнить, что означают суммы']
+      ['cash_receipts',copy.paid,'Фактически полученные деньги, включая авансы'],
+      ['recognized_revenue',copy.done,'Стоимость уже оказанных услуг, работ или переданных товаров']
     ];
     holder.innerHTML=labels.map(([basis,name,hint])=>{
       const book=report.financial_books[basis]||{};
@@ -320,22 +338,41 @@
         void loadMine();
       };
     });
+    const unknown=report.financial_books.unverified;
+    review.hidden=!unknown?.available;
+    if(unknown?.available){
+      review.innerHTML='<strong>Нужно уточнить данные · '+fmtK(unknown.amount30_kopecks)+'</strong>'+
+        '<div>По старым отчётам пока неизвестно, что означают суммы. '+
+        'Они не добавляются ни к оплатам, ни к выполненным продажам.</div>';
+    }
+    const debt=$('debtInfo');
+    debt.hidden=false;
+    if(report.unpaid_customer_debt_available&&Number.isFinite(report.unpaid_customer_debt_kopecks)){
+      debt.innerHTML='<strong>Не оплачено клиентами: '+fmtK(report.unpaid_customer_debt_kopecks)+'</strong>'+
+        '<div>По подтверждённым данным о конкретных заказах и их оплате.</div>';
+    }else{
+      debt.innerHTML='<strong>Не оплачено клиентами: нет данных для расчёта</strong>'+
+        '<div>Чтобы показать задолженность, нужны сведения об оплатах и выполненных заказах с общей связью. '+
+        'Разница между общей суммой оплат и продаж не равна долгу.</div>';
+    }
   }
   function renderMine(){
     const r=state.mineReport||null;
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
     const end=r&&r.as_of?r.as_of:yesterday;
-    const chartData=r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
+    const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
-    const change=imported?r.change_percent:null;
-    $('businessDesc').textContent='Ваши показатели · полученные деньги и продажи отдельно';
+    const change=imported&&r.primary_basis!=='unverified'?r.change_percent:null;
+    $('businessDesc').textContent='Ваши показатели · полученные оплаты и выполненная работа';
     renderFinanceBooks(r);
     const financialLabel=financialTitles[r?.primary_basis]||financialTitles.unverified;
     const shortMetric=r?.primary_basis==='cash_receipts'?'Поступления':
       r?.primary_basis==='recognized_revenue'?'Продажи':'Суммы';
-    const metricTitle=r?.primary_basis==='unverified'
-      ?'Суммы без уточнения':financialLabel;
+    const moneyLabels=industryFor(r);
+    const metricTitle=r?.primary_basis==='cash_receipts'?moneyLabels.paid:
+      r?.primary_basis==='recognized_revenue'?moneyLabels.done:'Данные требуют уточнения';
+    const verified=r?.primary_basis==='cash_receipts'||r?.primary_basis==='recognized_revenue';
     document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' за 30 дней';
     $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика: '+shortMetric.toLowerCase();
     $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=shortMetric+' по дням';
@@ -344,30 +381,36 @@
     $('rowsInfo').textContent=imported?'В базе '+number(r.source.rows)+' операций':(loading?'Загружаем данные…':state.mineError?'Данные временно недоступны':'Нет загруженных отчётов');
     $('dataBadge').textContent=imported?'Ваши данные':'Личная панель';
     $('dataBadge').style.cssText='color:#6252a4;background:#f1edff;border-color:#e5dfff';
-    $('revenue30').textContent=imported?fmtK(r.revenue30_kopecks):'—';
+    $('revenue30').textContent=imported&&verified?fmtK(r.revenue30_kopecks):'—';
     $('revenueChange').textContent=change===null?'Пока не с чем сравнить':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
-    $('comparisonDesc').textContent=imported&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из 30 дней, ранее — за '+r.coverage.previous_days+' из 30':'Последние 30 завершённых дней с учётом возвратов';
+    $('comparisonDesc').textContent=imported&&verified&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из 30 дней, ранее — за '+r.coverage.previous_days+' из 30':'Последние 30 завершённых дней с учётом возвратов';
     $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
       shortMetric+' за вчера';
-    $('revenueYesterday').textContent=imported?fmtK(r.yesterday_kopecks):'—';
+    $('revenueYesterday').textContent=imported&&verified?fmtK(r.yesterday_kopecks):'—';
     $('yesterdayDate').textContent=verboseDate(end);
-    $('countLabel').textContent='Операций за 30 дней';
-    $('salesCount').textContent=imported?number(r.receipt_count):'—';
-    $('salesCaption').textContent='По уникальным номерам в отчёте';
+    const volume=r?.volume;
+    $('countLabel').textContent=(volume?.label||'Количество операций')+' за 30 дней';
+    $('salesCount').textContent=imported&&Number.isFinite(volume?.value)
+      ?Number(volume.value).toLocaleString('ru-RU',{maximumFractionDigits:3})+(volume.unit?' '+volume.unit:'')
+      :'—';
+    $('salesCaption').textContent=volume?.caption||'Пока нет данных о количестве';
     $('averageLabel').textContent='Средний чек';
-    $('averageTicket').textContent=imported&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
+    $('averageTicket').textContent=imported&&verified&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
     $('averageCaption').textContent='Сумма за 30 дней / число операций';
     $('specialLabel').textContent='Другие показатели';
     $('specialIcon').innerHTML=svgIcon('alert');
     $('specialValue').textContent='—';
     $('specialCaption').textContent='Появятся, когда будут нужные данные';
-    $('topTitle').textContent='Топ-3 товаров и услуг';
-    const top=imported?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
+    $('topTitle').textContent=r?.company?.industry==='clinic'?'Топ-3 услуги':
+      r?.company?.industry==='store'?'Топ-3 товара':
+      r?.company?.industry==='auto'?'Топ-3 работы':'Топ-3 позиции';
+    const top=imported&&verified?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
-    $('chartCaption').textContent=shortMetric+' по дням. Возвраты и исправления учтены.';
+    $('chartCaption').textContent=verified?shortMetric+' по дням. Возвраты и исправления учтены.':
+      'Загрузите подтверждённые оплаты или выполненные продажи для графика.';
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
     if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
@@ -427,12 +470,34 @@
     renderMine();
     if(!state.mineReport)loadMine();
   };
+  $('industrySelect').onchange=async()=>{
+    if(state.business!=='mine'||!state.mineReport)return;
+    const previous=state.mineReport.company?.industry||'other';
+    const selected=$('industrySelect').value;
+    if(selected===previous)return;
+    const status=$('industryStatus');
+    const select=$('industrySelect');
+    select.disabled=true;status.textContent='Сохраняем…';
+    try{
+      const result=await request('/company/industry',{industry:selected});
+      state.mineReport=result.report;
+      if(state.mineViewBasis)state.mineReport=await request('/report?basis='+state.mineViewBasis);
+      status.textContent='Направление сохранено';
+      renderMine();
+    }catch(error){
+      status.textContent=error.message||'Не удалось сохранить направление.';
+      select.value=previous;
+    }finally{select.disabled=false;}
+  };
   // Existing demo tab handlers are installed by index.html before this module.
   document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(btn=>{
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
       $('financeBooks').hidden=true;
+      $('industryPicker').hidden=true;
+      $('unverifiedReview').hidden=true;
+      $('debtInfo').hidden=true;
       document.querySelector('.revenue-panel .kpi-name').textContent='Продажи за 30 дней';
       $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent='Продажи за вчера';
       $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика продаж';
@@ -567,7 +632,7 @@
     if(parsed.duplicate>0)throw Error('В файле есть одинаковые строки. Для сверки нужен уникальный ID каждого платежа.');
     const rows=parsed.rows.map(x=>({
       date:x.date,id:String(x.id),item:String(x.item),
-      amount_kopecks:Math.round(x.amount*100),status:x.status
+      amount_kopecks:Math.round(x.amount*100),status:x.status,quantity_milli:x.quantity_milli??null
     }));
     if(rows.length+parsed.cancelled_ids.length>1000)
       throw Error('Пакет исправлений ограничен 1000 строками. Разделите выгрузку.');
@@ -705,7 +770,7 @@
         }
         file._bpApplying=true;
         try{
-          for(const key of ['date','amount','id','item','status']){
+          for(const key of ['date','amount','id','item','status','quantity']){
             const select=$('col_'+key),column=answer.mapping[key];
             if(select&&Number.isInteger(column)&&column>=-1&&column<file.head.length){
               select.value=String(column);
@@ -796,7 +861,7 @@
       if(result.rows.length>10000)throw Error('Сервер принимает до 10 000 операций за одну загрузку.');
       const rows=result.rows.map(x=>({
         date:x.date,id:String(x.id),item:String(x.item),
-        amount_kopecks:Math.round(x.amount*100),status:x.status
+        amount_kopecks:Math.round(x.amount*100),status:x.status,quantity_milli:x.quantity_milli??null
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
       if(!validateBookChoice())
