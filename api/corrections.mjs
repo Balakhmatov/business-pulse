@@ -1,5 +1,5 @@
 import { createHash,createHmac,timingSafeEqual } from 'node:crypto';
-import { lineKey } from './accumulate.mjs';
+import { lineKey,financialBasis } from './accumulate.mjs';
 
 // Conservative, explicit corrections by a single stable operation ID.
 // Missing lines in a partial export are NEVER treated as cancellations.
@@ -45,34 +45,34 @@ function canonical(input,nowMs){
     ids.add(id);
     return id;
   });
-  return {source:input.source.trim(),rows:rows.sort((a,b)=>a.id.localeCompare(b.id)),
-    cancelled_ids:cancelled.sort()};
+  return {source:input.source.trim(),financial_basis:financialBasis(input.financial_basis),
+    rows:rows.sort((a,b)=>a.id.localeCompare(b.id)),cancelled_ids:cancelled.sort()};
 }
 const rowEqual=(a,b)=>a.sold_on===b.sold_on&&a.item===b.item&&
   a.status===b.status&&a.amount_kopecks===b.amount_kopecks;
 export function createCorrectionService({db,secret,now=()=>Date.now()}){
   if(typeof secret!=='string'||secret.length<20)throw Error('Signed correction confirmation requires an API secret.');
   const existing=db.prepare(
-    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key '+
-    'FROM operations WHERE company_id=? AND source_id=? ORDER BY id LIMIT 2'
+    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis '+
+    'FROM operations WHERE company_id=? AND financial_basis=? AND source_id=? ORDER BY id LIMIT 2'
   );
   const maxBatch=db.prepare('SELECT MAX(id) AS id FROM import_batches WHERE company_id=?');
   const insert=db.prepare(
-    'INSERT INTO operations(company_id,sold_on,source_id,item,amount_kopecks,status,import_key) VALUES(?,?,?,?,?,?,?)'
+    'INSERT INTO operations(company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis) VALUES(?,?,?,?,?,?,?,?)'
   );
   const update=db.prepare(
     'UPDATE operations SET sold_on=?,item=?,amount_kopecks=?,status=?,import_key=? WHERE company_id=? AND id=?'
   );
   const remove=db.prepare('DELETE FROM operations WHERE company_id=? AND id=?');
   const selectById=db.prepare(
-    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key FROM operations WHERE company_id=? AND id=?'
+    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis FROM operations WHERE company_id=? AND id=?'
   );
-  const currentTotal=db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?');
+  const currentTotal=db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=? AND financial_basis=?');
   const importMeta=db.prepare('SELECT source,row_count,imported_at,last_change_at FROM imports WHERE company_id=?');
   const saveBatch=db.prepare(
     'INSERT INTO import_batches(company_id,source,received,added,updated,unchanged,total,'+
-    'prev_source,prev_row_count,prev_imported_at,prev_last_change_at,deleted,kind) '+
-    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'correction')"
+    'prev_source,prev_row_count,prev_imported_at,prev_last_change_at,deleted,kind,financial_basis) '+
+    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'correction',?)"
   );
   const saveChange=db.prepare(
     'INSERT INTO operation_correction_changes(batch_id,company_id,source_id,before_row,after_row) VALUES(?,?,?,?,?)'
@@ -90,11 +90,12 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
   function plan(company,data){
     const changes=[],samples=[],totals={added:0,updated:0,deleted:0,unchanged:0,moved:0};
     for(const row of data.rows){
-      const hits=existing.all(company.id,row.id);
+      const hits=existing.all(company.id,data.financial_basis,row.id);
       if(hits.length>1)throw error('ID '+row.id.slice(0,32)+' соответствует нескольким строкам. Нужен отдельный ID каждой позиции.',409);
       const before=hits[0]||null;
       const after={sold_on:row.date,source_id:row.id,item:row.item,amount_kopecks:row.amount_kopecks,
-        status:row.status,import_key:lineKey(row.date,row.id,row.item,row.status,0)};
+        status:row.status,import_key:lineKey(row.date,row.id,row.item,row.status,0,data.financial_basis),
+        financial_basis:data.financial_basis};
       if(!before)totals.added++;
       else if(rowEqual(before,after))totals.unchanged++;
       else{
@@ -111,7 +112,7 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
       }
     }
     for(const id of data.cancelled_ids){
-      const hits=existing.all(company.id,id);
+      const hits=existing.all(company.id,data.financial_basis,id);
       if(hits.length!==1)throw error(hits.length?'Одна отмена соответствует нескольким строкам: '+id.slice(0,32):
         'Нет ранее загруженной операции с ID '+id.slice(0,32)+'. Отменять нечего.',409);
       totals.deleted++;
@@ -147,7 +148,7 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
         throw error('Данные изменились после предварительной проверки. Повторите сверку.',409);
       if(!result.changes.length){
         db.exec('COMMIT');
-        return {changed:false,stats:{...result.totals,total:currentTotal.get(company.id).n}};
+        return {changed:false,stats:{...result.totals,total:currentTotal.get(company.id,data.financial_basis).n}};
       }
       const prev=importMeta.get(company.id);
       const changes=[];
@@ -162,18 +163,18 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
           after=selectById.get(company.id,action.before.id);
         }else{
           const a=action.after;
-          const created=insert.run(company.id,a.sold_on,a.source_id,a.item,a.amount_kopecks,a.status,a.import_key);
+          const created=insert.run(company.id,a.sold_on,a.source_id,a.item,a.amount_kopecks,a.status,a.import_key,data.financial_basis);
           after=selectById.get(company.id,Number(created.lastInsertRowid));
         }
         changes.push({id:action.id,before:action.before,after});
       }
-      const total=currentTotal.get(company.id).n;
+      const total=currentTotal.get(company.id,data.financial_basis).n;
       if(prev)updateMeta.run(data.source,data.rows.length,company.id);
       else addMeta.run(company.id,data.source,data.rows.length);
       const b=saveBatch.run(company.id,data.source,data.rows.length+data.cancelled_ids.length,
         result.totals.added,result.totals.updated,result.totals.unchanged,total,
         prev?.source??null,prev?.row_count??null,
-        prev?.imported_at??null,prev?.last_change_at??null,result.totals.deleted);
+        prev?.imported_at??null,prev?.last_change_at??null,result.totals.deleted,data.financial_basis);
       const batch_id=Number(b.lastInsertRowid);
       for(const change of changes){
         saveChange.run(batch_id,company.id,change.id,

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
+import { calculateFinancialSummary } from './finance-summary.mjs';
 import { createCorrectionService } from './corrections.mjs';
 import { resetTestData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
@@ -35,7 +36,8 @@ const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   first:db.prepare('SELECT id,name,industry FROM companies WHERE owner_id=? ORDER BY created_at LIMIT 1'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),
-  rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
+  rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status,financial_basis FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
+  countBasis:db.prepare('SELECT financial_basis,COUNT(*) AS n FROM operations WHERE company_id=? GROUP BY financial_basis'),
   latest:db.prepare('SELECT imported_at,source,row_count,last_change_at FROM imports WHERE company_id=?'),
   total:db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?')
 };
@@ -72,29 +74,19 @@ function companyFor(id){
 const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'});
 function mskToday(){const p=Object.fromEntries(fmt.formatToParts(new Date()).map(x=>[x.type,x.value]));return [p.year,p.month,p.day].join('-');}
 function shift(day,n){const x=new Date(day+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);}
-function report(c){
-  const end=shift(mskToday(),-1),start=shift(end,-59),cut=shift(end,-29);
-  const entries=st.rows.all(c.id,start,end),cur=entries.filter(x=>x.sold_on>=cut),prev=entries.filter(x=>x.sold_on<cut);
-  const sum=rows=>rows.reduce((a,x)=>a+x.amount_kopecks,0);
-  const receipts=new Set(cur.filter(x=>x.status==='sale').map(x=>x.sold_on+'\u0000'+x.source_id)).size;
-  const revenue=sum(cur),previous=sum(prev);
-  const currentCoverage=new Set(cur.map(x=>x.sold_on)).size;
-  const previousCoverage=new Set(prev.map(x=>x.sold_on)).size;
-  const comparable=currentCoverage>=25 && previousCoverage>=25 && previous>0;
-  const day7=shift(end,-6);
-  const chart7=Array.from({length:7},(_,i)=>{const date=shift(day7,i);return {date,amount_kopecks:sum(entries.filter(x=>x.sold_on===date))};});
-  const totals=new Map();
-  for(const x of cur)totals.set(x.item,(totals.get(x.item)||0)+x.amount_kopecks);
-  const top3=[...totals].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([item,amount_kopecks])=>({item,amount_kopecks}));
+function report(c,requestedBasis=null){
+  const end=shift(mskToday(),-1),start=shift(end,-59);
+  const entries=st.rows.all(c.id,start,end);
+  const counts=Object.fromEntries(st.countBasis.all(c.id).map(x=>[x.financial_basis,x.n]));
+  const summary=calculateFinancialSummary(entries,counts,end,requestedBasis);
   const src=st.latest.get(c.id);
-  return {company:c,as_of:end,period:{from:cut,to:end},revenue30_kopecks:revenue,previous30_kopecks:previous,
-    change_percent:comparable?Math.round((revenue-previous)/previous*1000)/10:null,
-    coverage:{current_days:currentCoverage,previous_days:previousCoverage,comparable},
-    yesterday_kopecks:chart7[6].amount_kopecks,receipt_count:receipts,
-    average_receipt_kopecks:receipts>0?Math.round(revenue/receipts):null,chart7,top3,
-    source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,last_import_rows:src.row_count,last_change_at:src.last_change_at}:null,
-    warning:src?null:'Отчёт ещё не загружен. Здесь пока нет финансовых данных.'};
+  return {...summary,company:c,
+    source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,
+      last_import_rows:src.row_count,last_change_at:src.last_change_at}:null,
+    warning:src?null:'Отчёт ещё не загружен. Здесь пока нет финансовых данных.'
+  };
 }
+
 async function readJSON(req){
   let size=0;const parts=[];
   for await(const chunk of req){size+=chunk.length;if(size>6*1024*1024){const e=Error('Too large');e.status=413;throw e;}parts.push(chunk);}
@@ -120,7 +112,11 @@ function ingest(c,input){
 }
 
 // The interpreter receives ONLY aggregates, never rows or user identity.
-const ai=createAI({db,report,listOperations:c=>{const r=report(c);return st.rows.all(c.id,shift(r.period.from,-30),r.as_of);}});
+const ai=createAI({db,report,listOperations:c=>{
+  const r=report(c);
+  return st.rows.all(c.id,shift(r.period.from,-30),r.as_of)
+    .filter(x=>x.financial_basis===r.primary_basis);
+}});
 
 const sampleCatalog={
   clinic:[['Консультация терапевта',2800],['УЗИ',3500],['Анализы',1500],['Профилактический чек-ап',6200],['Консультация невролога',3200]],
@@ -179,7 +175,8 @@ const server=http.createServer(async(req,res)=>{
   try{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c},origin);
-    if(req.method==='GET'&&url.pathname==='/api/report')return reply(res,200,report(c),origin);
+    if(req.method==='GET'&&url.pathname==='/api/report')
+      return reply(res,200,report(c,url.searchParams.get('basis')),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
     if(req.method==='POST'&&url.pathname==='/api/import/mapping/resolve'){
       const input=await readJSON(req);

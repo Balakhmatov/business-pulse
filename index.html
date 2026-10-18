@@ -64,6 +64,17 @@
   .import-utilities{justify-content:flex-start;margin:-5px 0 18px}
   .import-utilities button{white-space:normal}
 }
+ 
+/* Verified financial books: never add collected cash to earned revenue. */
+.finance-books{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin:0 0 17px}
+.finance-books[hidden]{display:none!important}
+.finance-book{border:1px solid var(--line);border-radius:15px;padding:14px;text-align:left;background:#fff;min-width:0;color:var(--ink)}
+.finance-book[aria-pressed="true"]{border-color:#8275f1;box-shadow:0 0 0 2px #857bed18}
+.finance-book:disabled{opacity:.68;cursor:default}
+.finance-book-name{font-size:12px;font-weight:750;color:#737f96}
+.finance-book-amount{font-size:20px;font-weight:850;letter-spacing:-.6px;margin-top:6px}
+.finance-book-hint{font-size:11px;color:#8c94a6;margin-top:5px;line-height:1.4}
+@media(max-width:680px){.finance-books{grid-template-columns:1fr 1fr;gap:8px}.finance-book{padding:11px}.finance-book-amount{font-size:18px}}
 </style>
 </head>
 <body>
@@ -99,6 +110,7 @@
  <div class="import-utilities" id="importUtilities"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button></div>
  <div class="switchbar"><div class="company-switch" role="group" aria-label="Выбор демонстрационной компании"><button class="company-tab active" data-business="clinic" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-clinic"/></svg> Клиника</button><button class="company-tab" data-business="store" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-store"/></svg> Магазин</button><button class="company-tab" data-business="cafe" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-cafe"/></svg> Кофейня</button></div><span class="demo-pill" id="dataBadge">Демо-данные</span></div>
  <div class="source-note"><span class="dot"></span><strong id="companyName">Клиника «Гармония»</strong><span>·</span><span id="asOf">Данные по вчера включительно</span><span>·</span><span id="rowsInfo">90 дней истории</span></div>
+ <div id="financeBooks" class="finance-books" aria-label="Раздельные финансовые показатели" hidden></div>
  <div class="warning-banner" id="warningBanner"></div>
  <section class="kpi-grid" aria-label="Главные показатели">
  <article class="panel revenue-panel"><div><div class="kpi-name">Выручка за 30 дней</div><div id="revenue30" class="kpi-value-big mono">—</div><div class="compare" id="revenueChange">—</div></div><div class="hero-bottom" id="comparisonDesc">Сравнение с предыдущими 30 днями</div></article>
@@ -495,6 +507,6 @@ window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insig
 render();
 })();
 </script>
-<script src="personal.js?v=20261018-corrections-v2" defer></script>
+<script src="personal.js?v=20261018-finance-split-v1" defer></script>
 </body>
 </html>

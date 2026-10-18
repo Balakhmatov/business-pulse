@@ -96,7 +96,9 @@
       for(const entry of entries){
         const block=document.createElement('div');
         block.style.cssText='padding-top:10px;margin-top:8px;border-top:1px solid #ebeef5';
-        historyText(block,String(entry.source||'Отчёт')+(entry.undone?' · отменён':''),true);
+        historyText(block,String(entry.source||'Отчёт')+' · '+
+          (financialTitles[entry.financial_basis]||financialTitles.unverified)+
+          (entry.undone?' · отменён':''),true);
         historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+
           (entry.deleted?' · отменено: '+entry.deleted:'')+' · без изменений: '+entry.unchanged);
         if(entry.can_undo){
@@ -287,6 +289,38 @@
       button.setAttribute('aria-pressed',String(active));
     });
   }
+  const financialTitles={
+    cash_receipts:'Денежные поступления',
+    recognized_revenue:'Выручка от выполненных продаж',
+    unverified:'Старые данные без подтверждённого типа'
+  };
+  function renderFinanceBooks(report){
+    const holder=$('financeBooks');
+    if(state.business!=='mine'||!report?.financial_books){holder.hidden=true;return;}
+    holder.hidden=false;
+    const labels=[
+      ['cash_receipts','Поступления за 30 дней','Включая авансы, если они в источнике'],
+      ['recognized_revenue','Выручка за 30 дней','По выполненным продажам или услугам'],
+      ['unverified','Тип данных не проверен','Старые выгрузки без подтверждения']
+    ];
+    holder.innerHTML=labels.map(([basis,name,hint])=>{
+      const book=report.financial_books[basis]||{};
+      const selected=report.primary_basis===basis;
+      return '<button type="button" class="finance-book" data-financial-basis="'+basis+
+        '" aria-pressed="'+selected+'" '+(book.available?'':'disabled')+'>'+
+        '<div class="finance-book-name">'+name+'</div>'+
+        '<div class="finance-book-amount">'+(book.available?fmtK(book.amount30_kopecks):'Нет данных')+'</div>'+
+        '<div class="finance-book-hint">'+hint+'</div></button>';
+    }).join('');
+    holder.querySelectorAll('button:not(:disabled)').forEach(button=>{
+      button.onclick=()=>{
+        const basis=button.dataset.financialBasis;
+        if(basis===state.mineReport?.primary_basis)return;
+        state.mineViewBasis=basis;
+        void loadMine();
+      };
+    });
+  }
   function renderMine(){
     const r=state.mineReport||null;
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
@@ -295,7 +329,16 @@
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
     const change=imported?r.change_percent:null;
-    $('businessDesc').textContent='Ваши показатели · сохранены в отдельной базе компании';
+    $('businessDesc').textContent='Ваши показатели · поступления и выручка отдельно';
+    renderFinanceBooks(r);
+    const financialLabel=financialTitles[r?.primary_basis]||financialTitles.unverified;
+    const shortMetric=r?.primary_basis==='cash_receipts'?'Поступления':
+      r?.primary_basis==='recognized_revenue'?'Выручка':'Сумма операций';
+    const metricTitle=r?.primary_basis==='unverified'
+      ?'Сумма операций (не подтверждена)':financialLabel;
+    document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' за 30 дней';
+    $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика: '+shortMetric.toLowerCase();
+    $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=shortMetric+' по дням';
     $('companyName').textContent=r&&r.company?r.company.name:'Моя компания';
     $('asOf').textContent='По '+verboseDate(end)+' включительно (МСК)';
     $('rowsInfo').textContent=imported?'В базе '+number(r.source.rows)+' операций':(loading?'Загружаем данные…':state.mineError?'Данные временно недоступны':'Нет загруженных отчётов');
@@ -305,6 +348,8 @@
     $('revenueChange').textContent=change===null?'Нет данных для сравнения':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
     $('comparisonDesc').textContent=imported&&r.coverage&&!r.coverage.comparable?'Сравнение ограничено: данные за '+r.coverage.current_days+'/30 и '+r.coverage.previous_days+'/30 дней':'Последние 30 завершённых дней с учётом возвратов';
+    $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
+      shortMetric+' за вчера';
     $('revenueYesterday').textContent=imported?fmtK(r.yesterday_kopecks):'—';
     $('yesterdayDate').textContent=verboseDate(end);
     $('countLabel').textContent='Чеков / операций за 30 дней';
@@ -312,7 +357,7 @@
     $('salesCaption').textContent='Уникальные ID из CSV / Excel';
     $('averageLabel').textContent='Средняя сумма чека';
     $('averageTicket').textContent=imported&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
-    $('averageCaption').textContent='Выручка / количество чеков';
+    $('averageCaption').textContent=shortMetric+' / количество операций';
     $('specialLabel').textContent='Дополнительные показатели';
     $('specialIcon').innerHTML=svgIcon('alert');
     $('specialValue').textContent='—';
@@ -322,16 +367,18 @@
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
-    $('chartCaption').textContent='Суммы за дни по сохранённым операциям с учётом возвратов';
+    $('chartCaption').textContent='Только '+shortMetric.toLowerCase()+
+      ' выбранного типа, с учётом возвратов и корректировок';
     const bad=[],good=[];
-    if(imported&&change!==null&&change<0)bad.push({title:'Выручка снизилась',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
-    if(imported&&change!==null&&change>0)good.push({title:'Выручка выросла',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
-    if(imported&&top.length)good.push({title:'Лидер по выручке — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
+    if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
+    if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
+    if(imported&&top.length)good.push({title:'Лидер по выбранному показателю — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
     if(imported)bad.push({title:'Проверьте полноту отчёта',desc:'Дни без операций считаются нулевыми. Пропуски могут исказить сравнение периодов.'});
     if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV или Excel (.xlsx) с датой, суммой и названиями товаров или услуг.'});
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
-    const ready=imported&&ai?.status==='ready'&&ai.analysis;
+    const ready=imported&&ai?.status==='ready'&&ai.analysis&&
+      ai.primary_basis===r?.primary_basis;
     if(ready){
       const asItem=x=>({
         title:x.title,
@@ -371,7 +418,7 @@
     state.mineError='';
     if(state.business==='mine')renderMine();
     try{
-      state.mineReport=await request('/report');
+      state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
     }catch(error){state.mineError=error.message||'Не удалось получить данные.';}
     finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }
@@ -386,6 +433,11 @@
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
+      $('financeBooks').hidden=true;
+      document.querySelector('.revenue-panel .kpi-name').textContent='Выручка за 30 дней';
+      $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent='Выручка за вчера';
+      $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика выручки';
+      $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent='Выручка по дням';
       const concernsChip=$('concerns').closest('.panel')?.querySelector('.subtle-chip');
       const positivesChip=$('positives').closest('.panel')?.querySelector('.subtle-chip');
       if(concernsChip)concernsChip.textContent='Анализ';
@@ -402,6 +454,81 @@
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
+  // Financial classification is explicit: field names alone cannot prove
+  // whether a sum was collected or earned. Historical data stays unverified.
+  const bookChoice=document.createElement('section');
+  bookChoice.hidden=true;
+  bookChoice.className='import-preview';
+  bookChoice.style.cssText='margin:12px 0';
+  bookChoice.innerHTML=
+    '<label for="financialBookSelect" style="display:block;font-size:13px;font-weight:800;margin-bottom:8px">Что означают суммы в этом файле?</label>'+
+    '<select id="financialBookSelect" style="width:100%;min-height:43px;background:white;color:#29334f;border:1px solid #cfd5e5;border-radius:10px;padding:9px;font-size:13px">'+
+    '<option value="unverified">Не могу подтвердить — оставить отдельно</option>'+
+    '<option value="cash_receipts">Фактически полученные деньги (включая авансы)</option>'+
+    '<option value="recognized_revenue">Выручка: оказанные услуги / проданные товары</option>'+
+    '</select>'+
+    '<div id="financialBookHelp" style="margin-top:7px;font-size:12px;line-height:1.5;color:#66718a"></div>'+
+    '<label id="earnedConfirmLabel" hidden style="display:flex;align-items:flex-start;gap:9px;margin-top:10px;font-size:12px">'+
+    '<input type="checkbox" id="earnedConfirm" style="flex:none;margin-top:2px;accent-color:#625fea">'+
+    '<span>Подтверждаю: услуги оказаны или товары переданы; неоплаченные счета и авансы без исполнения не включены.</span></label>';
+  $('financialPanel').before(bookChoice);
+  const bookSelect=$('financialBookSelect'),earnedConfirm=$('earnedConfirm');
+  const earnedConfirmLabel=$('earnedConfirmLabel'),bookHelp=$('financialBookHelp');
+  function basisConflict(){
+    if(!state.fileTable)return '';
+    const local=window.BP_SmartImport?.financialSemantics(state.fileTable.head,mapping());
+    if(bookSelect.value==='recognized_revenue'&&local?.basis==='cash_receipts')
+      return 'Выбран столбец фактических поступлений. Оплаты и авансы нельзя считать выручкой от выполненных продаж.';
+    if(bookSelect.value==='cash_receipts'&&local?.basis==='reported_revenue')
+      return 'Выбран столбец отражённой выручки. Для поступлений выберите колонку подтверждённых оплат.';
+    return '';
+  }
+  function validateBookChoice(){
+    const earned=bookSelect.value==='recognized_revenue';
+    earnedConfirmLabel.hidden=!earned;
+    bookHelp.textContent=earned
+      ?'Выручка возникает при выполненной продаже, не при получении аванса. Проверьте состав строк.'
+      :bookSelect.value==='cash_receipts'
+        ?'Все фактически поступившие платежи. Авансы относятся к поступлениям, но не становятся выручкой автоматически.'
+        :'Эти данные не будут добавлены ни к поступлениям, ни к выручке.';
+    const conflict=basisConflict();
+    if(conflict)bookHelp.textContent=conflict;
+    const approved=(!earned||earnedConfirm.checked)&&!conflict;
+    if(!approved)$('confirmImport').disabled=true;
+    if(typeof correctionMode!=='undefined'&&correctionMode.checked)setCorrectionButton();
+    return approved;
+  }
+  function inferCashBook(file){
+    if(!file||!file.head)return;
+    const semantic=window.BP_SmartImport?.financialSemantics(file.head,mapping());
+    if(!bookSelect.dataset.manuallyChosen)
+      bookSelect.value=semantic?.basis==='cash_receipts'?'cash_receipts':'unverified';
+    earnedConfirm.checked=false;
+    validateBookChoice();
+  }
+  bookSelect.onchange=()=>{
+    bookSelect.dataset.manuallyChosen='yes';
+    earnedConfirm.checked=false;
+    invalidateCorrection();
+    if(state.fileTable)demo.preview(state.fileTable);
+    validateBookChoice();
+  };
+  earnedConfirm.onchange=()=>{
+    if(state.fileTable)demo.preview(state.fileTable);
+    validateBookChoice();
+  };
+  document.addEventListener('bp:import-table-ready',event=>{
+    bookChoice.hidden=state.business!=='mine';
+    delete bookSelect.dataset.manuallyChosen;
+    bookSelect.value='unverified';
+    inferCashBook(event.detail?.file);
+  });
+  document.addEventListener('change',event=>{
+    if(event.target?.closest?.('#mappingFields')&&state.business==='mine'){
+      inferCashBook(state.fileTable);
+    }
+    if(event.target?.id==='financialConfirm')validateBookChoice();
+  });
   // A separate, opt-in operation-correction workflow. Missing rows in an
   // ordinary/partial report can NEVER imply deletion from the company ledger.
   const correctionsPanel=document.createElement('section');
@@ -445,13 +572,15 @@
     }));
     if(rows.length+parsed.cancelled_ids.length>1000)
       throw Error('Пакет исправлений ограничен 1000 строками. Разделите выгрузку.');
-    return {source:file.name.slice(0,120),rows,cancelled_ids:parsed.cancelled_ids};
+    return {source:file.name.slice(0,120),rows,cancelled_ids:parsed.cancelled_ids,
+      financial_basis:bookSelect.value};
   }
   function setCorrectionButton(){
     if(!correctionMode.checked)return;
     const financial=state.fileTable?._bpFinancialReview;
     let canApply=!!checkedCorrection&&checkedCorrection.file===state.fileTable&&
-      correctionApprove.checked&&!financial?.blocked&&
+      correctionApprove.checked&&
+      (bookSelect.value!=='recognized_revenue'||earnedConfirm.checked)&&!basisConflict()&&!financial?.blocked&&
       (!financial?.needsConfirm||$('financialConfirm').checked);
     if(canApply){
       try{
@@ -670,6 +799,9 @@
         amount_kopecks:Math.round(x.amount*100),status:x.status
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
+      if(!validateBookChoice())
+        throw Error(basisConflict()||'Подтвердите, что в выбранной выручке нет авансов без исполнения и неоплаченных счетов.');
+      const financialBasis=bookSelect.value;
       const correctionData=isCorrection?correctionPayload():null;
       if(isCorrection&&(!checkedCorrection||checkedCorrection.file!==state.fileTable||
           !correctionApprove.checked||
@@ -690,7 +822,8 @@
           ...correctionData,confirm_token:checkedCorrection.confirm_token,
           expires_at_ms:checkedCorrection.expires_at_ms
         })
-        :await request('/import',{source:state.fileTable.name.slice(0,120),rows});
+        :await request('/import',{source:state.fileTable.name.slice(0,120),
+          financial_basis:financialBasis,rows});
       // Saving the mapping is independent of successful accounting: a template
       // API outage must not undo or retry a completed transaction import.
       let savedTemplate=false;
@@ -702,7 +835,10 @@
         ?' Формат выгрузки запомнен для следующих загрузок.'
         :' Соответствие столбцов не удалось запомнить; операции сохранены.';
       state.mineImportStats=answer.stats||null;
-      state.mineReport=answer.report;
+      state.mineViewBasis=financialBasis;
+      try{
+        state.mineReport=await request('/report?basis='+financialBasis);
+      }catch{state.mineReport=answer.report;}
       state.mineAI=null;
       state.mineError='';
       invalidateCorrection();

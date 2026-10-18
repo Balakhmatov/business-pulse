@@ -154,3 +154,51 @@ test('Undo correction is restricted to the latest batch and preserves every othe
   assert.throws(()=>f.accumulator.undoLatest({id:'a'},updated.batch_id),/последнюю/);
   assert.deepEqual(f.values('b'),other);
 });
+
+test('Corrections and cancellations with a shared ID never touch the other financial book',t=>{
+  const f=fixture();t.after(f.close);
+  f.accumulator.ingest({id:'a'},{
+    source:'money.xlsx',financial_basis:'cash_receipts'
+  },[f.row('same','2026-10-12',10000)]);
+  f.accumulator.ingest({id:'a'},{
+    source:'earned.xlsx',financial_basis:'recognized_revenue'
+  },[f.row('same','2026-10-12',9000)]);
+  const payload={...f.input([f.row('same','2026-10-13',15000)]),
+    financial_basis:'cash_receipts'};
+  const applied=f.apply('a',payload,f.preview('a',payload));
+  const rows=f.db.prepare(
+    'SELECT financial_basis,sold_on,amount_kopecks FROM operations WHERE company_id=? ORDER BY financial_basis'
+  ).all('a');
+  assert.deepEqual(rows,[
+    {financial_basis:'cash_receipts',sold_on:'2026-10-13',amount_kopecks:15000},
+    {financial_basis:'recognized_revenue',sold_on:'2026-10-12',amount_kopecks:9000}
+  ]);
+  f.accumulator.undoLatest({id:'a'},applied.batch_id);
+  assert.equal(f.db.prepare(
+    'SELECT amount_kopecks FROM operations WHERE financial_basis=?'
+  ).get('cash_receipts').amount_kopecks,10000);
+  assert.equal(f.db.prepare(
+    'SELECT amount_kopecks FROM operations WHERE financial_basis=?'
+  ).get('recognized_revenue').amount_kopecks,9000);
+});
+
+test('Old correction snapshots without finance basis remain reversible after migration',t=>{
+  const f=fixture();t.after(f.close);
+  f.seed('a',[f.row('old','2026-10-12',10000)]);
+  const request=f.input([f.row('old','2026-10-13',12000)]);
+  const applied=f.apply('a',request,f.preview('a',request));
+  const rows=f.db.prepare(
+    'SELECT batch_id,source_id,before_row,after_row FROM operation_correction_changes WHERE batch_id=?'
+  ).all(applied.batch_id);
+  for(const snapshot of rows){
+    const before=JSON.parse(snapshot.before_row),after=JSON.parse(snapshot.after_row);
+    delete before.financial_basis;delete after.financial_basis;
+    f.db.prepare(
+      'UPDATE operation_correction_changes SET before_row=?,after_row=? WHERE batch_id=? AND source_id=?'
+    ).run(JSON.stringify(before),JSON.stringify(after),snapshot.batch_id,snapshot.source_id);
+  }
+  f.accumulator.undoLatest({id:'a'},applied.batch_id);
+  assert.equal(f.values()[0].sold_on,'2026-10-12');
+  assert.equal(f.values()[0].amount_kopecks,10000);
+  assert.equal(f.db.prepare('SELECT financial_basis FROM operations').get().financial_basis,'unverified');
+});

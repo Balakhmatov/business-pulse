@@ -8,6 +8,7 @@ import { createAccumulator } from './accumulate.mjs';
 // Keep mapping tests in the existing trusted VPS deployment test entrypoint.
 import './import-mapping.test.mjs';
 import './corrections.test.mjs';
+import './finance-summary.test.mjs';
 import excel from '../excel-adapter.js';
 import smart from '../smart-import.js';
 
@@ -467,4 +468,56 @@ test('UI parser accepts a complete CSV with multiple currency formats and zero e
   assert.equal(format('1,234'),null);
   assert.equal(format('1.234'),null);
   assert.equal(format('1,234,567'),1234567);
+});
+
+test('Verified cash and earned revenue imports with identical source IDs remain isolated and reversible',t=>{
+  const f=makeFixture();t.after(f.close);
+  const engine=f.importer();
+  const cash=engine.ingest({id:'a'},{
+    source:'cash.csv',financial_basis:'cash_receipts'
+  },[f.row('2026-10-16','same-ID',100000)]);
+  const earned=engine.ingest({id:'a'},{
+    source:'performed.xlsx',financial_basis:'recognized_revenue'
+  },[f.row('2026-10-16','same-ID',80000)]);
+  assert.equal(cash.added,1);
+  assert.equal(cash.book_total,1);
+  assert.equal(earned.added,1);
+  assert.equal(earned.book_total,1);
+  const actual=f.db.prepare(
+    'SELECT financial_basis,amount_kopecks FROM operations WHERE company_id=? ORDER BY financial_basis'
+  ).all('a');
+  assert.deepEqual(actual,[
+    {financial_basis:'cash_receipts',amount_kopecks:100000},
+    {financial_basis:'recognized_revenue',amount_kopecks:80000}
+  ]);
+  const duplicate=engine.ingest({id:'a'},{
+    source:'cash-repeated.csv',financial_basis:'cash_receipts'
+  },[f.row('2026-10-16','same-ID',100000)]);
+  assert.equal(duplicate.unchanged,1);
+  assert.equal(duplicate.added,0);
+  assert.equal(engine.history({id:'a'})[0].financial_basis,'cash_receipts');
+  engine.undoLatest({id:'a'},duplicate.batch_id);
+  engine.undoLatest({id:'a'},earned.batch_id);
+  assert.deepEqual(f.db.prepare(
+    'SELECT financial_basis,amount_kopecks FROM operations WHERE company_id=?'
+  ).all('a'),[{financial_basis:'cash_receipts',amount_kopecks:100000}]);
+});
+
+test('Legacy operations are unverified and retain their exact identity after finance migration',t=>{
+  const f=makeFixture();t.after(f.close);
+  const engine=f.importer();
+  f.run(engine,[f.row('2026-10-16','old-key',250000)]);
+  const first=f.db.prepare(
+    'SELECT import_key,financial_basis FROM operations WHERE source_id=?'
+  ).get('old-key');
+  assert.equal(first.financial_basis,'unverified');
+  const restarted=f.importer();
+  assert.equal(f.db.prepare('SELECT import_key FROM operations').get().import_key,first.import_key);
+  const again=f.run(restarted,[f.row('2026-10-16','old-key',250000)]);
+  assert.equal(again.unchanged,1);
+  assert.equal(again.added,0);
+  assert.throws(()=>restarted.ingest({id:'a'},{
+    source:'bad.xlsx',financial_basis:'magical_revenue'
+  },[f.row('2026-10-16','old-key',250000)]),/тип финансовых данных/i);
+  assert.equal(f.all().length,1);
 });

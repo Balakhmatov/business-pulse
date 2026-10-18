@@ -84,13 +84,32 @@ export function dailyDigestFor(telegramId, {
       return prelude + '\n\n<b>Нет загруженного отчёта</b>\n\n' +
         'Откройте «Моя компания» и загрузите CSV — тогда здесь появятся ваши показатели.';
     }
-    const ops = database.prepare(
-      'SELECT sold_on,source_id,amount_kopecks,status FROM operations ' +
-      'WHERE company_id=? AND sold_on>=? AND sold_on<=?'
-    ).all(company.id, start, end);
-    const latest = database.prepare(
-      'SELECT MAX(sold_on) AS last_date FROM operations WHERE company_id=? AND sold_on<=?'
-    ).get(company.id, end)?.last_date;
+    const hasBasis=database.prepare('PRAGMA table_info(operations)').all()
+      .some(col=>col.name==='financial_basis');
+    const books=['cash_receipts','recognized_revenue','unverified'];
+    const basisCounts=hasBasis?database.prepare(
+      'SELECT financial_basis,COUNT(*) AS n FROM operations WHERE company_id=? GROUP BY financial_basis'
+    ).all(company.id):[{financial_basis:'unverified',n:1}];
+    const available=new Set(basisCounts.filter(x=>x.n>0).map(x=>x.financial_basis));
+    const basis=available.has('cash_receipts')?'cash_receipts':
+      available.has('recognized_revenue')?'recognized_revenue':'unverified';
+    const metric=basis==='cash_receipts'?'Денежные поступления':
+      basis==='recognized_revenue'?'Выручка по выполненным продажам':
+        'Сумма операций (тип не подтверждён)';
+    const ops = hasBasis?database.prepare(
+      'SELECT sold_on,source_id,amount_kopecks,status FROM operations '+
+      'WHERE company_id=? AND financial_basis=? AND sold_on>=? AND sold_on<=?'
+    ).all(company.id,basis,start,end):
+      database.prepare(
+        'SELECT sold_on,source_id,amount_kopecks,status FROM operations '+
+        'WHERE company_id=? AND sold_on>=? AND sold_on<=?'
+      ).all(company.id,start,end);
+    const latest = hasBasis?database.prepare(
+      'SELECT MAX(sold_on) AS last_date FROM operations WHERE company_id=? AND financial_basis=? AND sold_on<=?'
+    ).get(company.id,basis,end)?.last_date:
+      database.prepare(
+        'SELECT MAX(sold_on) AS last_date FROM operations WHERE company_id=? AND sold_on<=?'
+      ).get(company.id,end)?.last_date;
     const current = ops.filter(x => x.sold_on >= cut);
     const previous = ops.filter(x => x.sold_on < cut);
     const sum = rows => rows.reduce((value, row) => value + row.amount_kopecks, 0);
@@ -108,11 +127,11 @@ export function dailyDigestFor(telegramId, {
       'Период: ' + displayDate(cut) + ' — ' + displayDate(end),
       '',
       '<b>Основные показатели</b>',
-      '1. Выручка за 30 дней: <b>' + money(currentRevenue) + '</b>',
+      '1. '+metric+' за 30 дней: <b>' + money(currentRevenue) + '</b>',
       '2. Чеков / визитов за 30 дней: <b>' + salesCount + '</b>'
     ];
     if (yesterday.length) {
-      lines.push('3. Выручка за ' + displayDate(end) + ': <b>' + money(sum(yesterday)) + '</b>');
+      lines.push('3. '+metric+' за ' + displayDate(end) + ': <b>' + money(sum(yesterday)) + '</b>');
     } else {
       lines.push('3. За ' + displayDate(end) + ' <b>нет операций в выгрузке</b> (это не подтверждённая нулевая выручка).');
     }
@@ -130,6 +149,20 @@ export function dailyDigestFor(telegramId, {
         '. Данные за вчера не подтверждены.');
     } else if (!latest) {
       lines.push('', '<b>Обратите внимание:</b> в отчёте нет операций до ' + displayDate(end) + '.');
+    }
+    if(hasBasis){
+      const labels={cash_receipts:'Денежные поступления',recognized_revenue:'Выручка по выполненным продажам',
+        unverified:'Операции без подтверждённого типа'};
+      for(const other of books){
+        if(other===basis||!available.has(other))continue;
+        const rows=database.prepare(
+          'SELECT COALESCE(SUM(amount_kopecks),0) AS total FROM operations '+
+          'WHERE company_id=? AND financial_basis=? AND sold_on>=? AND sold_on<=?'
+        ).get(company.id,other,cut,end);
+        lines.push(labels[other]+' за 30 дней: <b>'+money(rows.total)+'</b> (отдельный показатель).');
+      }
+      if(available.has('unverified'))
+        lines.push('', '<i>Данные с неподтверждённым финансовым типом не входят в проверенные поступления или выручку.</i>');
     }
     const importDate = String(company.imported_at).replace(' ', 'T') + 'Z';
     const parsedImport = new Date(importDate);
