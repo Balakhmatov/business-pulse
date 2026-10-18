@@ -57,7 +57,7 @@ function validateHint(input){
     }
     return clean;
   });
-  return {head,profiles,needsAI:input.needs_ai===true};
+  return {head,profiles,needsAI:input.needs_ai===true,retry:input.retry===true};
 }
 function sanitizeAIHeader(x){
   return normalizeHeader(x)
@@ -138,7 +138,7 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
   const find=db.prepare('SELECT mapping FROM import_mapping_templates WHERE company_id=? AND signature=?');
   const save=db.prepare('INSERT INTO import_mapping_templates(company_id,signature,mapping,updated_ms) VALUES(?,?,?,?) '+
     'ON CONFLICT(company_id,signature) DO UPDATE SET mapping=excluded.mapping,updated_ms=excluded.updated_ms');
-  const rate=new Map(),inFlight=new Set();
+  const rate=new Map(),inFlight=new Set(),retryable=new Set(),attempts=new Map();
   const key=apiKey.trim();
   async function propose(head,profiles){
     const hints=head.map((h,i)=>({index:i,label:sanitizeAIHeader(h),...profiles[i]}));
@@ -180,7 +180,7 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
     return validateAIResult(JSON.parse(text),head,profiles);
   }
   async function resolve(company,input){
-    const {head,profiles,needsAI}=validateHint(input);
+    const {head,profiles,needsAI,retry}=validateHint(input);
     const signature=headerSignature(head);
     const record=find.get(company.id,signature);
     if(record){
@@ -208,13 +208,25 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
     }
     if(!needsAI||!key)return {source:'heuristic',mapping:null,reason:!key?'disabled':'manual'};
     const last=rate.get(company.id);
-    if(inFlight.has(company.id)||last!==undefined&&timestamp-last<throttleMs)
+    const isCooling=last!==undefined&&timestamp-last<throttleMs;
+    const window=attempts.get(company.id);
+    const used=window&&timestamp-window.start<throttleMs?window.count:0;
+    const extra=retry&&retryable.has(company.id)&&used<2;
+    if(inFlight.has(company.id)||isCooling&&!extra)
       return {source:'heuristic',mapping:null,reason:'limit',
-        retry_after_seconds:Math.ceil((throttleMs-(timestamp-last))/1000)};
-    rate.set(company.id,timestamp);inFlight.add(company.id);
+        can_retry:!inFlight.has(company.id)&&retryable.has(company.id)&&used<2,
+        retry_after_seconds:isCooling?Math.max(1,Math.ceil((throttleMs-(timestamp-last))/1000)):5};
+    rate.set(company.id,timestamp);
+    attempts.set(company.id,{start:used?window.start:timestamp,count:used+1});
+    retryable.delete(company.id);
+    inFlight.add(company.id);
     try{
       const result=await propose(head,profiles);
-      if(!result)return {source:'heuristic',mapping:null,reason:'unrecognized'};
+      if(!result){
+        retryable.add(company.id);
+        return {source:'heuristic',mapping:null,reason:'unrecognized',
+          can_retry:used+1<2};
+      }
       // No raw spreadsheet rows or identities enter this table. Unconfirmed
       // suggestions can be safely replaced later by actual user choices.
       suggestionSave.run(company.id,signature,JSON.stringify(result),timestamp);
@@ -222,10 +234,9 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
       return {source:'ai',mapping:result.mapping,financial:result.financial};
     }catch(error){
       console.warn('Import mapping AI unavailable:',error.message);
-      // A failed model call should not suppress a legitimate retry for 10 min.
-      // However, limit immediate repeated attempts to avoid runaway spending.
+      retryable.add(company.id);
       return {source:'heuristic',mapping:null,reason:'unavailable',
-        retry_after_seconds:Math.ceil((throttleMs-(now()-timestamp))/1000)};
+        can_retry:used+1<2};
     }finally{inFlight.delete(company.id);}
   }
   function confirm(company,input){
