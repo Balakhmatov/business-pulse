@@ -97,7 +97,8 @@
         const block=document.createElement('div');
         block.style.cssText='padding-top:10px;margin-top:8px;border-top:1px solid #ebeef5';
         historyText(block,String(entry.source||'Отчёт')+(entry.undone?' · отменён':''),true);
-        historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+' · без изменений: '+entry.unchanged);
+        historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+
+          (entry.deleted?' · отменено: '+entry.deleted:'')+' · без изменений: '+entry.unchanged);
         if(entry.can_undo){
           const undo=document.createElement('button');
           undo.type='button';
@@ -353,7 +354,7 @@
     if(imported){
       if(state.mineImportStats){
         const x=state.mineImportStats;
-        $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' обновлено, '+number(x.unchanged)+' без изменений.';
+        $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' исправлено'+(x.deleted?', '+number(x.deleted)+' отменено':'')+', '+number(x.unchanged)+' без изменений.';
         if(state.mineTemplateNotice)$('bottomDataHint').textContent+=state.mineTemplateNotice;
       }
       const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Интеллектуальная аналитика не подключена: доступны расчётные выводы.':ai?.status==='error'?' Интеллектуальная аналитика временно недоступна: показаны расчётные выводы.':'';
@@ -401,6 +402,134 @@
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
+  // A separate, opt-in operation-correction workflow. Missing rows in an
+  // ordinary/partial report can NEVER imply deletion from the company ledger.
+  const correctionsPanel=document.createElement('section');
+  correctionsPanel.id='correctionsPanel';
+  correctionsPanel.style.cssText='margin:12px 0;border:1px solid #e4e6ee;border-radius:12px;padding:12px;color:#343e57;font-size:12px;line-height:1.5;';
+  correctionsPanel.hidden=true;
+  correctionsPanel.innerHTML=
+    '<label style="display:flex;align-items:center;gap:9px;font-weight:700;cursor:pointer">'+
+    '<input type="checkbox" id="useCorrections" style="flex:none;accent-color:#6260d5">'+
+    'Исправить или отменить ранее загруженные операции</label>'+
+    '<div id="correctionDetails" hidden style="padding-top:10px">'+
+    '<div style="color:#606a80;margin-bottom:10px">Сверяем только операции, присутствующие в этом файле. '+
+    'Для каждой нужен уникальный ID. Отсутствующие строки из базы не удаляются.</div>'+
+    '<button type="button" class="ghost-btn" id="checkCorrections" style="min-height:38px;white-space:normal">Проверить изменения</button>'+
+    '<div id="correctionResult" role="status" style="margin-top:9px;white-space:pre-line"></div>'+
+    '<label id="correctionApproveLabel" hidden style="display:flex;align-items:start;gap:9px;margin-top:10px">'+
+    '<input type="checkbox" id="approveCorrections" style="accent-color:#6260d5;flex:none">'+
+    '<span>Я проверил список исправлений и отмен. Подтверждаю применение этих изменений.</span></label>'+
+    '</div>';
+  $('importPreview').before(correctionsPanel);
+  const correctionMode=$('useCorrections');
+  const correctionDetails=$('correctionDetails');
+  const correctionReviewButton=$('checkCorrections');
+  const correctionResult=$('correctionResult');
+  const correctionApproveLabel=$('correctionApproveLabel');
+  const correctionApprove=$('approveCorrections');
+  let checkedCorrection=null;
+  function correctionPayload(){
+    const file=state.fileTable;
+    if(!file)throw Error('Сначала выберите файл.');
+    const cols=mapping();
+    if(cols.id<0)throw Error('Для исправлений обязателен уникальный ID операции.');
+    const parsed=parseImported(file,cols);
+    if(parsed.invalid>0)throw Error('Исправьте '+parsed.invalid+' ошибочных строк: '+parsed.invalidExamples.join('; '));
+    if(parsed.duplicate>0)throw Error('В файле есть одинаковые строки. Для сверки нужен уникальный ID каждого платежа.');
+    const rows=parsed.rows.map(x=>({
+      date:x.date,id:String(x.id),item:String(x.item),
+      amount_kopecks:Math.round(x.amount*100),status:x.status
+    }));
+    if(rows.length+parsed.cancelled_ids.length>1000)
+      throw Error('Пакет исправлений ограничен 1000 строками. Разделите выгрузку.');
+    return {source:file.name.slice(0,120),rows,cancelled_ids:parsed.cancelled_ids};
+  }
+  function setCorrectionButton(){
+    if(!correctionMode.checked)return;
+    const financial=state.fileTable?._bpFinancialReview;
+    let canApply=!!checkedCorrection&&checkedCorrection.file===state.fileTable&&
+      correctionApprove.checked&&!financial?.blocked&&
+      (!financial?.needsConfirm||$('financialConfirm').checked);
+    if(canApply){
+      try{
+        canApply=JSON.stringify(correctionPayload())===checkedCorrection.payloadText&&
+          Date.now()<checkedCorrection.expires_at_ms;
+      }catch{canApply=false;}
+    }
+    $('confirmImport').disabled=!canApply;
+  }
+  function invalidateCorrection(){
+    checkedCorrection=null;
+    correctionApprove.checked=false;
+    correctionApproveLabel.hidden=true;
+    correctionResult.textContent='';
+    if(correctionMode.checked)$('confirmImport').disabled=true;
+  }
+  correctionMode.onchange=()=>{
+    correctionDetails.hidden=!correctionMode.checked;
+    invalidateCorrection();
+    if(state.fileTable)demo.preview(state.fileTable);
+    setCorrectionButton();
+  };
+  correctionApprove.onchange=setCorrectionButton;
+  $('financialConfirm').addEventListener('change',setCorrectionButton);
+  document.addEventListener('change',event=>{
+    if(event.target?.closest?.('#mappingFields')&&correctionMode.checked){
+      invalidateCorrection();setCorrectionButton();
+    }
+  });
+  document.addEventListener('bp:import-table-ready',event=>{
+    correctionsPanel.hidden=state.business!=='mine';
+    correctionMode.checked=false;
+    correctionDetails.hidden=true;
+    invalidateCorrection();
+    if(event.detail?.file&&state.business==='mine')demo.preview(event.detail.file);
+  });
+  correctionReviewButton.onclick=async()=>{
+    const file=state.fileTable;
+    if(!correctionMode.checked||!file)return;
+    correctionReviewButton.disabled=true;
+    correctionResult.textContent='Проверяем изменения…';
+    try{
+      const financial=file._bpFinancialReview;
+      if(financial?.blocked)throw Error('Выбрана некорректная сумма для финансового отчёта.');
+      if(financial?.needsConfirm&&!$('financialConfirm').checked)
+        throw Error('Сначала подтвердите финансовые предупреждения.');
+      const payload=correctionPayload(),payloadText=JSON.stringify(payload);
+      const response=await request('/import/corrections/preview',payload);
+      if(state.fileTable!==file||!correctionMode.checked||
+         JSON.stringify(correctionPayload())!==payloadText)return;
+      const summary=response.summary||{};
+      correctionResult.textContent='Добавить: '+(summary.added||0)+
+        ' · исправить: '+(summary.updated||0)+' · отменить: '+(summary.deleted||0)+
+        ' · без изменений: '+(summary.unchanged||0)+
+        (summary.moved?' · перенос дат: '+summary.moved:'')+
+        '\n'+(response.examples||[]).slice(0,8).map(x=>{
+          const dates=x.old_date!==x.new_date?
+            ' · '+(x.old_date||'—')+' → '+(x.new_date||'—'):'';
+          const amounts=x.old_amount_kopecks!==x.new_amount_kopecks
+            ?' · '+(x.old_amount_kopecks==null?'—':money(x.old_amount_kopecks/100))+
+              ' → '+(x.new_amount_kopecks==null?'—':money(x.new_amount_kopecks/100))
+            :'';
+          return x.change+' · ID '+String(x.id).slice(0,45)+dates+amounts;
+        }).join('\n');
+      if(response.can_apply){
+        checkedCorrection={file,payloadText,confirm_token:response.confirm_token,
+          expires_at_ms:response.expires_at_ms};
+        correctionApprove.checked=false;
+        correctionApproveLabel.hidden=false;
+      }else{
+        correctionResult.textContent+='\nИзменений нет, повторная запись не требуется.';
+        invalidateCorrection();
+        correctionResult.textContent='Изменений нет, повторная запись не требуется.';
+      }
+      setCorrectionButton();
+    }catch(error){
+      invalidateCorrection();
+      correctionResult.textContent=error.message||'Не удалось проверить изменения.';
+    }finally{correctionReviewButton.disabled=false;}
+  };
   // Mapping lookup sends only column headers and coarse numeric type ratios.
   // Never send cell values, payments, receipt IDs, filenames or raw rows.
   const recognitionStatus=document.createElement('div');
@@ -527,16 +656,25 @@
       }
       if(columns.id<0)throw Error('Для накопительной загрузки выберите столбец «ID чека / визита». Без него нельзя надёжно исключить дубли.');
       if(state.fileTable.rows.some(values=>!String(values[columns.id]??'').trim()))throw Error('В столбце ID есть пустые значения. Нужны стабильные идентификаторы.');
+      const isCorrection=correctionMode.checked;
       const result=parseImported(state.fileTable,columns);
-      if(result.cancelled>0)throw Error('В файле есть отменённые операции. До полноценной сверки отмен загрузка остановлена, чтобы не сохранить неверные показатели.');
+      if(result.cancelled>0&&!isCorrection)throw Error('В файле есть отменённые операции. Выберите режим исправлений и проверьте изменения.');
       if(result.invalid>0)throw Error('Обнаружено '+result.invalid+' строк с ошибками: '+result.invalidExamples.join('; ')+'. Исправьте данные перед загрузкой.');
-      if(!result.rows.length)throw Error('Нет корректных оплаченных операций для импорта.');
+      if(!result.rows.length&&!(isCorrection&&result.cancelled_ids.length))
+        throw Error('Нет корректных оплаченных операций для импорта.');
       if(result.rows.length>10000)throw Error('Сервер принимает до 10 000 операций за одну загрузку.');
       const rows=result.rows.map(x=>({
         date:x.date,id:String(x.id),item:String(x.item),
         amount_kopecks:Math.round(x.amount*100),status:x.status
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
+      const correctionData=isCorrection?correctionPayload():null;
+      if(isCorrection&&(!checkedCorrection||checkedCorrection.file!==state.fileTable||
+          !correctionApprove.checked||
+          JSON.stringify(correctionData)!==checkedCorrection.payloadText||
+          Date.now()>=checkedCorrection.expires_at_ms)){
+        throw Error('Сначала проверьте исправления и подтвердите список изменений.');
+      }
       state.mineSaving=true;
       $('confirmImport').disabled=true;
       $('importAlert').textContent='Сохраняем отчёт на сервере…';
@@ -545,7 +683,12 @@
         financial:state.fileTable._bpAiMappingAmount===columns.amount
           ?state.fileTable._bpAiFinancial||null:null
       };
-      const answer=await request('/import',{source:state.fileTable.name.slice(0,120),rows});
+      const answer=isCorrection
+        ?await request('/import/corrections/apply',{
+          ...correctionData,confirm_token:checkedCorrection.confirm_token,
+          expires_at_ms:checkedCorrection.expires_at_ms
+        })
+        :await request('/import',{source:state.fileTable.name.slice(0,120),rows});
       // Saving the mapping is independent of successful accounting: a template
       // API outage must not undo or retry a completed transaction import.
       let savedTemplate=false;
@@ -560,11 +703,19 @@
       state.mineReport=answer.report;
       state.mineAI=null;
       state.mineError='';
+      invalidateCorrection();
       showModal(false);
       renderMine();
+      if(!importHistoryPanel.hidden)void refreshImportHistory();
       void loadAI();
     }catch(error){$('importAlert').textContent=error.message||'Не удалось сохранить отчёт.';}
-    finally{state.mineSaving=false;if($('modal').classList.contains('show'))$('confirmImport').disabled=false;}
+    finally{
+      state.mineSaving=false;
+      if($('modal').classList.contains('show')){
+        demo.preview(state.fileTable);
+        if(correctionMode.checked)setCorrectionButton();
+      }
+    }
   };
 
   // Preserve explicitly requested demo launch parameters.
