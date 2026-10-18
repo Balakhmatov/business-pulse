@@ -379,14 +379,16 @@ function preview(f){
     $('financialType').textContent=financialBasisTitles[review.type]||financialBasisTitles.unknown;
     $('financialMessage').textContent=[...new Set(review.warnings)].join('\n');
     ackLabel.hidden=!review.needsConfirm||review.blocked;
-    $('importAlert').textContent=review.blocked
-      ?'Нельзя импортировать выбранный денежный показатель как поступления. Выберите столбец фактической оплаты.'
-      :review.needsConfirm&&!ack.checked
-        ?'Проверьте финансовые предупреждения и подтвердите их перед импортом.'
-        :'';
+    $('importAlert').textContent=result.invalid>0
+      ?'Импорт остановлен: '+number(result.invalid)+' строк с ошибками. '+result.invalidExamples.join('; ')+'. Исправьте файл или выбор столбцов.'
+      :review.blocked
+        ?'Нельзя импортировать выбранный денежный показатель как поступления. Выберите столбец фактической оплаты.'
+        :review.needsConfirm&&!ack.checked
+          ?'Проверьте финансовые предупреждения и подтвердите их перед импортом.'
+          :'';
     const examples=result.rows.slice(0,4);
-    $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':'Оплата')+'</td></tr>').join('')+'</tbody></table>';
-    $('confirmImport').disabled=review.blocked||(review.needsConfirm&&!ack.checked);
+    $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':'Оплата')+'</td></tr>').join('')+'</tbody></table>';
+    $('confirmImport').disabled=review.blocked||result.invalid>0||!result.rows.length||(review.needsConfirm&&!ack.checked);
   }catch(e){
     f._bpFinancialReview=null;
     panel.hidden=true;
