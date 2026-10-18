@@ -563,14 +563,61 @@ test('Owner-facing interface uses clear Payments and Sales terminology, keeping 
   const personal=readFileSync(new URL('../personal.js',import.meta.url),'utf8');
   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
   assert.match(personal,/recognized_revenue:'Продажи'/);
-  assert.match(personal,/Продажи за 30 дней/);
-  assert.match(personal,/Оказанные услуги и проданные товары — даже если ещё не оплачены/);
+  assert.match(personal,/clinic:\{paid:'Оплачено пациентами',done:'Оказано услуг на сумму'/);
+  assert.match(personal,/store:\{paid:'Оплачено покупателями',done:'Продано товаров на сумму'/);
+  assert.match(personal,/industryMoneyLabels/);
   assert.match(personal,/Полученные деньги \(включая авансы\)/);
   assert.match(personal,/Просто выставленные счета и авансы за будущие услуги не включены/);
-  assert.match(personal,/Тип сумм пока неизвестен/);
+  assert.match(personal,/Нужно уточнить данные/);
+  assert.match(personal,/Не оплачено клиентами: нет данных для расчёта/);
   assert.doesNotMatch(personal,/Выручка за 30 дней/);
   assert.match(html,/const positiveLabel=selectedBook==='recognized_revenue'\?'Продажа'/);
   assert.match(html,/selectedBook==='cash_receipts'\?'Оплата':'Операция'/);
   assert.match(html,/Пока не с чем сравнить/);
   assert.match(html,/Что означают суммы в этом столбце/);
+});
+
+test('Optional quantity column is parsed and imported, missing entries stay unknown',t=>{
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const source=html.slice(html.indexOf('function parseDate('),html.indexOf('const financialFlagLabels='));
+  const parser=Function('dayStamp',source+'return parseImported;')(
+    date=>date.toISOString().slice(0,10));
+  const header=['Дата','Номер чека','Товар или услуга','Сумма','Статус','Количество'];
+  const detected=smart.detect([header,
+    ['2026-10-17','visit-1','Уколы','2000','оказано','3'],
+    ['2026-10-17','visit-2','Осмотр','1000','оказано','2,5']
+  ],'clinic.xlsx');
+  const values={...detected.mappingGuess,quantity:5};
+  const parsed=parser(detected,values);
+  assert.equal(parsed.invalid,0);
+  assert.deepEqual(parsed.rows.map(x=>x.quantity_milli),[3000,2500]);
+  const f=makeFixture();t.after(f.close);
+  const engine=f.importer();
+  const rows=parsed.rows.map(x=>({...x,amount_kopecks:Math.round(x.amount*100)}));
+  const added=engine.ingest({id:'a'},{source:'clinic.xlsx',financial_basis:'recognized_revenue'},rows);
+  assert.equal(added.added,2);
+  assert.deepEqual(f.db.prepare(
+    'SELECT quantity_milli FROM operations ORDER BY source_id'
+  ).all().map(x=>x.quantity_milli),[3000,2500]);
+  const invalid=parser({headerRow:1,rows:[['2026-10-17','bad','Уколы','2000','оказано','три']]},values);
+  assert.equal(invalid.invalid,1);
+});
+test('Unit quantity corrections with unchanged amounts are reversible; legacy absent quantities remain null',t=>{
+  const f=makeFixture();t.after(f.close);
+  const engine=f.importer();
+  const first={...f.row('2026-10-16','invoice-1',10000),quantity_milli:2000};
+  const a=engine.ingest({id:'a'},{source:'a.xlsx',financial_basis:'recognized_revenue'},[first]);
+  assert.equal(a.added,1);
+  const changed={...first,quantity_milli:5000};
+  const batch=engine.ingest({id:'a'},{source:'b.xlsx',financial_basis:'recognized_revenue'},[changed]);
+  assert.equal(batch.updated,1);
+  assert.equal(f.db.prepare('SELECT quantity_milli FROM operations').get().quantity_milli,5000);
+  engine.undoLatest({id:'a'},batch.batch_id);
+  assert.equal(f.db.prepare('SELECT quantity_milli FROM operations').get().quantity_milli,2000);
+  const other=engine.ingest({id:'a'},{source:'no-qty.xlsx',financial_basis:'recognized_revenue'},[
+    f.row('2026-10-17','invoice-2',20000)]);
+  assert.equal(other.added,1);
+  assert.equal(f.db.prepare('SELECT quantity_milli FROM operations WHERE source_id=?').get('invoice-2').quantity_milli,null);
+  engine.undoLatest({id:'a'},other.batch_id);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM operations').get().n,1);
 });
