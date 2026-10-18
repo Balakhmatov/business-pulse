@@ -21,6 +21,16 @@ export function createAI({ db, report, listOperations }) {
       db.exec('COMMIT');
     }catch(error){db.exec('ROLLBACK');throw error;}
   }
+  // Replace previously generated accounting-heavy phrases on the next visit.
+  // Stored operations and previous import history are not touched.
+  if(!db.prepare("SELECT 1 AS ok FROM analysis_schema_migrations WHERE id='owner_plain_language_v3'").get()){
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      db.exec('DELETE FROM ai_analyses');
+      db.prepare('INSERT OR IGNORE INTO analysis_schema_migrations(id) VALUES(?)').run('owner_plain_language_v3');
+      db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error;}
+  }
   const read = db.prepare('SELECT version,status,payload,updated_ms FROM ai_analyses WHERE company_id=?');
   const upsert = db.prepare('INSERT INTO ai_analyses(company_id,version,status,payload,updated_ms) VALUES(?,?,?,?,?) ON CONFLICT(company_id) DO UPDATE SET version=excluded.version,status=excluded.status,payload=excluded.payload,updated_ms=excluded.updated_ms');
   const finish = db.prepare('UPDATE ai_analyses SET status=?,payload=?,updated_ms=? WHERE company_id=? AND version=?');
@@ -43,33 +53,33 @@ export function createAI({ db, report, listOperations }) {
     const currentReceipts = r.receipt_count;
     const refunds = cur.filter(x => x.status === 'refund').length;
     const comparable = curDays >= 25 && prevDays >= 25 && r.previous30_kopecks > 0;
-    const title=r.primary_basis==='cash_receipts'?'Денежные поступления':
-      r.primary_basis==='recognized_revenue'?'Выручка по оказанным услугам или переданным товарам':
-      'Сумма операций (финансовый тип не подтверждён)';
+    const title=r.primary_basis==='cash_receipts'?'Поступления':
+      r.primary_basis==='recognized_revenue'?'Продажи (оказанные услуги и проданные товары)':
+      'Суммы без уточнения';
     const facts = {};
     const add = (id, value) => { facts[id] = value; };
     add('revenue', title+' за последние 30 завершённых дней: '+money(r.revenue30_kopecks)+'.');
-    add('receipts', 'За тот же период зарегистрировано ' + currentReceipts + ' уникальных чеков или визитов.');
-    if (r.average_receipt_kopecks !== null) add('average', 'Средняя сумма чека: ' + money(r.average_receipt_kopecks) + '.');
+    add('receipts', 'За тот же период было ' + currentReceipts + ' операций с уникальными номерами.');
+    if (r.average_receipt_kopecks !== null) add('average', 'В среднем на операцию: ' + money(r.average_receipt_kopecks) + '.');
     add('data_coverage', 'Операции присутствуют за ' + curDays + ' из последних 30 дней; отсутствие операций не доказывает нулевые продажи.');
     if (comparable) {
-      add('revenue_change', 'Изменение выбранного финансового показателя к предыдущим 30 дням: ' + percent(r.change_percent) + '.');
+      add('revenue_change', 'Изменение к предыдущим 30 дням: ' + percent(r.change_percent) + '.');
       if (prevReceipts > 0) {
         const change = (currentReceipts - prevReceipts) / prevReceipts * 100;
-        add('receipt_change', 'Изменение количества уникальных чеков к предыдущим 30 дням: ' + percent(change) + '.');
+        add('receipt_change', 'Изменение числа операций к предыдущим 30 дням: ' + percent(change) + '.');
         const prevAverage = r.previous30_kopecks / prevReceipts;
         if (prevAverage > 0 && r.average_receipt_kopecks !== null) {
-          add('average_change', 'Изменение среднего чека: ' + percent((r.average_receipt_kopecks - prevAverage) / prevAverage * 100) + '.');
+          add('average_change', 'Изменение средней суммы на операцию: ' + percent((r.average_receipt_kopecks - prevAverage) / prevAverage * 100) + '.');
         }
       }
     } else {
-      add('comparison_limited', 'Сравнение периодов ограничено: в текущем периоде операции есть за ' + curDays + ' дней, в предыдущем за ' + prevDays + ' дней.');
+      add('comparison_limited', 'Пока недостаточно данных для сравнения: сейчас записи есть за ' + curDays + ' дней, за прошлый период — за ' + prevDays + ' дней.');
     }
     if (refunds) add('refunds', 'За 30 дней отмечено ' + refunds + ' строк возврата; суммы учтены в выбранном показателе.');
     if (r.top3.length && r.revenue30_kopecks > 0) {
       const topAmount = r.top3.filter(x => x.amount_kopecks > 0).reduce((v, x) => v + x.amount_kopecks, 0);
       const share = topAmount / r.revenue30_kopecks * 100;
-      if (share >= 0 && share <= 100) add('top_share', 'Доля трёх лидирующих позиций в выбранном показателе: ' + percent(share).replace(/^\+/, '') + '.');
+      if (share >= 0 && share <= 100) add('top_share', 'На три самые крупные позиции приходится ' + percent(share).replace(/^\+/, '') + '.');
     }
     // Only aggregate figures. Never send item names, transaction IDs, file names, people or customers.
     return { financial_basis:r.primary_basis,facts, stats: {
@@ -100,10 +110,11 @@ export function createAI({ db, report, listOperations }) {
     required: ['summary', 'issues', 'positives']
   };
   const instructions =
-    'Ты аналитик малого офлайн-бизнеса. Отвечай по-русски кратко и конкретно. ' +
+    'Ты помощник собственника небольшого бизнеса. Пиши по-русски просто, коротко и конкретно, без бухгалтерского и технического жаргона. ' +
+    'В текстах для собственника называй полученные деньги «поступлениями», стоимость оказанных услуг и проданных товаров — «продажами», а старые суммы без определённого типа — «суммами без уточнения». ' +
     'Цель: отобрать наиболее значимые негативные сигналы и позитивные признаки, дать действия для проверки. ' +
-    'Денежные поступления, признанная выручка и данные с неподтверждённым типом — разные показатели. ' +
-    'Не выдавай поступления, особенно авансы, за выручку и не смешивай суммы разных типов. ' +
+    'Поступления — это реально полученные деньги. Продажи — стоимость уже оказанных услуг или переданных товаров, даже если клиент заплатит позже. Старые суммы без уточнения — отдельно. ' +
+    'Не выдавай поступления, особенно авансы, за продажи и не смешивай суммы разных типов. ' +
     'Опирайся СТРОГО на переданные агрегированные факты. Нельзя выдумывать причины, прогнозы, внешние события, ' +
     'количество новых клиентов, маркетинговые затраты, рентабельность, прибыль, конверсию или сезонность. ' +
     'Корреляция не доказывает причину. Дни без операций не обязательно означают отсутствие продаж. ' +

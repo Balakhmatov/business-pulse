@@ -38,7 +38,7 @@ function fixture() {
 test('No report for users without imports; never invent revenue',t=>{
   const f=fixture();t.after(f.cleanup);
   assert.match(f.read('101'),/Нет загруженного отчёта/);
-  assert.doesNotMatch(f.read('101'),/Выручка за 30 дней/);
+  assert.doesNotMatch(f.read('101'),/Продажи за 30 дней/);
 });
 
 test('Own-company data isolation, full-period comparison, cached AI',t=>{
@@ -66,7 +66,7 @@ test('Own-company data isolation, full-period comparison, cached AI',t=>{
   const result=f.read('101');
   assert.match(result,/<b>Моя клиника<\/b> \(тестовые данные\)/);
   assert.match(result,/1\. Сумма операций \(тип не подтверждён\) за 30 дней: <b>60.?000 ₽<\/b>/u);
-  assert.match(result,/2\. Чеков \/ визитов за 30 дней: <b>30<\/b>/);
+  assert.match(result,/2\. Операций за 30 дней: <b>30<\/b>/);
   assert.match(result,/4\. Изменение к предыдущим 30 дням: <b>\+100,0%<\/b>/);
   assert.match(result,/📌 <b>Ключевой аналитический вывод<\/b>/);
   assert.match(result,/<b>1\. Проверьте динамику визитов<\/b>/);
@@ -82,8 +82,8 @@ test('Stale import does not show missing yesterday as zero or claim trustworthy 
   const result=f.read('101');
   assert.match(result,/3\. За 16 октября 2026 г\. <b>нет операций в выгрузке<\/b>/);
   assert.match(result,/последняя дата операции — 13 октября 2026 г/);
-  assert.match(result,/Сравнение с предыдущим периодом ограничено:/);
-  assert.doesNotMatch(result,/Выручка за 16 октября 2026 г\.: <b>0 ₽<\/b>/);
+  assert.match(result,/Пока не с чем сравнить:/);
+  assert.doesNotMatch(result,/Продажи за 16 октября 2026 г\.: <b>0 ₽<\/b>/);
 });
 
 test('Cached conclusions from older imports never leak into new digest',t=>{
@@ -97,7 +97,7 @@ test('Cached conclusions from older imports never leak into new digest',t=>{
   );
   const result=f.read('101');
   assert.doesNotMatch(result,/УСТАРЕВШИЙ ВЫВОД/);
-  assert.match(result,/Заключение пока формируется/);
+  assert.match(result,/Готовим выводы/);
 });
 
 test('Cash receipts and fulfilled revenue are separate in the Telegram digest',t=>{
@@ -110,11 +110,11 @@ test('Cash receipts and fulfilled revenue are separate in the Telegram digest',t
   put.run('c101','2026-10-16','performed-B',800000,'sale','recognized_revenue');
   put.run('c101','2026-10-16','old-unknown',4000000,'sale','unverified');
   const digest=f.read('101');
-  assert.match(digest,/Денежные поступления за 30 дней: <b>10.?000 ₽<\/b>/u);
-  assert.match(digest,/Выручка по выполненным продажам за 30 дней: <b>8.?000 ₽<\/b>/u);
-  assert.match(digest,/Операции без подтверждённого типа за 30 дней: <b>40.?000 ₽<\/b>/u);
+  assert.match(digest,/Поступления за 30 дней: <b>10.?000 ₽<\/b>/u);
+  assert.match(digest,/Продажи за 30 дней: <b>8.?000 ₽<\/b>/u);
+  assert.match(digest,/Суммы без уточнения за 30 дней: <b>40.?000 ₽<\/b>/u);
   assert.doesNotMatch(digest,/58.?000 ₽/u);
-  assert.match(digest,/не входят в проверенные поступления или выручку/);
+  assert.match(digest,/Не прибавляем их ни к поступлениям, ни к продажам/);
 });
 
 test('Telegram HTML safely escapes untrusted company names and cached AI fields', t => {
