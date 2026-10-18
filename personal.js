@@ -567,7 +567,7 @@
     if(parsed.duplicate>0)throw Error('В файле есть одинаковые строки. Для сверки нужен уникальный ID каждого платежа.');
     const rows=parsed.rows.map(x=>({
       date:x.date,id:String(x.id),item:String(x.item),
-      amount_kopecks:Math.round(x.amount*100),status:x.status
+      amount_kopecks:Math.round(x.amount*100),status:x.status,quantity_milli:x.quantity_milli??null
     }));
     if(rows.length+parsed.cancelled_ids.length>1000)
       throw Error('Пакет исправлений ограничен 1000 строками. Разделите выгрузку.');
@@ -796,7 +796,7 @@
       if(result.rows.length>10000)throw Error('Сервер принимает до 10 000 операций за одну загрузку.');
       const rows=result.rows.map(x=>({
         date:x.date,id:String(x.id),item:String(x.item),
-        amount_kopecks:Math.round(x.amount*100),status:x.status
+        amount_kopecks:Math.round(x.amount*100),status:x.status,quantity_milli:x.quantity_milli??null
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
       if(!validateBookChoice())
