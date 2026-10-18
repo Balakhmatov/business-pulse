@@ -265,6 +265,10 @@ function parseAmount(value){
   // Never turn free-form text like "ошибка 1500" into a money value.
   text=text.replace(/[\s\u00a0\u202f₽]/g,'').replace(/руб(?:лей|ля|ль)?\.?/gi,'');
   if(!/^[+-]?\d[\d.,]*$/.test(text))return null;
+  // "1,234" or "1.234" is ambiguous: thousands separator vs 3 decimal
+  // places. Never guess a monetary figure that could differ 1000-fold.
+  if(/^[+-]?\d{1,3}[.,]\d{3}$/.test(text))return null;
+  if(/^[+-]?\d{1,3}(?:[.,]\d{3}){2,}$/.test(text))text=text.replace(/[.,]/g,'');
   if(text.includes(',')&&text.includes('.')){
     text=text.lastIndexOf(',')>text.lastIndexOf('.')
       ?text.replace(/\./g,'').replace(',','.')
