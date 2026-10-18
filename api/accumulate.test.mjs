@@ -5,6 +5,8 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { createAccumulator } from './accumulate.mjs';
+// Keep mapping tests in the existing trusted VPS deployment test entrypoint.
+import './import-mapping.test.mjs';
 import excel from '../excel-adapter.js';
 import smart from '../smart-import.js';
 
