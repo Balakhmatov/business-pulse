@@ -346,6 +346,8 @@
     $('revenueChange').textContent=change===null?'Нет данных для сравнения':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
     $('comparisonDesc').textContent=imported&&r.coverage&&!r.coverage.comparable?'Сравнение ограничено: данные за '+r.coverage.current_days+'/30 и '+r.coverage.previous_days+'/30 дней':'Последние 30 завершённых дней с учётом возвратов';
+    $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
+      shortMetric+' за вчера';
     $('revenueYesterday').textContent=imported?fmtK(r.yesterday_kopecks):'—';
     $('yesterdayDate').textContent=verboseDate(end);
     $('countLabel').textContent='Чеков / операций за 30 дней';
@@ -430,6 +432,10 @@
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
       $('financeBooks').hidden=true;
+      document.querySelector('.revenue-panel .kpi-name').textContent='Выручка за 30 дней';
+      $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent='Выручка за вчера';
+      $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика выручки';
+      $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent='Выручка по дням';
       const concernsChip=$('concerns').closest('.panel')?.querySelector('.subtle-chip');
       const positivesChip=$('positives').closest('.panel')?.querySelector('.subtle-chip');
       if(concernsChip)concernsChip.textContent='Анализ';
