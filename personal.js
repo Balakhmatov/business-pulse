@@ -353,6 +353,9 @@
           return;
         }
         if(!['template','ai'].includes(answer.source))return;
+        if(answer.source==='ai'&&answer.financial){
+          file._bpAiFinancial=answer.financial;
+        }
         file._bpApplying=true;
         try{
           for(const key of ['date','amount','id','item','status']){
@@ -366,9 +369,10 @@
           $('col_date').dispatchEvent(new Event('change'));
         }finally{file._bpApplying=false;}
         if(details){
+          details.textContent=details.textContent.replace('Проверяем сохранённый шаблон компании…','').trim();
           details.textContent+=' '+(answer.source==='template'
             ?'Применён ранее подтверждённый шаблон этой компании.'
-            :'ИИ предложил сопоставление без доступа к строкам операций. Проверьте поля и предварительный просмотр.');
+            :'ИИ предложил сопоставление и оценил смысл денежного показателя по названиям столбцов. Проверьте предупреждения и предварительный просмотр.');
           details.hidden=false;
         }
       })
@@ -386,6 +390,11 @@
     if(state.mineSaving)return;
     try{
       const columns=mapping();
+      const financial=state.fileTable?._bpFinancialReview;
+      if(financial?.blocked)throw Error('Этот столбец не отражает поступление или выручку. Выберите корректную сумму.');
+      if(financial?.needsConfirm&&!$('financialConfirm').checked){
+        throw Error('Подтвердите финансовые предупреждения перед импортом.');
+      }
       if(columns.id<0)throw Error('Для накопительной загрузки выберите столбец «ID чека / визита». Без него нельзя надёжно исключить дубли.');
       if(state.fileTable.rows.some(values=>!String(values[columns.id]??'').trim()))throw Error('В столбце ID есть пустые значения. Нужны стабильные идентификаторы.');
       const result=parseImported(state.fileTable,columns);
