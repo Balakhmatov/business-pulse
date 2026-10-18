@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
 import { resetTestData } from './test-reset.mjs';
+import { createImportMapper } from './import-mapping.mjs';
 
 // Localhost-only service. Nginx provides HTTPS. Telegram initData is ALWAYS signed and verified.
 const port = Number(process.env.BP_API_PORT || 3117);
@@ -27,6 +28,7 @@ db.exec(
 );
 // Upgrade existing SQLite schema before preparing statements that use the new columns.
 const accumulator=createAccumulator(db);
+const importMapper=createImportMapper({db});
 const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   first:db.prepare('SELECT id,name,industry FROM companies WHERE owner_id=? ORDER BY created_at LIMIT 1'),
@@ -177,6 +179,14 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c},origin);
     if(req.method==='GET'&&url.pathname==='/api/report')return reply(res,200,report(c),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
+    if(req.method==='POST'&&url.pathname==='/api/import/mapping/resolve'){
+      const input=await readJSON(req);
+      return reply(res,200,await importMapper.resolve(c,input),origin);
+    }
+    if(req.method==='POST'&&url.pathname==='/api/import/mapping/save'){
+      const input=await readJSON(req);
+      return reply(res,200,importMapper.confirm(c,input),origin);
+    }
     if(req.method==='POST'&&url.pathname==='/api/reset-test-data'){
       const input=await readJSON(req);
       if(input?.confirm!=='DELETE_TEST_DATA')return reply(res,400,{error:'Подтвердите удаление тестовых операций.'},origin);
