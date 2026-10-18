@@ -328,7 +328,7 @@
     const file=event.detail?.file;
     if(!file||state.business!=='mine'||file.reportType==='aggregate')return;
     const header=file.head;
-    const statistical=window.BP_SmartImport?.guess(header,file.rows)?.profiles;
+    const statistical=window.BP_SmartImport?.guess(header,file.rows.slice(0,80))?.profiles;
     if(!Array.isArray(statistical))return;
     const profiles=statistical.map(p=>({
       dates:p.dates,nums:p.nums,statuses:p.statuses,unique:p.unique,
@@ -343,7 +343,15 @@
       .then(answer=>{
         if(state.business!=='mine'||state.fileTable!==file||file._bpUserAdjusted||
           !$('modal').classList.contains('show'))return;
-        if(!answer?.mapping)return;
+        if(!answer?.mapping){
+          if(details&&state.fileTable===file){
+            details.textContent=details.textContent.replace('Проверяем сохранённый шаблон компании…',
+              answer?.reason==='limit'
+                ?'Подсказка ИИ временно ограничена; подтвердите столбцы вручную.'
+                :'Сохранённого шаблона нет — проверьте выбранные столбцы перед импортом.');
+          }
+          return;
+        }
         if(!['template','ai'].includes(answer.source))return;
         file._bpApplying=true;
         try{
