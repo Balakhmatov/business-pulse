@@ -462,4 +462,8 @@ test('UI parser accepts a complete CSV with multiple currency formats and zero e
   assert.equal(parsed.invalid,0);
   assert.equal(parsed.cancelled,0);
   assert.deepEqual(parsed.rows.map(r=>r.amount),[1500,2350.5]);
+  const format=Function('dayStamp',source+'return parseAmount;')(date=>date.toISOString().slice(0,10));
+  assert.equal(format('1,234'),null);
+  assert.equal(format('1.234'),null);
+  assert.equal(format('1,234,567'),1234567);
 });
