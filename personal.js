@@ -64,10 +64,89 @@
   clearTests.textContent='Очистить тестовые данные';
   clearTests.hidden=true;
   $('importUtilities').appendChild(clearTests);
+
+  // Owner-only import journal. Filenames are always rendered via textContent.
+  const importHistoryButton=document.createElement('button');
+  importHistoryButton.type='button';
+  importHistoryButton.className='ghost-btn';
+  importHistoryButton.textContent='История загрузок';
+  importHistoryButton.hidden=true;
+  $('importUtilities').appendChild(importHistoryButton);
+  const importHistoryPanel=document.createElement('section');
+  importHistoryPanel.hidden=true;
+  importHistoryPanel.style.cssText='background:white;border:1px solid #e0e4ed;border-radius:15px;padding:15px;margin-bottom:18px';
+  $('importUtilities').after(importHistoryPanel);
+  function historyText(container,text,bold=false){
+    const node=document.createElement('div');
+    node.textContent=String(text);
+    node.style.cssText='font-size:12px;line-height:1.55;color:#525e76;margin:6px 0'+(bold?';font-weight:750':'');
+    container.appendChild(node);
+  }
+  async function refreshImportHistory(){
+    if(importHistoryPanel.hidden||state.business!=='mine')return;
+    importHistoryPanel.replaceChildren();
+    historyText(importHistoryPanel,'Загружаем историю…');
+    try{
+      const response=await request('/import/history');
+      if(importHistoryPanel.hidden||state.business!=='mine')return;
+      importHistoryPanel.replaceChildren();
+      historyText(importHistoryPanel,'Последние загрузки',true);
+      const entries=response.history||[];
+      if(!entries.length)historyText(importHistoryPanel,'Загрузок пока нет.');
+      for(const entry of entries){
+        const block=document.createElement('div');
+        block.style.cssText='padding-top:10px;margin-top:8px;border-top:1px solid #ebeef5';
+        historyText(block,String(entry.source||'Отчёт')+(entry.undone?' · отменён':''),true);
+        historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+' · без изменений: '+entry.unchanged);
+        if(entry.can_undo){
+          const undo=document.createElement('button');
+          undo.type='button';
+          undo.className='ghost-btn';
+          undo.textContent='Отменить загрузку';
+          undo.onclick=async()=>{
+            const ask='Отменить последнюю загрузку? Новые операции будут удалены, а исправленные суммы восстановлены.';
+            const approved=await new Promise(resolve=>{
+              if(typeof tg.showConfirm==='function')tg.showConfirm(ask,resolve);
+              else resolve(window.confirm(ask));
+            });
+            if(!approved)return;
+            undo.disabled=true;
+            try{
+              const result=await request('/import/undo',{batch_id:entry.id});
+              ++analysisSeq;
+              state.mineReport=result.report;
+              state.mineAI=null;
+              state.mineImportStats=null;
+              state.mineTemplateNotice='';
+              renderMine();
+              void loadAI();
+              await refreshImportHistory();
+            }catch(error){
+              undo.disabled=false;
+              historyText(block,error.message||'Ошибка отмены.');
+            }
+          };
+          block.appendChild(undo);
+        }
+        importHistoryPanel.appendChild(block);
+      }
+    }catch(error){
+      importHistoryPanel.replaceChildren();
+      historyText(importHistoryPanel,error.message||'История временно недоступна.');
+    }
+  }
+  importHistoryButton.onclick=()=>{
+    if(state.business!=='mine')return;
+    importHistoryPanel.hidden=!importHistoryPanel.hidden;
+    importHistoryButton.textContent=importHistoryPanel.hidden?'История загрузок':'Скрыть историю';
+    if(!importHistoryPanel.hidden)void refreshImportHistory();
+  };
   function updateQuickButton(){
     const busy=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving||state.mineClearing);
     quick.hidden=state.business!=='mine'||!!state.mineReport?.source||!!state.mineError;
     quick.disabled=busy;
+    importHistoryButton.hidden=state.business!=='mine';
+    if(state.business!=='mine'){importHistoryPanel.hidden=true;importHistoryButton.textContent='История загрузок';}
     retryLoad.hidden=state.business!=='mine'||!state.mineError;
     retryLoad.disabled=busy;
     const src=state.mineReport?.source;
