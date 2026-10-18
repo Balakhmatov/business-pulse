@@ -8,7 +8,45 @@ export const BOOK_LABELS={
 };
 const sum=rows=>rows.reduce((total,row)=>total+row.amount_kopecks,0);
 const shift=(date,delta)=>{const day=new Date(date+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+delta);return day.toISOString().slice(0,10)};
-export function calculateFinancialSummary(entries,allTimeCounts,end,requestedBasis=null){
+export const INDUSTRIES={
+  clinic:{name:'Клиника',volume_label:'Оказано услуг',volume_unit:'шт.',volume_basis:'recognized_revenue',volume_method:'quantity'},
+  store:{name:'Магазин',volume_label:'Продано товаров',volume_unit:'шт.',volume_basis:'recognized_revenue',volume_method:'quantity'},
+  auto:{name:'Автосервис',volume_label:'Выполнено заказов',volume_unit:'',volume_basis:'recognized_revenue',volume_method:'unique_id'},
+  cafe:{name:'Кафе',volume_label:'Количество чеков',volume_unit:'',volume_basis:'cash_receipts',volume_method:'unique_id'},
+  other:{name:'Универсальный',volume_label:'Количество операций',volume_unit:'',volume_basis:null,volume_method:'unique_id'}
+};
+export const normalizeIndustry=value=>Object.hasOwn(INDUSTRIES,value)?value:'other';
+function volumeForIndustry(rows,industry,books){
+  const config=INDUSTRIES[normalizeIndustry(industry)];
+  const basis=config.volume_basis||(books.cash_receipts.available?'cash_receipts':'recognized_revenue');
+  const book=books[basis],periodRows=rows.filter(x=>x.financial_basis===basis&&x.status==='sale');
+  const refunded=rows.filter(x=>x.financial_basis===basis&&x.status==='refund');
+  const base={label:config.volume_label,unit:config.volume_unit,basis,
+    method:config.volume_method,value:null,coverage:'missing',
+    caption:'Для подсчёта нужны данные из отчёта.'};
+  if(!book?.available)return base;
+  if(config.volume_method==='quantity'){
+    const all=[...periodRows,...refunded];
+    if(!all.length)return {...base,caption:'За выбранный период нет строк с количеством.'};
+    if(all.some(x=>!Number.isSafeInteger(x.quantity_milli)||x.quantity_milli<=0))
+      return {...base,coverage:'incomplete',
+        caption:'В отчёте не у всех строк есть количество. Выберите столбец «Количество» при загрузке.'};
+    const count=periodRows.reduce((n,x)=>n+x.quantity_milli,0)-
+      refunded.reduce((n,x)=>n+x.quantity_milli,0);
+    return {...base,value:count/1000,coverage:'complete',
+      caption:config.volume_unit==='шт.'?'По столбцу «Количество», с учётом возвратов.':'По данным о количестве.'};
+  }
+  // "auto" recognizes one completed job ID once in a period, regardless of
+  // how many service lines belong to that job. Cafe receipt IDs are normally
+  // day-scoped: use day+ID to avoid conflating check numbers on different days.
+  const ids=new Set(periodRows.map(x=>industry==='auto'?x.source_id:x.sold_on+'\u0000'+x.source_id));
+  if(!ids.size)return {...base,value:0,coverage:'complete',caption:'По уникальным номерам в отчёте.'};
+  return {...base,value:ids.size,coverage:'complete',
+    caption:industry==='auto'?'По уникальным номерам выполненных заказов.':
+      industry==='cafe'?'По уникальным номерам оплаченных чеков.':
+        'По уникальным номерам операций.'};
+}
+export function calculateFinancialSummary(entries,allTimeCounts,end,requestedBasis=null,industry='other'){
   const first=shift(end,-59),currentStart=shift(end,-29),chartStart=shift(end,-6);
   const books={};
   for(const basis of BOOKS){
@@ -45,8 +83,12 @@ export function calculateFinancialSummary(entries,allTimeCounts,end,requestedBas
     (books.cash_receipts.available?'cash_receipts':
       books.recognized_revenue.available?'recognized_revenue':'unverified');
   const p=books[primary_basis];
+  const countRows=entries.filter(x=>x.sold_on>=currentStart&&x.sold_on<=end);
+  const volume=volumeForIndustry(countRows,industry,books);
   return {
-    primary_basis,financial_books:books,
+    primary_basis,financial_books:books,industry:normalizeIndustry(industry),volume,
+    // Not calculable from independent cash/revenue aggregates or unlinked IDs.
+    unpaid_customer_debt_kopecks:null,unpaid_customer_debt_available:false,
     period:{from:currentStart,to:end},as_of:end,
     revenue30_kopecks:p.amount30_kopecks,
     previous30_kopecks:p.previous30_kopecks,
