@@ -176,3 +176,100 @@ test('Old templates without financial metadata still load normally',async t=>{
   assert.deepEqual(restored.mapping,selected);
   assert.equal(restored.financial,undefined);
 });
+
+
+test('An AI field proposal survives reopening the same Excel during cooldown, without becoming confirmed',async t=>{
+  let calls=0;
+  const response={report_type:'operations',mapping:selected,financial:{
+    basis:'cash_receipts',confidence:'medium',risk_flags:['partial_payments']
+  }};
+  const fetchFn=async()=>{
+    calls++;
+    return {ok:true,json:async()=>({status:'completed',output:[
+      {type:'message',content:[{type:'output_text',text:JSON.stringify(response)}]}
+    ]})};
+  };
+  const f=fixture({apiKey:'test-only',fetchFn,now:()=>3000});t.after(f.close);
+  const a={id:'a'},b={id:'b'},opts={head:headers,profiles:profile(),needs_ai:true};
+  const initial=await f.service.resolve(a,opts);
+  assert.equal(initial.source,'ai');
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM import_mapping_templates').get().n,0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM import_mapping_suggestions').get().n,1);
+  const reopened=await f.service.resolve(a,opts);
+  assert.equal(reopened.source,'suggestion');
+  assert.deepEqual(reopened.mapping,selected);
+  assert.deepEqual(reopened.financial,response.financial);
+  assert.equal(calls,1,'Reopening must not incur a second OpenAI request');
+  assert.equal((await f.service.resolve(b,{...opts,needs_ai:false})).source,'heuristic');
+  f.service.confirm(a,{head:headers,mapping:selected,financial:response.financial});
+  assert.equal((await f.service.resolve(a,opts)).source,'template');
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM import_mapping_suggestions').get().n,0);
+});
+
+test('A saved draft remains available across mapper instances/server restart',async t=>{
+  let calls=0;
+  const f=fixture({
+    apiKey:'test-only',
+    fetchFn:async()=>{
+      calls++;
+      return {ok:true,json:async()=>({status:'completed',output:[{
+        type:'message',content:[{type:'output_text',text:JSON.stringify({
+          report_type:'operations',mapping:selected,
+          financial:{basis:'cash_receipts',confidence:'high',risk_flags:[]}
+        })}]
+      }]})};
+    }
+  });t.after(f.close);
+  await f.service.resolve({id:'a'},{head:headers,profiles:profile(),needs_ai:true});
+  const fresh=createImportMapper({db:f.db,apiKey:'test-only',fetchFn:()=>{throw Error('Should never call AI')}});
+  const again=await fresh.resolve({id:'a'},{head:headers,profiles:profile(),needs_ai:true});
+  assert.equal(again.source,'suggestion');
+  assert.deepEqual(again.mapping,selected);
+  assert.equal(calls,1);
+});
+
+test('Failed AI analysis allows one explicit retry without spending on endless polling',async t=>{
+  let calls=0;
+  const f=fixture({
+    apiKey:'test-only',
+    fetchFn:async()=>{
+      calls++;
+      if(calls===1)throw Error('Temporary AI timeout');
+      return {ok:true,json:async()=>({status:'completed',output:[{
+        type:'message',content:[{type:'output_text',text:JSON.stringify({
+          report_type:'operations',mapping:selected,
+          financial:{basis:'cash_receipts',confidence:'medium',risk_flags:[]}
+        })}]
+      }]})};
+    },
+    now:()=>4000
+  });t.after(f.close);
+  const opts={head:headers,profiles:profile(),needs_ai:true},c={id:'a'};
+  const failed=await f.service.resolve(c,opts);
+  assert.equal(failed.source,'heuristic');
+  assert.equal(failed.reason,'unavailable');
+  assert.equal(failed.can_retry,true);
+  const throttled=await f.service.resolve(c,opts);
+  assert.equal(throttled.source,'heuristic');
+  assert.equal(throttled.reason,'limit');
+  assert.equal(throttled.can_retry,true);
+  const retried=await f.service.resolve(c,{...opts,retry:true});
+  assert.equal(retried.source,'ai');
+  assert.equal(calls,2);
+  const subsequent=await f.service.resolve(c,opts);
+  assert.equal(subsequent.source,'suggestion');
+  assert.equal(calls,2);
+});
+
+test('At most two AI attempts per company within a cooldown window',async t=>{
+  let calls=0;
+  const f=fixture({apiKey:'test-only',now:()=>5000,fetchFn:async()=>{calls++;throw Error('AI down')}});
+  t.after(f.close);
+  const opts={head:headers,profiles:profile(),needs_ai:true},c={id:'a'};
+  await f.service.resolve(c,opts);
+  await f.service.resolve(c,{...opts,retry:true});
+  const third=await f.service.resolve(c,{...opts,retry:true});
+  assert.equal(calls,2);
+  assert.equal(third.reason,'limit');
+  assert.equal(third.can_retry,false);
+});
