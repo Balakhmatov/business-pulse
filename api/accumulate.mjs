@@ -241,7 +241,12 @@ export function createAccumulator(db) {
           if(before&&!Object.hasOwn(before,'quantity_milli'))before.quantity_milli=null;
           if(after&&!Object.hasOwn(after,'quantity_milli'))after.quantity_milli=null;
           const current=after?findRowId.get(company.id,after.id):null;
-          if(after&&JSON.stringify(current||null)!==JSON.stringify(after)){
+          // Schema migrations can append new fields in a different JSON key
+          // order. Compare actual column values, not serialization order.
+          const snapshotFields=['id','company_id','sold_on','source_id','item',
+            'amount_kopecks','status','import_key','financial_basis','quantity_milli'];
+          if(after&&(!current||snapshotFields.some(key=>
+            (current[key]??null)!==(after[key]??null)))){
             const e=Error('Операции изменились после загрузки. Отмена остановлена.');
             e.status=409;throw e;
           }
