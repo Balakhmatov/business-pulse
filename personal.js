@@ -472,6 +472,15 @@
   $('financialPanel').before(bookChoice);
   const bookSelect=$('financialBookSelect'),earnedConfirm=$('earnedConfirm');
   const earnedConfirmLabel=$('earnedConfirmLabel'),bookHelp=$('financialBookHelp');
+  function basisConflict(){
+    if(!state.fileTable)return '';
+    const local=window.BP_SmartImport?.financialSemantics(state.fileTable.head,mapping());
+    if(bookSelect.value==='recognized_revenue'&&local?.basis==='cash_receipts')
+      return 'Выбран столбец фактических поступлений. Оплаты и авансы нельзя считать выручкой от выполненных продаж.';
+    if(bookSelect.value==='cash_receipts'&&local?.basis==='reported_revenue')
+      return 'Выбран столбец отражённой выручки. Для поступлений выберите колонку подтверждённых оплат.';
+    return '';
+  }
   function validateBookChoice(){
     const earned=bookSelect.value==='recognized_revenue';
     earnedConfirmLabel.hidden=!earned;
@@ -480,7 +489,9 @@
       :bookSelect.value==='cash_receipts'
         ?'Все фактически поступившие платежи. Авансы относятся к поступлениям, но не становятся выручкой автоматически.'
         :'Эти данные не будут добавлены ни к поступлениям, ни к выручке.';
-    const approved=!earned||earnedConfirm.checked;
+    const conflict=basisConflict();
+    if(conflict)bookHelp.textContent=conflict;
+    const approved=(!earned||earnedConfirm.checked)&&!conflict;
     if(!approved)$('confirmImport').disabled=true;
     if(typeof correctionMode!=='undefined'&&correctionMode.checked)setCorrectionButton();
     return approved;
@@ -567,7 +578,7 @@
     const financial=state.fileTable?._bpFinancialReview;
     let canApply=!!checkedCorrection&&checkedCorrection.file===state.fileTable&&
       correctionApprove.checked&&
-      (bookSelect.value!=='recognized_revenue'||earnedConfirm.checked)&&!financial?.blocked&&
+      (bookSelect.value!=='recognized_revenue'||earnedConfirm.checked)&&!basisConflict()&&!financial?.blocked&&
       (!financial?.needsConfirm||$('financialConfirm').checked);
     if(canApply){
       try{
@@ -787,7 +798,7 @@
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
       if(!validateBookChoice())
-        throw Error('Подтвердите, что в выбранной выручке нет авансов без исполнения и неоплаченных счетов.');
+        throw Error(basisConflict()||'Подтвердите, что в выбранной выручке нет авансов без исполнения и неоплаченных счетов.');
       const financialBasis=bookSelect.value;
       const correctionData=isCorrection?correctionPayload():null;
       if(isCorrection&&(!checkedCorrection||checkedCorrection.file!==state.fileTable||
