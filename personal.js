@@ -287,6 +287,38 @@
       button.setAttribute('aria-pressed',String(active));
     });
   }
+  const financialTitles={
+    cash_receipts:'Денежные поступления',
+    recognized_revenue:'Выручка от выполненных продаж',
+    unverified:'Старые данные без подтверждённого типа'
+  };
+  function renderFinanceBooks(report){
+    const holder=$('financeBooks');
+    if(state.business!=='mine'||!report?.financial_books){holder.hidden=true;return;}
+    holder.hidden=false;
+    const labels=[
+      ['cash_receipts','Поступления за 30 дней','Включая авансы, если они в источнике'],
+      ['recognized_revenue','Выручка за 30 дней','По выполненным продажам или услугам'],
+      ['unverified','Тип данных не проверен','Старые выгрузки без подтверждения']
+    ];
+    holder.innerHTML=labels.map(([basis,name,hint])=>{
+      const book=report.financial_books[basis]||{};
+      const selected=report.primary_basis===basis;
+      return '<button type="button" class="finance-book" data-financial-basis="'+basis+
+        '" aria-pressed="'+selected+'" '+(book.available?'':'disabled')+'>'+
+        '<div class="finance-book-name">'+name+'</div>'+
+        '<div class="finance-book-amount">'+(book.available?fmtK(book.amount30_kopecks):'Нет данных')+'</div>'+
+        '<div class="finance-book-hint">'+hint+'</div></button>';
+    }).join('');
+    holder.querySelectorAll('button:not(:disabled)').forEach(button=>{
+      button.onclick=()=>{
+        const basis=button.dataset.financialBasis;
+        if(basis===state.mineReport?.primary_basis)return;
+        state.mineViewBasis=basis;
+        void loadMine();
+      };
+    });
+  }
   function renderMine(){
     const r=state.mineReport||null;
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
@@ -295,7 +327,16 @@
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
     const change=imported?r.change_percent:null;
-    $('businessDesc').textContent='Ваши показатели · сохранены в отдельной базе компании';
+    $('businessDesc').textContent='Ваши показатели · поступления и выручка отдельно';
+    renderFinanceBooks(r);
+    const financialLabel=financialTitles[r?.primary_basis]||financialTitles.unverified;
+    const shortMetric=r?.primary_basis==='cash_receipts'?'Поступления':
+      r?.primary_basis==='recognized_revenue'?'Выручка':'Сумма операций';
+    const metricTitle=r?.primary_basis==='unverified'
+      ?'Сумма операций (не подтверждена)':financialLabel;
+    document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' за 30 дней';
+    $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика: '+shortMetric.toLowerCase();
+    $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=shortMetric+' по дням';
     $('companyName').textContent=r&&r.company?r.company.name:'Моя компания';
     $('asOf').textContent='По '+verboseDate(end)+' включительно (МСК)';
     $('rowsInfo').textContent=imported?'В базе '+number(r.source.rows)+' операций':(loading?'Загружаем данные…':state.mineError?'Данные временно недоступны':'Нет загруженных отчётов');
@@ -312,7 +353,7 @@
     $('salesCaption').textContent='Уникальные ID из CSV / Excel';
     $('averageLabel').textContent='Средняя сумма чека';
     $('averageTicket').textContent=imported&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
-    $('averageCaption').textContent='Выручка / количество чеков';
+    $('averageCaption').textContent=shortMetric+' / количество операций';
     $('specialLabel').textContent='Дополнительные показатели';
     $('specialIcon').innerHTML=svgIcon('alert');
     $('specialValue').textContent='—';
@@ -322,16 +363,18 @@
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
-    $('chartCaption').textContent='Суммы за дни по сохранённым операциям с учётом возвратов';
+    $('chartCaption').textContent='Только '+shortMetric.toLowerCase()+
+      ' выбранного типа, с учётом возвратов и корректировок';
     const bad=[],good=[];
-    if(imported&&change!==null&&change<0)bad.push({title:'Выручка снизилась',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
-    if(imported&&change!==null&&change>0)good.push({title:'Выручка выросла',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
-    if(imported&&top.length)good.push({title:'Лидер по выручке — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
+    if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
+    if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
+    if(imported&&top.length)good.push({title:'Лидер по выбранному показателю — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
     if(imported)bad.push({title:'Проверьте полноту отчёта',desc:'Дни без операций считаются нулевыми. Пропуски могут исказить сравнение периодов.'});
     if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV или Excel (.xlsx) с датой, суммой и названиями товаров или услуг.'});
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
-    const ready=imported&&ai?.status==='ready'&&ai.analysis;
+    const ready=imported&&ai?.status==='ready'&&ai.analysis&&
+      ai.primary_basis===r?.primary_basis;
     if(ready){
       const asItem=x=>({
         title:x.title,
@@ -371,7 +414,7 @@
     state.mineError='';
     if(state.business==='mine')renderMine();
     try{
-      state.mineReport=await request('/report');
+      state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
     }catch(error){state.mineError=error.message||'Не удалось получить данные.';}
     finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }
@@ -386,6 +429,7 @@
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
+      $('financeBooks').hidden=true;
       const concernsChip=$('concerns').closest('.panel')?.querySelector('.subtle-chip');
       const positivesChip=$('positives').closest('.panel')?.querySelector('.subtle-chip');
       if(concernsChip)concernsChip.textContent='Анализ';
