@@ -97,7 +97,8 @@
         const block=document.createElement('div');
         block.style.cssText='padding-top:10px;margin-top:8px;border-top:1px solid #ebeef5';
         historyText(block,String(entry.source||'Отчёт')+(entry.undone?' · отменён':''),true);
-        historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+' · без изменений: '+entry.unchanged);
+        historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+
+          (entry.deleted?' · отменено: '+entry.deleted:'')+' · без изменений: '+entry.unchanged);
         if(entry.can_undo){
           const undo=document.createElement('button');
           undo.type='button';
@@ -478,11 +479,12 @@
       invalidateCorrection();setCorrectionButton();
     }
   });
-  document.addEventListener('bp:import-table-ready',()=>{
+  document.addEventListener('bp:import-table-ready',event=>{
     correctionsPanel.hidden=state.business!=='mine';
     correctionMode.checked=false;
     correctionDetails.hidden=true;
     invalidateCorrection();
+    if(event.detail?.file&&state.business==='mine')demo.preview(event.detail.file);
   });
   correctionReviewButton.onclick=async()=>{
     const file=state.fileTable;
@@ -503,14 +505,22 @@
         ' · исправить: '+(summary.updated||0)+' · отменить: '+(summary.deleted||0)+
         ' · без изменений: '+(summary.unchanged||0)+
         (summary.moved?' · перенос дат: '+summary.moved:'')+
-        '\\n'+(response.examples||[]).slice(0,8).map(x=>x.change+' · ID '+String(x.id).slice(0,45)).join('\\n');
+        '\n'+(response.examples||[]).slice(0,8).map(x=>{
+          const dates=x.old_date!==x.new_date?
+            ' · '+(x.old_date||'—')+' → '+(x.new_date||'—'):'';
+          const amounts=x.old_amount_kopecks!==x.new_amount_kopecks
+            ?' · '+(x.old_amount_kopecks==null?'—':money(x.old_amount_kopecks/100))+
+              ' → '+(x.new_amount_kopecks==null?'—':money(x.new_amount_kopecks/100))
+            :'';
+          return x.change+' · ID '+String(x.id).slice(0,45)+dates+amounts;
+        }).join('\n');
       if(response.can_apply){
         checkedCorrection={file,payloadText,confirm_token:response.confirm_token,
           expires_at_ms:response.expires_at_ms};
         correctionApprove.checked=false;
         correctionApproveLabel.hidden=false;
       }else{
-        correctionResult.textContent+='\\nИзменений нет, повторная запись не требуется.';
+        correctionResult.textContent+='\nИзменений нет, повторная запись не требуется.';
         invalidateCorrection();
         correctionResult.textContent='Изменений нет, повторная запись не требуется.';
       }
