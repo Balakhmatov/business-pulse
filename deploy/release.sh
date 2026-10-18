@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# New files checked out by Git must remain readable by the unprivileged
+# business-pulse service user. The previous 0077 umask caused EACCES.
+umask 022
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 REPO=/opt/business-pulse
@@ -52,6 +55,13 @@ install -d -o root -g root -m 700 "$STORE/backups"
 BACKUP=$(mktemp -d "$STORE/backups/pre-deploy-XXXXXXXX")
 SWITCHED=0
 BACKUP_COMPLETE=0
+# Restrict permissions changes to public Business Pulse source code, never
+# secrets under /etc/business-pulse or private SQLite under /var/lib.
+repair_source_permissions() {
+  chmod 755 "$REPO" "$REPO/api" "$REPO/bot"
+  find "$REPO/api" "$REPO/bot" -type d -exec chmod 755 {} +
+  find "$REPO/api" "$REPO/bot" -type f -name '*.mjs' -exec chmod 644 {} +
+}
 PREVIOUS_MARKER="$(cat "$MARKER" 2>/dev/null || true)"
 
 rollback() {
@@ -61,6 +71,8 @@ rollback() {
   systemctl stop "$BOT_SERVICE" "$API_SERVICE" || true
   if [[ "$SWITCHED" == "1" ]]; then
     git -C "$REPO" reset --hard "$OLD" || true
+    # Rollback also rewrites code files: leave them readable to the service.
+    repair_source_permissions || true
     if [[ -n "$PREVIOUS_MARKER" ]]; then
       printf '%s\n' "$PREVIOUS_MARKER" > "$MARKER"
     else
@@ -92,6 +104,11 @@ BACKUP_COMPLETE=1
 
 SWITCHED=1
 git -C "$REPO" merge --ff-only origin/main
+repair_source_permissions
+
+# Check real service-user access, not just root's ability to read these files.
+runuser -u business-pulse -- test -r "$REPO/api/server.mjs"
+runuser -u business-pulse -- test -r "$REPO/bot/index.mjs"
 
 # Repeat the tests on the VPS before migrating the production DB.
 cd "$REPO"
