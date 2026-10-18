@@ -20,7 +20,7 @@ test('Advance is cash collected, not recognized revenue; never add the two finan
   assert.equal(r.financial_books.unverified.amount30_kopecks,9000000);
   assert.equal(r.financial_books.cash_receipts.receipt_count,2);
   assert.equal(r.financial_books.recognized_revenue.receipt_count,1);
-  assert.equal(r.financial_books.recognized_revenue.label,'Выручка по выполненным продажам');
+  assert.equal(r.financial_books.recognized_revenue.label,'Продажи (оказанные услуги и проданные товары)');
   assert.equal(r.financial_books.cash_receipts.chart7.at(-2).amount_kopecks,1000000);
 });
 test('Selecting a second ledger changes its metrics without blending old data',()=>{
