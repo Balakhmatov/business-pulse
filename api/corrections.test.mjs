@@ -168,7 +168,7 @@ test('Corrections and cancellations with a shared ID never touch the other finan
   const applied=f.apply('a',payload,f.preview('a',payload));
   const rows=f.db.prepare(
     'SELECT financial_basis,sold_on,amount_kopecks FROM operations WHERE company_id=? ORDER BY financial_basis'
-  ).all('a');
+  ).all('a').map(row=>({...row}));
   assert.deepEqual(rows,[
     {financial_basis:'cash_receipts',sold_on:'2026-10-13',amount_kopecks:15000},
     {financial_basis:'recognized_revenue',sold_on:'2026-10-12',amount_kopecks:9000}
