@@ -96,7 +96,9 @@
       for(const entry of entries){
         const block=document.createElement('div');
         block.style.cssText='padding-top:10px;margin-top:8px;border-top:1px solid #ebeef5';
-        historyText(block,String(entry.source||'Отчёт')+(entry.undone?' · отменён':''),true);
+        historyText(block,String(entry.source||'Отчёт')+' · '+
+          (financialTitles[entry.financial_basis]||financialTitles.unverified)+
+          (entry.undone?' · отменён':''),true);
         historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+
           (entry.deleted?' · отменено: '+entry.deleted:'')+' · без изменений: '+entry.unchanged);
         if(entry.can_undo){
