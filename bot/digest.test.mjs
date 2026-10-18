@@ -65,7 +65,7 @@ test('Own-company data isolation, full-period comparison, cached AI',t=>{
   );
   const result=f.read('101');
   assert.match(result,/<b>Моя клиника<\/b> \(тестовые данные\)/);
-  assert.match(result,/1\. Выручка за 30 дней: <b>60.?000 ₽<\/b>/u);
+  assert.match(result,/1\. Сумма операций \(тип не подтверждён\) за 30 дней: <b>60.?000 ₽<\/b>/u);
   assert.match(result,/2\. Чеков \/ визитов за 30 дней: <b>30<\/b>/);
   assert.match(result,/4\. Изменение к предыдущим 30 дням: <b>\+100,0%<\/b>/);
   assert.match(result,/📌 <b>Ключевой аналитический вывод<\/b>/);
@@ -98,6 +98,23 @@ test('Cached conclusions from older imports never leak into new digest',t=>{
   const result=f.read('101');
   assert.doesNotMatch(result,/УСТАРЕВШИЙ ВЫВОД/);
   assert.match(result,/Заключение пока формируется/);
+});
+
+test('Cash receipts and fulfilled revenue are separate in the Telegram digest',t=>{
+  const f=fixture();t.after(f.cleanup);
+  f.db.exec("ALTER TABLE operations ADD COLUMN financial_basis TEXT NOT NULL DEFAULT 'unverified'");
+  f.addImport('c101','Реальные финансовые данные');
+  const put=f.db.prepare('INSERT INTO operations(company_id,sold_on,source_id,amount_kopecks,status,financial_basis) VALUES(?,?,?,?,?,?)');
+  put.run('c101','2026-10-16','advance-A',200000,'sale','cash_receipts');
+  put.run('c101','2026-10-16','payment-B',800000,'sale','cash_receipts');
+  put.run('c101','2026-10-16','performed-B',800000,'sale','recognized_revenue');
+  put.run('c101','2026-10-16','old-unknown',4000000,'sale','unverified');
+  const digest=f.read('101');
+  assert.match(digest,/Денежные поступления за 30 дней: <b>10.?000 ₽<\/b>/u);
+  assert.match(digest,/Выручка по выполненным продажам за 30 дней: <b>8.?000 ₽<\/b>/u);
+  assert.match(digest,/Операции без подтверждённого типа за 30 дней: <b>40.?000 ₽<\/b>/u);
+  assert.doesNotMatch(digest,/58.?000 ₽/u);
+  assert.match(digest,/не входят в проверенные поступления или выручку/);
 });
 
 test('Telegram HTML safely escapes untrusted company names and cached AI fields', t => {
