@@ -9,4 +9,4 @@ Type=oneshot
 User=root
 ExecStart=/usr/local/sbin/business-pulse-poll
 TimeoutStartSec=180
-UMask=0077
+UMask=0022
