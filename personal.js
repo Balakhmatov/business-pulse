@@ -357,8 +357,9 @@
           return;
         }
         if(!['template','ai'].includes(answer.source))return;
-        if(answer.source==='ai'&&answer.financial){
+        if(answer.financial){
           file._bpAiFinancial=answer.financial;
+          file._bpAiMappingAmount=answer.mapping?.amount;
         }
         file._bpApplying=true;
         try{
@@ -411,7 +412,11 @@
       state.mineSaving=true;
       $('confirmImport').disabled=true;
       $('importAlert').textContent='Сохраняем отчёт на сервере…';
-      const template={head:state.fileTable.head,mapping:columns};
+      const template={
+        head:state.fileTable.head,mapping:columns,
+        financial:state.fileTable._bpAiMappingAmount===columns.amount
+          ?state.fileTable._bpAiFinancial||null:null
+      };
       const answer=await request('/import',{source:state.fileTable.name.slice(0,120),rows});
       // Saving the mapping is independent of successful accounting: a template
       // API outage must not undo or retry a completed transaction import.
