@@ -79,10 +79,11 @@
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">На что обратить внимание</h2><p class="section-muted">Сигналы, которые стоит проверить</p></div><span class="subtle-chip">Анализ</span></div><div id="concerns"></div></section>
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">Что идёт хорошо</h2><p class="section-muted">Положительные изменения</p></div><span class="subtle-chip">Позитив</span></div><div id="positives"></div></section>
  </div>
- <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button><button type="button" class="neutral-btn" id="bottomImport"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить CSV</button></div></div>
+ <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button><button type="button" class="neutral-btn" id="bottomImport"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить CSV / Excel</button></div></div>
  <div class="foot">Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений</div>
 </main></div>
-<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV со строками продаж или оказанных услуг. Мы сопоставим столбцы, проверим записи и пересчитаем показатели. Файл обрабатывается только на вашем устройстве — никуда не отправляется.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV или перетащите сюда</strong><span>Поддерживается CSV в UTF-8 и Windows-1251</span><input type="file" id="fileInput" accept=".csv,text/csv,text/plain" aria-label="Выбрать файл CSV"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
+<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
+<script src="excel-adapter.js?v=20261018-xlsx-v1"></script>
 <script>
 'use strict';
 (function(){
@@ -160,7 +161,25 @@ $('bottomDataHint').textContent=d.imported?'Источник: '+d.meta.name+'. �
 document.querySelectorAll('.company-tab').forEach(b=>{b.classList.toggle('active',b.dataset.business===state.business);b.setAttribute('aria-pressed',String(b.dataset.business===state.business))});}
 function csvCell(x){x=String(x??'');return /[;"\n\r]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x}
 function downloadSample(){const exampleBusiness=state.business==='mine'?'clinic':state.business;const d=state.datasets[exampleBusiness].imported?demo(configs[exampleBusiness]):state.datasets[exampleBusiness];const head=['Дата','Номер чека','Товар или услуга','Сумма','Статус'];const csv=[head.join(';'),...d.rows.map(r=>[r.date,r.id,r.item,r.amount,r.status==='refund'?'возврат':'оплата'].map(csvCell).join(';'))].join('\r\n');const b=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='Бизнес_Пульс_пример_'+exampleBusiness+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1200)}
-function showModal(open){$('modal').classList.toggle('show',open);if(open){$('fileInput').value='';$('fileStatus').textContent='';$('importAlert').textContent='';$('mappingSection').hidden=true;$('confirmImport').disabled=true;state.fileTable=null}}
+let importReadToken=0,excelBook=null;
+const sheetControl=document.createElement('div');
+sheetControl.id='sheetControl';sheetControl.hidden=true;sheetControl.style.marginTop='12px';
+sheetControl.innerHTML='<label for="excelSheet" style="font-size:13px;font-weight:700;display:block;margin-bottom:6px">Лист Excel</label><select id="excelSheet" style="width:100%;padding:11px;border:1px solid #d7d9e6;border-radius:10px;background:#fff"></select>';
+$('fileStatus').after(sheetControl);
+function showModal(open){
+  ++importReadToken;
+  $('modal').classList.toggle('show',open);
+  if(open){
+    $('fileInput').value='';
+    $('fileStatus').textContent='';
+    $('importAlert').textContent='';
+    $('mappingSection').hidden=true;
+    $('confirmImport').disabled=true;
+    sheetControl.hidden=true;
+    excelBook=null;
+    state.fileTable=null;
+  }
+}
 $('openImport').onclick=()=>showModal(true);$('bottomImport').onclick=()=>showModal(true);$('sideImport').onclick=()=>showModal(true);$('closeModal').onclick=()=>showModal(false);$('cancelImport').onclick=()=>showModal(false);$('modal').addEventListener('click',e=>{if(e.target===$('modal'))showModal(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape')showModal(false)});$('downloadSample').onclick=downloadSample;
 $('clearImport').onclick=()=>{state.datasets[state.business]=demo(configs[state.business]);render()};
 document.querySelectorAll('.company-tab').forEach(b=>b.addEventListener('click',()=>{state.business=b.dataset.business;render()}));
@@ -182,13 +201,80 @@ const val=refund?-Math.abs(amount):amount;
 if(m.id>=0&&id){const key=[date,id,item,val,refund].join('|');if(seen.has(key)){duplicate++;return}seen.add(key)}rows.push({date,amount:val,id:id||String(i+1),item:item||'Без категории',status:refund?'refund':'sale'});if(refund)refunds++});
 if(!rows.length)throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');return{rows,skipped,duplicate,refunds}}
 function preview(f){try{const m=mapping(),result=parseImported(f,m);$('importAlert').textContent='';const examples=result.rows.slice(0,4);$('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>`<tr><td>${r.date}</td><td>${escapeHTML(r.item)}</td><td>${money(r.amount)}</td><td>${r.status==='refund'?'Возврат':'Оплата'}</td></tr>`).join('')+'</tbody></table>';$('confirmImport').disabled=false}catch(e){$('importPreview').textContent='Выберите столбцы для просмотра данных.';$('importAlert').textContent=e.message;$('confirmImport').disabled=true}}
-async function readFile(file){if(!file)return;try{if(file.size>16*1024*1024)throw Error('Файл должен быть не больше 16 МБ');$('fileStatus').textContent='Чтение файла…';const buf=await file.arrayBuffer();let raw=new TextDecoder('utf-8',{fatal:false}).decode(buf);if((raw.match(/�/g)||[]).length>4)raw=new TextDecoder('windows-1251').decode(buf);const parsed=parseCSV(raw);parsed.name=file.name;renderMapping(parsed)}catch(e){$('fileStatus').textContent='';$('mappingSection').hidden=true;$('importAlert').textContent=e.message||'Ошибка чтения CSV';$('confirmImport').disabled=true}}
+async function showExcelSheet(name){
+  if(!excelBook)return;
+  const ticket=++importReadToken;
+  $('fileStatus').textContent='Читаем лист «'+name+'»…';
+  $('importAlert').textContent='';
+  $('mappingSection').hidden=true;
+  $('confirmImport').disabled=true;
+  state.fileTable=null;
+  try{
+    const parsed=await excelBook.readSheet(name);
+    if(ticket!==importReadToken)return;
+    renderMapping(parsed);
+    $('fileStatus').textContent+=' Лист: '+name+'.';
+  }catch(error){
+    if(ticket!==importReadToken)return;
+    $('fileStatus').textContent='';
+    $('importAlert').textContent=error.message||'Не удалось прочитать лист Excel.';
+  }
+}
+$('excelSheet').addEventListener('change',event=>{void showExcelSheet(event.target.value)});
+async function readFile(file){
+  if(!file)return;
+  const ticket=++importReadToken;
+  excelBook=null;
+  sheetControl.hidden=true;
+  state.fileTable=null;
+  $('mappingSection').hidden=true;
+  $('confirmImport').disabled=true;
+  $('importAlert').textContent='';
+  try{
+    if(file.size>16*1024*1024)throw Error('Файл должен быть не больше 16 МБ.');
+    if(!file.size)throw Error('Файл пуст.');
+    if(!/\.(csv|xlsx)$/i.test(file.name)){
+      if(/\.xls$/i.test(file.name))throw Error('Формат .xls устарел. Откройте файл в Excel и сохраните как .xlsx.');
+      throw Error('Поддерживаются только CSV и Excel .xlsx.');
+    }
+    $('fileStatus').textContent='Чтение файла…';
+    if(/\.xlsx$/i.test(file.name)){
+      if(!window.BP_ExcelAdapter)throw Error('Модуль чтения Excel не загрузился. Перезапустите приложение.');
+      const book=await window.BP_ExcelAdapter.workbook(file);
+      if(ticket!==importReadToken)return;
+      excelBook=book;
+      if(book.names.length>1){
+        const select=$('excelSheet');
+        select.replaceChildren(...book.names.map(name=>{
+          const option=document.createElement('option');
+          option.value=name;option.textContent=name;return option;
+        }));
+        sheetControl.hidden=false;
+      }
+      await showExcelSheet(book.names[0]);
+    }else{
+      const buf=await file.arrayBuffer();
+      if(ticket!==importReadToken)return;
+      let raw=new TextDecoder('utf-8',{fatal:false}).decode(buf);
+      if((raw.match(/�/g)||[]).length>4)raw=new TextDecoder('windows-1251').decode(buf);
+      const parsed=parseCSV(raw);
+      parsed.name=file.name;
+      renderMapping(parsed);
+    }
+  }catch(error){
+    if(ticket!==importReadToken)return;
+    $('fileStatus').textContent='';
+    $('mappingSection').hidden=true;
+    $('importAlert').textContent=error.message||'Ошибка чтения файла.';
+    $('confirmImport').disabled=true;
+  }
+}
 $('fileInput').onchange=e=>readFile(e.target.files[0]);const zone=$('dropZone');zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag')});zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');readFile(e.dataTransfer.files[0])});
 $('confirmImport').onclick=()=>{try{const m=mapping(),res=parseImported(state.fileTable,m);state.datasets[state.business]={rows:res.rows,imported:true,special:{},meta:{name:state.fileTable.name,hasOrderId:m.id>=0}};showModal(false);render()}catch(e){$('importAlert').textContent=e.message}};
 window.BP_Demo={state,parseImported,mapping,showModal,render,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday};
 render();
 })();
 </script>
-<script src="personal.js?v=20261017-api-retry-v1" defer></script>
+<script src="personal.js?v=20261018-xlsx-v1" defer></script>
 </body>
 </html>
