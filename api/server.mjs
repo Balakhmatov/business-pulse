@@ -187,6 +187,16 @@ const server=http.createServer(async(req,res)=>{
       const input=await readJSON(req);
       return reply(res,200,importMapper.confirm(c,input),origin);
     }
+    if(req.method==='GET'&&url.pathname==='/api/import/history'){
+      return reply(res,200,{history:accumulator.history(c)},origin);
+    }
+    if(req.method==='POST'&&url.pathname==='/api/import/undo'){
+      const input=await readJSON(req);
+      const result=accumulator.undoLatest(c,input?.batch_id);
+      // An undo changes the underlying financial evidence just like an import.
+      ai.onImport(c);
+      return reply(res,200,{...result,report:report(c),history:accumulator.history(c)},origin);
+    }
     if(req.method==='POST'&&url.pathname==='/api/reset-test-data'){
       const input=await readJSON(req);
       if(input?.confirm!=='DELETE_TEST_DATA')return reply(res,400,{error:'Подтвердите удаление тестовых операций.'},origin);
