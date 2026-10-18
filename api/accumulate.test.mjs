@@ -485,7 +485,7 @@ test('Verified cash and earned revenue imports with identical source IDs remain 
   assert.equal(earned.book_total,1);
   const actual=f.db.prepare(
     'SELECT financial_basis,amount_kopecks FROM operations WHERE company_id=? ORDER BY financial_basis'
-  ).all('a');
+  ).all('a').map(row=>({...row}));
   assert.deepEqual(actual,[
     {financial_basis:'cash_receipts',amount_kopecks:100000},
     {financial_basis:'recognized_revenue',amount_kopecks:80000}
@@ -500,7 +500,7 @@ test('Verified cash and earned revenue imports with identical source IDs remain 
   engine.undoLatest({id:'a'},earned.batch_id);
   assert.deepEqual(f.db.prepare(
     'SELECT financial_basis,amount_kopecks FROM operations WHERE company_id=?'
-  ).all('a'),[{financial_basis:'cash_receipts',amount_kopecks:100000}]);
+  ).all('a').map(row=>({...row})),[{financial_basis:'cash_receipts',amount_kopecks:100000}]);
 });
 
 test('Legacy operations are unverified and retain their exact identity after finance migration',t=>{
