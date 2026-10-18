@@ -5,7 +5,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
-import { calculateFinancialSummary } from './finance-summary.mjs';
+import { calculateFinancialSummary,INDUSTRIES } from './finance-summary.mjs';
 import { createCorrectionService } from './corrections.mjs';
 import { resetTestData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
@@ -36,7 +36,8 @@ const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   first:db.prepare('SELECT id,name,industry FROM companies WHERE owner_id=? ORDER BY created_at LIMIT 1'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),
-  rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status,financial_basis FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
+  setIndustry:db.prepare('UPDATE companies SET industry=? WHERE id=? AND owner_id=?'),
+  rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status,financial_basis,quantity_milli FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
   countBasis:db.prepare('SELECT financial_basis,COUNT(*) AS n FROM operations WHERE company_id=? GROUP BY financial_basis'),
   latest:db.prepare('SELECT imported_at,source,row_count,last_change_at FROM imports WHERE company_id=?'),
   total:db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?')
@@ -78,7 +79,7 @@ function report(c,requestedBasis=null){
   const end=shift(mskToday(),-1),start=shift(end,-59);
   const entries=st.rows.all(c.id,start,end);
   const counts=Object.fromEntries(st.countBasis.all(c.id).map(x=>[x.financial_basis,x.n]));
-  const summary=calculateFinancialSummary(entries,counts,end,requestedBasis);
+  const summary=calculateFinancialSummary(entries,counts,end,requestedBasis,c.industry);
   const src=st.latest.get(c.id);
   return {...summary,company:c,
     source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,
@@ -100,6 +101,9 @@ function normalize(input){
     if(!r||typeof r.date!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(r.date)||Number.isNaN(Date.parse(r.date+'T00:00:00Z'))||new Date(r.date+'T00:00:00Z').toISOString().slice(0,10)!==r.date||r.date>today||r.date<shift(today,-730))throw Error('Invalid date');
     if(typeof r.id!=='string'||!r.id.trim()||r.id.length>100||typeof r.item!=='string'||!r.item.trim()||r.item.length>140)throw Error('Invalid ID or item');
     if(!Number.isSafeInteger(r.amount_kopecks)||Math.abs(r.amount_kopecks)>1e12||r.amount_kopecks===0)throw Error('Invalid amount');
+    if(!(r.quantity_milli===undefined||r.quantity_milli===null||
+      (Number.isSafeInteger(r.quantity_milli)&&r.quantity_milli>0&&r.quantity_milli<=1000000000)))
+      throw Error('Неверное количество: проверьте столбец «Количество».');
     if(!['sale','refund'].includes(r.status)||(r.status==='sale'&&r.amount_kopecks<0)||(r.status==='refund'&&r.amount_kopecks>0))throw Error('Invalid status');
     const key=[r.date,r.id,r.item,r.amount_kopecks,r.status].join('\u0000');
     if(!seen.has(key)){result.push(r);seen.add(key);}
@@ -175,6 +179,14 @@ const server=http.createServer(async(req,res)=>{
   try{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c},origin);
+    if(req.method==='POST'&&url.pathname==='/api/company/industry'){
+      const body=await readJSON(req);
+      if(!body||typeof body.industry!=='string'||!Object.hasOwn(INDUSTRIES,body.industry))
+        return reply(res,400,{error:'Выберите тип бизнеса из списка.'},origin);
+      st.setIndustry.run(body.industry,c.id,id);
+      c.industry=body.industry;
+      return reply(res,200,{company:c,report:report(c)},origin);
+    }
     if(req.method==='GET'&&url.pathname==='/api/report')
       return reply(res,200,report(c,url.searchParams.get('basis')),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
