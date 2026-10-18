@@ -360,10 +360,10 @@
     const r=state.mineReport||null;
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
     const end=r&&r.as_of?r.as_of:yesterday;
-    const chartData=r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
+    const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
-    const change=imported?r.change_percent:null;
+    const change=imported&&r.primary_basis!=='unverified'?r.change_percent:null;
     $('businessDesc').textContent='Ваши показатели · полученные оплаты и выполненная работа';
     renderFinanceBooks(r);
     const financialLabel=financialTitles[r?.primary_basis]||financialTitles.unverified;
@@ -384,7 +384,7 @@
     $('revenue30').textContent=imported&&verified?fmtK(r.revenue30_kopecks):'—';
     $('revenueChange').textContent=change===null?'Пока не с чем сравнить':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
-    $('comparisonDesc').textContent=imported&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из 30 дней, ранее — за '+r.coverage.previous_days+' из 30':'Последние 30 завершённых дней с учётом возвратов';
+    $('comparisonDesc').textContent=imported&&verified&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из 30 дней, ранее — за '+r.coverage.previous_days+' из 30':'Последние 30 завершённых дней с учётом возвратов';
     $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
       shortMetric+' за вчера';
     $('revenueYesterday').textContent=imported&&verified?fmtK(r.yesterday_kopecks):'—';
@@ -402,12 +402,15 @@
     $('specialIcon').innerHTML=svgIcon('alert');
     $('specialValue').textContent='—';
     $('specialCaption').textContent='Появятся, когда будут нужные данные';
-    $('topTitle').textContent='Топ-3 товаров и услуг';
-    const top=imported?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
+    $('topTitle').textContent=r?.company?.industry==='clinic'?'Топ-3 услуги':
+      r?.company?.industry==='store'?'Топ-3 товара':
+      r?.company?.industry==='auto'?'Топ-3 работы':'Топ-3 позиции';
+    const top=imported&&verified?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
-    $('chartCaption').textContent=shortMetric+' по дням. Возвраты и исправления учтены.';
+    $('chartCaption').textContent=verified?shortMetric+' по дням. Возвраты и исправления учтены.':
+      'Загрузите подтверждённые оплаты или выполненные продажи для графика.';
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
     if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
