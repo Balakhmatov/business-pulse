@@ -66,3 +66,63 @@ test('Zero operations in current 30 days is not proof of zero business activity'
   assert.equal(r.financial_books.recognized_revenue.coverage.current_days,0);
   assert.equal(r.financial_books.recognized_revenue.change_percent,null);
 });
+
+test('Clinic and store count verified quantities, not receipt rows',()=>{
+  const r1={...entry('recognized_revenue','visit-1',500000),quantity_milli:2000};
+  const r2={...entry('recognized_revenue','visit-1',300000),item:'Injection',quantity_milli:3000};
+  const refund={...entry('recognized_revenue','refund-1',-100000,'2026-10-16','Injection','refund'),quantity_milli:1000};
+  const clinic=calculateFinancialSummary([r1,r2,refund],{recognized_revenue:3},END,null,'clinic');
+  assert.equal(clinic.volume.label,'Оказано услуг');
+  assert.equal(clinic.volume.value,4);
+  assert.equal(clinic.volume.unit,'шт.');
+  assert.equal(clinic.volume.coverage,'complete');
+  assert.equal(clinic.financial_books.recognized_revenue.amount30_kopecks,700000);
+  const store=calculateFinancialSummary([r1,r2],{recognized_revenue:2},END,null,'store');
+  assert.equal(store.volume.label,'Продано товаров');
+  assert.equal(store.volume.value,5);
+  assert.equal(store.volume.unit,'шт.');
+  assert.equal(store.unpaid_customer_debt_kopecks,null);
+  assert.equal(store.unpaid_customer_debt_available,false);
+});
+test('Missing unit count cannot be guessed from line or receipt count',()=>{
+  const first={...entry('recognized_revenue','A',200000),quantity_milli:2000};
+  const second=entry('recognized_revenue','B',100000);
+  const partial=calculateFinancialSummary([first,second],{recognized_revenue:2},END,null,'clinic');
+  assert.equal(partial.volume.value,null);
+  assert.equal(partial.volume.coverage,'incomplete');
+  const legacy=calculateFinancialSummary([second],{recognized_revenue:1},END,null,'store');
+  assert.equal(legacy.volume.value,null);
+  assert.equal(legacy.volume.coverage,'incomplete');
+  assert.equal(legacy.volume.basis,'recognized_revenue');
+});
+test('Auto jobs are unique order IDs, cafe uses unique paid check IDs',()=>{
+  const jobs=[
+    {...entry('recognized_revenue','job-1',300000),quantity_milli:1000},
+    entry('recognized_revenue','job-1',100000,'2026-10-17','Labor'),
+    entry('recognized_revenue','job-2',250000)
+  ];
+  const auto=calculateFinancialSummary(jobs,{recognized_revenue:3},END,null,'auto');
+  assert.equal(auto.volume.value,2);
+  assert.equal(auto.volume.label,'Выполнено заказов');
+  const checks=[
+    entry('cash_receipts','check-A',25000),entry('cash_receipts','check-A',15000,END,'Pastry'),
+    entry('cash_receipts','check-B',20000),
+    entry('recognized_revenue','done',40000)
+  ];
+  const cafe=calculateFinancialSummary(checks,{cash_receipts:3,recognized_revenue:1},END,null,'cafe');
+  assert.equal(cafe.volume.value,3); // same check ID on different dates counts separately
+  assert.equal(cafe.volume.label,'Количество чеков');
+  assert.equal(cafe.volume.basis,'cash_receipts');
+});
+test('Other category counts identifiers in only one ledger, never adds cash and sales or infers debt',()=>{
+  const entries=[
+    entry('cash_receipts','sale',100000),entry('recognized_revenue','sale',100000),
+    entry('unverified','legacy',4000000)
+  ];
+  const other=calculateFinancialSummary(entries,{cash_receipts:1,recognized_revenue:1,unverified:1},END,null,'other');
+  assert.equal(other.volume.value,1);
+  assert.equal(other.unpaid_customer_debt_kopecks,null);
+  assert.equal(other.financial_books.cash_receipts.amount30_kopecks,100000);
+  assert.equal(other.financial_books.recognized_revenue.amount30_kopecks,100000);
+  assert.equal(other.financial_books.unverified.amount30_kopecks,4000000);
+});
