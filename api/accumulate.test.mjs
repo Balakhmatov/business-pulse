@@ -557,3 +557,20 @@ test('ID операции is recognized but ID клиента and ID товар�
   assert.equal(mapping.id,3);
   assert.equal(mapping.amount,4);
 });
+
+
+test('Owner-facing interface uses clear Payments and Sales terminology, keeping source accounting types intact',()=>{
+  const personal=readFileSync(new URL('../personal.js',import.meta.url),'utf8');
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  assert.match(personal,/recognized_revenue:'Продажи'/);
+  assert.match(personal,/Продажи за 30 дней/);
+  assert.match(personal,/Оказанные услуги и проданные товары — даже если ещё не оплачены/);
+  assert.match(personal,/Полученные деньги \(включая авансы\)/);
+  assert.match(personal,/Просто выставленные счета и авансы за будущие услуги не включены/);
+  assert.match(personal,/Тип сумм пока неизвестен/);
+  assert.doesNotMatch(personal,/Выручка за 30 дней/);
+  assert.match(html,/const positiveLabel=selectedBook==='recognized_revenue'\?'Продажа'/);
+  assert.match(html,/selectedBook==='cash_receipts'\?'Оплата':'Операция'/);
+  assert.match(html,/Пока не с чем сравнить/);
+  assert.match(html,/Что означают суммы в этом столбце/);
+});
