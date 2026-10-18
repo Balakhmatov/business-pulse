@@ -162,7 +162,7 @@ export function dailyDigestFor(telegramId, {
         lines.push(labels[other]+' за 30 дней: <b>'+money(rows.total)+'</b> (считаем отдельно).');
       }
       if(available.has('unverified'))
-        lines.push('', '<i>Данные с неподтверждённым финансовым типом не входят в проверенные поступления или выручку.</i>');
+        lines.push('', '<i>По старым отчётам пока неясно, что означают суммы. Не прибавляем их ни к поступлениям, ни к продажам.</i>');
     }
     const importDate = String(company.imported_at).replace(' ', 'T') + 'Z';
     const parsedImport = new Date(importDate);
