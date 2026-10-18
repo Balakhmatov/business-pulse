@@ -46,6 +46,10 @@
   .modal .import-actions button{flex:1;min-width:0;white-space:normal;line-height:1.25;min-height:44px}
 }
 #financialConfirmLabel:not([hidden]){display:flex}
+
+.import-recognition-status{font-size:12px;line-height:1.5;color:#5b647b;padding:8px 0;max-width:100%;overflow-wrap:anywhere}
+.import-recognition-retry{display:block;max-width:100%;margin:5px 0 12px;background:#f4f5fa;box-shadow:none;color:#454e70;font-size:12px;min-height:38px;white-space:normal;text-align:left}
+.import-recognition-retry[hidden],.import-recognition-status[hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -100,7 +104,7 @@
  <div class="foot">Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений</div>
 </main></div>
 <div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Что именно отражают суммы</strong><div id="financialMessage" style="margin-top:8px"></div><label id="financialConfirmLabel" style="align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил тип поступлений, авансы, частичные оплаты и возвраты. Подтверждаю, что выбранные суммы можно включить в этот отчёт.</span></label></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
-<script src="smart-import.js?v=20261018-financial-v2"></script>
+<script src="smart-import.js?v=20261018-repeat-fix-v1"></script>
 <script src="excel-adapter.js?v=20261018-smart-v2-fallback"></script>
 <script>
 'use strict';
@@ -398,6 +402,6 @@ window.BP_Demo={state,parseImported,mapping,showModal,render,chart,insightHTML,e
 render();
 })();
 </script>
-<script src="personal.js?v=20261018-financial-v2" defer></script>
+<script src="personal.js?v=20261018-repeat-fix-v1" defer></script>
 </body>
 </html>
