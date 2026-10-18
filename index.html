@@ -232,7 +232,12 @@ function renderMapping(file){
    detail.hidden=!hints.length;
  }
 
-$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.mappingGuess?file.mappingGuess[key]:file.head.findIndex(t=>patterns[key].test(t));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>preview(file)));preview(file)}
+$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.mappingGuess?file.mappingGuess[key]:file.head.findIndex(t=>patterns[key].test(t));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>{
+  if(!file._bpApplying)file._bpUserAdjusted=true;
+  preview(file);
+}));preview(file);
+document.dispatchEvent(new CustomEvent('bp:import-table-ready',{detail:{file}}));
+}
 function parseDate(t){const v=String(t||'').trim();let y,m,d;let match=v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T].*)?$/);if(match){[,y,m,d]=match}else{match=v.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:\s.*)?$/);if(!match)return null;[,d,m,y]=match}const s=String(y).padStart(4,'0')+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');return !Number.isNaN(new Date(s+'T12:00:00').getTime())&&dayStamp(new Date(s+'T12:00:00'))===s?s:null}
 function parseAmount(value){let t=String(value??'').replace(/[\s\u00a0\u202f₽]/g,'').replace(/[^\d,\.\-+]/g,'');if(!t)return null;if(t.includes(',')&&t.includes('.'))t=t.lastIndexOf(',')>t.lastIndexOf('.')?t.replace(/\./g,'').replace(',','.'):t.replace(/,/g,'');else if(t.includes(','))t=t.replace(',','.');const n=Number(t);return Number.isFinite(n)?n:null}
 function parseImported(f,m){
@@ -317,6 +322,6 @@ window.BP_Demo={state,parseImported,mapping,showModal,render,chart,insightHTML,e
 render();
 })();
 </script>
-<script src="personal.js?v=20261018-smart-v1" defer></script>
+<script src="personal.js?v=20261018-saved-templates-v1" defer></script>
 </body>
 </html>
