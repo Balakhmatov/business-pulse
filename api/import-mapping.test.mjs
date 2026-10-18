@@ -107,3 +107,48 @@ test('Template store is bounded by company, at most 30 signatures',t=>{
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM import_mapping_templates WHERE company_id=?').get('a').n,30);
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM import_mapping_templates WHERE company_id=?').get('b').n,0);
 });
+
+test('Financial semantic classification and risk flags are returned with a valid AI suggestion',async t=>{
+  const financial={basis:'cash_receipts',confidence:'high',risk_flags:['partial_payments','refunds']};
+  const fetchFn=async(_url,opts)=>{
+    const payload=JSON.parse(opts.body);
+    assert.ok(payload.instructions.includes('АВАНС'));
+    assert.ok(payload.instructions.includes('КАССОВОЕ ПОСТУПЛЕНИЕ'));
+    assert.ok(payload.instructions.includes('частичные платежи'));
+    assert.equal(payload.store,false);
+    return {ok:true,json:async()=>({status:'completed',output:[{
+      type:'message',content:[{type:'output_text',text:JSON.stringify({
+        report_type:'operations',mapping:selected,financial
+      })}]
+    }]})};
+  };
+  const f=fixture({apiKey:'test-only',fetchFn});t.after(f.close);
+  const result=await f.service.resolve({id:'a'},{head:headers,profiles:profile(),needs_ai:true});
+  assert.equal(result.source,'ai');
+  assert.deepEqual(result.financial,financial);
+});
+test('The AI cannot launder accrued amounts into cash receipts',async t=>{
+  const hdr=['Дата закрытия','Код реализации','Номенклатура','Начислено по прайсу','Вид движения'];
+  const paymentProfile=profile();
+  const fetchFn=async()=>({ok:true,json:async()=>({status:'completed',output:[{
+    type:'message',content:[{type:'output_text',text:JSON.stringify({
+      report_type:'operations',mapping:selected,
+      financial:{basis:'cash_receipts',confidence:'high',risk_flags:[]}
+    })}]
+  }]})});
+  const f=fixture({apiKey:'test-only',fetchFn});t.after(f.close);
+  const result=await f.service.resolve({id:'a'},{head:hdr,profiles:paymentProfile,needs_ai:true});
+  assert.equal(result.source,'heuristic');
+  assert.equal(result.mapping,null);
+});
+test('Model returning unknown report type or malformed financial risk must not auto-map',async t=>{
+  const fetchFn=async()=>({ok:true,json:async()=>({status:'completed',output:[{
+    type:'message',content:[{type:'output_text',text:JSON.stringify({
+      report_type:'unknown',mapping:selected,
+      financial:{basis:'unknown',confidence:'low',risk_flags:['unvalidated_tag']}
+    })}]
+  }]})});
+  const f=fixture({apiKey:'test-only',fetchFn});t.after(f.close);
+  const result=await f.service.resolve({id:'a'},{head:headers,profiles:profile(),needs_ai:true});
+  assert.equal(result.source,'heuristic');
+});
