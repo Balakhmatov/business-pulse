@@ -367,8 +367,7 @@
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
-    $('chartCaption').textContent='Только '+shortMetric.toLowerCase()+
-      ' выбранного типа, с учётом возвратов и корректировок';
+    $('chartCaption').textContent=shortMetric+' по дням. Возвраты и исправления учтены.';
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
     if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
@@ -404,7 +403,7 @@
         $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' исправлено'+(x.deleted?', '+number(x.deleted)+' отменено':'')+', '+number(x.unchanged)+' без изменений.';
         if(state.mineTemplateNotice)$('bottomDataHint').textContent+=state.mineTemplateNotice;
       }
-      const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Автоматические выводы недоступны, но основные показатели рассчитаны.':ai?.status==='error'?' Автоматические выводы временно недоступны. Основные показатели рассчитаны.':'';
+      const message=ready?' Выводы готовы.':ai?.status==='pending'?' Готовим выводы по загруженным данным…':ai?.status==='disabled'?' Автоматические выводы недоступны, но основные показатели рассчитаны.':ai?.status==='error'?' Автоматические выводы временно недоступны. Основные показатели рассчитаны.':'';
       $('bottomDataHint').textContent+=message;
     }
     $('clearImport').hidden=true;
@@ -624,9 +623,9 @@
     correctionResult.textContent='Проверяем изменения…';
     try{
       const financial=file._bpFinancialReview;
-      if(financial?.blocked)throw Error('Выбрана некорректная сумма для финансового отчёта.');
+      if(financial?.blocked)throw Error('Выбран неподходящий столбец суммы. Проверьте, что именно в нём указано.');
       if(financial?.needsConfirm&&!$('financialConfirm').checked)
-        throw Error('Сначала подтвердите финансовые предупреждения.');
+        throw Error('Сначала проверьте замечания к суммам и подтвердите их.');
       const payload=correctionPayload(),payloadText=JSON.stringify(payload);
       const response=await request('/import/corrections/preview',payload);
       if(state.fileTable!==file||!correctionMode.checked||
@@ -782,9 +781,9 @@
     try{
       const columns=mapping();
       const financial=state.fileTable?._bpFinancialReview;
-      if(financial?.blocked)throw Error('Этот столбец не отражает поступление или выручку. Выберите корректную сумму.');
+      if(financial?.blocked)throw Error('В этом столбце не сумма полученных денег или выполненных продаж. Выберите подходящую сумму.');
       if(financial?.needsConfirm&&!$('financialConfirm').checked){
-        throw Error('Подтвердите финансовые предупреждения перед импортом.');
+        throw Error('Проверьте замечания к суммам и подтвердите их перед загрузкой.');
       }
       if(columns.id<0)throw Error('Для накопительной загрузки выберите столбец «ID чека / визита». Без него нельзя надёжно исключить дубли.');
       if(state.fileTable.rows.some(values=>!String(values[columns.id]??'').trim()))throw Error('В столбце ID есть пустые значения. Нужны стабильные идентификаторы.');
