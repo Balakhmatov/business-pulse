@@ -7,6 +7,7 @@ const RATIOS=['dates','nums','statuses','unique','words','zeroids','filled'];
 const FINANCIAL_BASES=['cash_receipts','reported_revenue','accrual','advance','debt','mixed','unknown'];
 const FINANCIAL_FLAGS=['prepayments','partial_payments','receivables','refunds','tax_or_vat','double_counting','status_uncertain','accruals'];
 const throttleMs=10*60*1000;
+const draftTtlMs=7*24*60*60*1000;
 const safeError=(message,status=400)=>Object.assign(new Error(message),{status});
 function normalizeHeader(value){
   if(typeof value!=='string'||value.length>180)throw safeError('Недопустимое название столбца.');
@@ -122,6 +123,18 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
     'company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,'+
     'signature TEXT NOT NULL,mapping TEXT NOT NULL,updated_ms INTEGER NOT NULL,'+
     'PRIMARY KEY(company_id,signature));');
+  // AI suggestions are NOT user-confirmed templates. Persist them separately so
+  // the same file can be reopened during rate limits or after API restarts.
+  db.exec('CREATE TABLE IF NOT EXISTS import_mapping_suggestions ('+
+    'company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,'+
+    'signature TEXT NOT NULL,suggestion TEXT NOT NULL,updated_ms INTEGER NOT NULL,'+
+    'PRIMARY KEY(company_id,signature));');
+  const suggestionFind=db.prepare('SELECT suggestion,updated_ms FROM import_mapping_suggestions WHERE company_id=? AND signature=?');
+  const suggestionSave=db.prepare('INSERT INTO import_mapping_suggestions(company_id,signature,suggestion,updated_ms) VALUES(?,?,?,?) '+
+    'ON CONFLICT(company_id,signature) DO UPDATE SET suggestion=excluded.suggestion,updated_ms=excluded.updated_ms');
+  const suggestionDelete=db.prepare('DELETE FROM import_mapping_suggestions WHERE company_id=? AND signature=?');
+  const suggestionPrune=db.prepare('DELETE FROM import_mapping_suggestions WHERE company_id=? AND signature NOT IN ('+
+    'SELECT signature FROM import_mapping_suggestions WHERE company_id=? ORDER BY updated_ms DESC LIMIT 30)');
   const find=db.prepare('SELECT mapping FROM import_mapping_templates WHERE company_id=? AND signature=?');
   const save=db.prepare('INSERT INTO import_mapping_templates(company_id,signature,mapping,updated_ms) VALUES(?,?,?,?) '+
     'ON CONFLICT(company_id,signature) DO UPDATE SET mapping=excluded.mapping,updated_ms=excluded.updated_ms');
@@ -180,17 +193,39 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
         return {source:'template',mapping:m,...(financial?{financial}:{})};
       }catch{ /* corrupted/outdated mapping: allow manual flow */ }
     }
-    if(!needsAI||!key)return {source:'heuristic',mapping:null};
-    const timestamp=now(),last=rate.get(company.id);
+    const timestamp=now();
+    const earlier=suggestionFind.get(company.id,signature);
+    if(earlier&&timestamp-earlier.updated_ms<draftTtlMs&&timestamp>=earlier.updated_ms){
+      try{
+        const draft=JSON.parse(earlier.suggestion);
+        const m=draft.mapping;
+        if(!m||FIELDS.some(k=>!Number.isInteger(m[k])||m[k]<-1||m[k]>=head.length)||
+          new Set(Object.values(m).filter(i=>i>=0)).size!==Object.values(m).filter(i=>i>=0).length)
+          throw Error('Invalid cached field indices');
+        const financial=savedFinancial(draft.financial);
+        return {source:'suggestion',mapping:m,...(financial?{financial}:{})};
+      }catch{suggestionDelete.run(company.id,signature);}
+    }
+    if(!needsAI||!key)return {source:'heuristic',mapping:null,reason:!key?'disabled':'manual'};
+    const last=rate.get(company.id);
     if(inFlight.has(company.id)||last!==undefined&&timestamp-last<throttleMs)
-      return {source:'heuristic',mapping:null,reason:'limit'};
+      return {source:'heuristic',mapping:null,reason:'limit',
+        retry_after_seconds:Math.ceil((throttleMs-(timestamp-last))/1000)};
     rate.set(company.id,timestamp);inFlight.add(company.id);
     try{
-      const mapping=await propose(head,profiles);
-      return mapping?{source:'ai',mapping:mapping.mapping,financial:mapping.financial}:{source:'heuristic',mapping:null};
+      const result=await propose(head,profiles);
+      if(!result)return {source:'heuristic',mapping:null,reason:'unrecognized'};
+      // No raw spreadsheet rows or identities enter this table. Unconfirmed
+      // suggestions can be safely replaced later by actual user choices.
+      suggestionSave.run(company.id,signature,JSON.stringify(result),timestamp);
+      suggestionPrune.run(company.id,company.id);
+      return {source:'ai',mapping:result.mapping,financial:result.financial};
     }catch(error){
       console.warn('Import mapping AI unavailable:',error.message);
-      return {source:'heuristic',mapping:null};
+      // A failed model call should not suppress a legitimate retry for 10 min.
+      // However, limit immediate repeated attempts to avoid runaway spending.
+      return {source:'heuristic',mapping:null,reason:'unavailable',
+        retry_after_seconds:Math.ceil((throttleMs-(now()-timestamp))/1000)};
     }finally{inFlight.delete(company.id);}
   }
   function confirm(company,input){
@@ -200,6 +235,7 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
     const financial=savedFinancial(input.financial);
     const saved=financial?{mapping:m,financial}:m;
     save.run(company.id,sig,JSON.stringify(saved),now());
+    suggestionDelete.run(company.id,sig);
     // Bounded store per company; retain most recent 30 distinct layouts.
     db.prepare('DELETE FROM import_mapping_templates WHERE company_id=? AND signature NOT IN ('+
       'SELECT signature FROM import_mapping_templates WHERE company_id=? ORDER BY updated_ms DESC LIMIT 30)').run(company.id,company.id);
