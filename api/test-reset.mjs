@@ -9,6 +9,8 @@ export function resetTestData(db, companyId) {
   const delOperations=db.prepare('DELETE FROM operations WHERE company_id=?');
   const delImports=db.prepare('DELETE FROM imports WHERE company_id=?');
   const delAI=db.prepare('DELETE FROM ai_analyses WHERE company_id=?');
+  const batchesExist=!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='import_batches'").get();
+  const delBatches=batchesExist?db.prepare('DELETE FROM import_batches WHERE company_id=?'):null;
   const source=getSource.get(companyId)?.source || '';
   const entries=rows.all(companyId);
   if (!TEST_SOURCE.test(source) || !entries.length || !entries.every(x=>TEST_ID.test(x.source_id))) {
@@ -21,6 +23,7 @@ export function resetTestData(db, companyId) {
     const removed=delOperations.run(companyId).changes;
     delImports.run(companyId);
     delAI.run(companyId);
+    if(delBatches)delBatches.run(companyId); // Do not allow undo to resurrect cleared test transactions.
     db.exec('COMMIT');
     return {removed};
   } catch(e) {
