@@ -50,6 +50,20 @@
 .import-recognition-status{font-size:12px;line-height:1.5;color:#5b647b;padding:8px 0;max-width:100%;overflow-wrap:anywhere}
 .import-recognition-retry{display:block;max-width:100%;margin:5px 0 12px;background:#f4f5fa;box-shadow:none;color:#454e70;font-size:12px;min-height:38px;white-space:normal;text-align:left}
 .import-recognition-retry[hidden],.import-recognition-status[hidden]{display:none!important}
+
+/* Report upload is a primary top-of-dashboard action on mobile. */
+.right-top{flex-wrap:wrap;justify-content:flex-end}
+.import-utilities{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:-12px 0 15px}
+.import-utilities:empty{display:none}
+.import-utilities .ghost-btn{min-height:36px;padding:0 11px;font-weight:650;box-shadow:none;background:#f0f1fa}
+.import-utilities button[hidden]{display:none!important}
+@media(max-width:680px){
+  .right-top{display:flex;flex-wrap:wrap;gap:9px}
+  .right-top #openImport{order:-1;flex:1 1 100%;min-height:48px;font-size:14px}
+  .right-top #downloadSample{flex:1 1 100%;min-height:40px}
+  .import-utilities{justify-content:flex-start;margin:-5px 0 18px}
+  .import-utilities button{white-space:normal}
+}
 </style>
 </head>
 <body>
@@ -81,7 +95,8 @@
 </aside>
 <main class="main">
  <header class="topbar"><div><div class="eyebrow">Панель собственника</div><h1 class="heading">Ваш бизнес сегодня</h1><div class="subheading" id="businessDesc">Главное о компании — на одном экране</div></div>
- <div class="right-top"><button id="downloadSample" type="button" class="ghost-btn" title="Скачать пример файла для импорта"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Пример CSV</button><button id="openImport" type="button" class="primary-btn"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Импорт отчёта</button></div></header>
+ <div class="right-top"><button id="downloadSample" type="button" class="ghost-btn" title="Скачать пример файла для импорта"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Пример CSV</button><button id="openImport" type="button" class="primary-btn" aria-label="Загрузить отчёт CSV или Excel"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить отчёт</button></div></header>
+ <div class="import-utilities" id="importUtilities"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button></div>
  <div class="switchbar"><div class="company-switch" role="group" aria-label="Выбор демонстрационной компании"><button class="company-tab active" data-business="clinic" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-clinic"/></svg> Клиника</button><button class="company-tab" data-business="store" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-store"/></svg> Магазин</button><button class="company-tab" data-business="cafe" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-cafe"/></svg> Кофейня</button></div><span class="demo-pill" id="dataBadge">Демо-данные</span></div>
  <div class="source-note"><span class="dot"></span><strong id="companyName">Клиника «Гармония»</strong><span>·</span><span id="asOf">Данные по вчера включительно</span><span>·</span><span id="rowsInfo">90 дней истории</span></div>
  <div class="warning-banner" id="warningBanner"></div>
@@ -100,7 +115,7 @@
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">На что обратить внимание</h2><p class="section-muted">Сигналы, которые стоит проверить</p></div><span class="subtle-chip">Анализ</span></div><div id="concerns"></div></section>
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">Что идёт хорошо</h2><p class="section-muted">Положительные изменения</p></div><span class="subtle-chip">Позитив</span></div><div id="positives"></div></section>
  </div>
- <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button><button type="button" class="neutral-btn" id="bottomImport"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить CSV / Excel</button></div></div>
+ <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div></div>
  <div class="foot">Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений</div>
 </main></div>
 <div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Тип финансовых данных</strong><div id="financialType" style="font-size:14px;font-weight:750;color:#202848;margin-top:8px"></div><div id="financialMessage" style="margin-top:7px;line-height:1.6;white-space:pre-line"></div><label id="financialConfirmLabel" style="align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил тип поступлений, авансы, частичные оплаты и возвраты. Подтверждаю, что выбранные суммы можно включить в этот отчёт.</span></label></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
@@ -202,7 +217,7 @@ function showModal(open){
     state.fileTable=null;
   }
 }
-$('openImport').onclick=()=>showModal(true);$('bottomImport').onclick=()=>showModal(true);$('sideImport').onclick=()=>showModal(true);$('closeModal').onclick=()=>showModal(false);$('cancelImport').onclick=()=>showModal(false);$('modal').addEventListener('click',e=>{if(e.target===$('modal'))showModal(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape')showModal(false)});$('downloadSample').onclick=downloadSample;
+$('openImport').onclick=()=>showModal(true);$('sideImport').onclick=()=>showModal(true);$('closeModal').onclick=()=>showModal(false);$('cancelImport').onclick=()=>showModal(false);$('modal').addEventListener('click',e=>{if(e.target===$('modal'))showModal(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape')showModal(false)});$('downloadSample').onclick=downloadSample;
 $('clearImport').onclick=()=>{state.datasets[state.business]=demo(configs[state.business]);render()};
 document.querySelectorAll('.company-tab').forEach(b=>b.addEventListener('click',()=>{state.business=b.dataset.business;render()}));
 function guessDelimiter(text){
