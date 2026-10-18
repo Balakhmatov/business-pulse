@@ -32,6 +32,18 @@ export function validateMapping(head,mapping){
   }
   return result;
 }
+function savedFinancial(value){
+  if(value==null)return null;
+  if(typeof value!=='object'||Array.isArray(value)||!FINANCIAL_BASES.includes(value.basis)||
+      !['high','medium','low'].includes(value.confidence)||
+      !Array.isArray(value.risk_flags)||value.risk_flags.length>8||
+      !value.risk_flags.every(x=>FINANCIAL_FLAGS.includes(x)))throw safeError('Некорректная финансовая оценка формата.');
+  return {
+    basis:value.basis,
+    confidence:value.confidence,
+    risk_flags:[...new Set(value.risk_flags)]
+  };
+}
 function validateHint(input){
   if(!input||typeof input!=='object')throw safeError('Некорректное описание таблицы.');
   const head=input.head; headerSignature(head);
@@ -160,8 +172,12 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
     const record=find.get(company.id,signature);
     if(record){
       try{
-        const m=validateMapping(head,JSON.parse(record.mapping));
-        return {source:'template',mapping:m};
+        const stored=JSON.parse(record.mapping);
+        // Legacy templates contain a flat mapping, newer ones keep its
+        // user-acknowledged financial caveats in the same SQLite text column.
+        const m=validateMapping(head,stored?.mapping||stored);
+        const financial=stored?.mapping?savedFinancial(stored.financial):null;
+        return {source:'template',mapping:m,...(financial?{financial}:{})};
       }catch{ /* corrupted/outdated mapping: allow manual flow */ }
     }
     if(!needsAI||!key)return {source:'heuristic',mapping:null};
@@ -181,7 +197,9 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
     if(!input||typeof input!=='object')throw safeError('Нет данных для шаблона.');
     const sig=headerSignature(input.head);
     const m=validateMapping(input.head,input.mapping);
-    save.run(company.id,sig,JSON.stringify(m),now());
+    const financial=savedFinancial(input.financial);
+    const saved=financial?{mapping:m,financial}:m;
+    save.run(company.id,sig,JSON.stringify(saved),now());
     // Bounded store per company; retain most recent 30 distinct layouts.
     db.prepare('DELETE FROM import_mapping_templates WHERE company_id=? AND signature NOT IN ('+
       'SELECT signature FROM import_mapping_templates WHERE company_id=? ORDER BY updated_ms DESC LIMIT 30)').run(company.id,company.id);
