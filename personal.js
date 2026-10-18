@@ -322,10 +322,100 @@
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','bottomImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
-  // Column labels and numeric type ratios only. Never upload spreadsheet values,
-  // receipt IDs, financial amounts, client identities, filenames or raw rows for AI.
+  // Mapping lookup sends only column headers and coarse numeric type ratios.
+  // Never send cell values, payments, receipt IDs, filenames or raw rows.
+  const recognitionStatus=document.createElement('div');
+  recognitionStatus.id='importRecognitionStatus';
+  recognitionStatus.className='import-recognition-status';
+  recognitionStatus.setAttribute('role','status');
+  recognitionStatus.hidden=true;
+  $('smartImportInfo').after(recognitionStatus);
+  const retryRecognition=document.createElement('button');
+  retryRecognition.id='retryRecognition';
+  retryRecognition.className='ghost-btn import-recognition-retry';
+  retryRecognition.type='button';
+  retryRecognition.textContent='Повторить распознавание';
+  retryRecognition.hidden=true;
+  recognitionStatus.after(retryRecognition);
+  let currentRecognition=null;
+
+  function recognitionMessage(message){
+    recognitionStatus.textContent=message||'';
+    recognitionStatus.hidden=!message;
+  }
+  async function resolveRecognition(work,retry=false){
+    const {file,profiles,needsAI}=work;
+    if(state.business!=='mine'||state.fileTable!==file||
+        !$('modal').classList.contains('show')||file._bpUserAdjusted)return;
+    const attempt=(file._bpRecognitionAttempt||0)+1;
+    file._bpRecognitionAttempt=attempt;
+    retryRecognition.hidden=true;
+    retryRecognition.disabled=true;
+    recognitionMessage('Проверяем формат выгрузки…');
+    try{
+      const answer=await request('/import/mapping/resolve',{
+        head:file.head,profiles,needs_ai:needsAI,retry
+      });
+      if(state.business!=='mine'||state.fileTable!==file||
+          !$('modal').classList.contains('show')||file._bpUserAdjusted||
+          file._bpRecognitionAttempt!==attempt)return;
+
+      if(answer?.mapping&&['template','suggestion','ai'].includes(answer.source)){
+        if(answer.financial){
+          file._bpAiFinancial=answer.financial;
+          file._bpAiMappingAmount=answer.mapping.amount;
+        }
+        file._bpApplying=true;
+        try{
+          for(const key of ['date','amount','id','item','status']){
+            const select=$('col_'+key),column=answer.mapping[key];
+            if(select&&Number.isInteger(column)&&column>=-1&&column<file.head.length){
+              select.value=String(column);
+            }
+          }
+          $('col_date').dispatchEvent(new Event('change'));
+        }finally{file._bpApplying=false;}
+        recognitionMessage(answer.source==='template'
+          ?'Применён сохранённый формат компании. Проверьте поля.'
+          :answer.source==='suggestion'
+            ?'Восстановлено ранее найденное соответствие. Подтвердите поля перед импортом.'
+            :'Столбцы сопоставлены. Проверьте результат перед импортом.');
+      }else{
+        const seconds=Number(answer?.retry_after_seconds)||0;
+        const minutes=Math.max(1,Math.ceil(seconds/60));
+        recognitionMessage(answer?.reason==='disabled'
+          ?'Автоматическое распознавание недоступно. Выберите столбцы вручную.'
+          :answer?.reason==='limit'&&!answer?.can_retry
+            ?'Дополнительная проверка временно ограничена. Повторите через '+minutes+' мин или выберите столбцы вручную.'
+            :answer?.reason==='unrecognized'
+              ?'Не удалось однозначно распознать формат. Проверьте поля вручную.'
+              :needsAI
+                ?'Не удалось определить все поля. Можно повторить или выбрать их вручную.'
+                :'Проверьте соответствие столбцов перед импортом.');
+        retryRecognition.hidden=!(needsAI&&answer?.can_retry===true);
+      }
+    }catch(error){
+      if(state.fileTable!==file||file._bpRecognitionAttempt!==attempt)return;
+      console.warn('Import mapping lookup unavailable:',error.message);
+      recognitionMessage('Сопоставление временно недоступно. Проверьте столбцы или повторите попытку.');
+      retryRecognition.hidden=false;
+    }finally{
+      if(state.fileTable===file&&file._bpRecognitionAttempt===attempt){
+        retryRecognition.disabled=false;
+      }
+    }
+  }
+  retryRecognition.onclick=()=>{
+    const work=currentRecognition;
+    if(!work||state.fileTable!==work.file||work.file._bpUserAdjusted)return;
+    void resolveRecognition(work,true);
+  };
+
   document.addEventListener('bp:import-table-ready',event=>{
     const file=event.detail?.file;
+    retryRecognition.hidden=true;
+    recognitionMessage('');
+    currentRecognition=null;
     if(!file||state.business!=='mine'||file.reportType==='aggregate')return;
     const header=file.head;
     const statistical=window.BP_SmartImport?.guess(header,file.rows.slice(0,80))?.profiles;
@@ -341,53 +431,9 @@
       ['accrual','advance','debt','tax','unit_price'].includes(localFinance?.basis) ||
       /аванс|предоплат|депозит|задат|задолж|дебитор|долг|частичн|рассроч|зачет|зачёт|сторно|возврат|ндс|налог|начислен|акт выполненных/i.test(header.join(' '));
     const needsAI=missing||ambiguous||file.mappingGuess?.item<0||financialAmbiguity;
-    const details=$('smartImportInfo');
-    if(details&&!details.hidden)details.textContent+=' Проверяем сохранённый шаблон компании…';
-    void request('/import/mapping/resolve',{head:header,profiles,needs_ai:needsAI})
-      .then(answer=>{
-        if(state.business!=='mine'||state.fileTable!==file||file._bpUserAdjusted||
-          !$('modal').classList.contains('show'))return;
-        if(!answer?.mapping){
-          if(details&&state.fileTable===file){
-            details.textContent=details.textContent.replace('Проверяем сохранённый шаблон компании…',
-              answer?.reason==='limit'
-                ?'Подсказка ИИ временно ограничена; подтвердите столбцы вручную.'
-                :'Сохранённого шаблона нет — проверьте выбранные столбцы перед импортом.');
-          }
-          return;
-        }
-        if(!['template','ai'].includes(answer.source))return;
-        if(answer.financial){
-          file._bpAiFinancial=answer.financial;
-          file._bpAiMappingAmount=answer.mapping?.amount;
-        }
-        file._bpApplying=true;
-        try{
-          for(const key of ['date','amount','id','item','status']){
-            const select=$('col_'+key);
-            const column=answer.mapping[key];
-            if(select&&Number.isInteger(column)&&column>=-1&&column<header.length){
-              select.value=String(column);
-            }
-          }
-          // Run the same immutable source-row financial validation as for CSV.
-          $('col_date').dispatchEvent(new Event('change'));
-        }finally{file._bpApplying=false;}
-        if(details){
-          details.textContent=details.textContent.replace('Проверяем сохранённый шаблон компании…','').trim();
-          details.textContent+=' '+(answer.source==='template'
-            ?'Применён ранее подтверждённый шаблон этой компании.'
-            :'ИИ предложил сопоставление и оценил смысл денежного показателя по названиям столбцов. Проверьте предупреждения и предварительный просмотр.');
-          details.hidden=false;
-        }
-      })
-      .catch(error=>{
-        if(state.fileTable!==file||!details)return;
-        // The offline/manual import flow remains functional when OpenAI is down.
-        console.warn('Mapping lookup unavailable:',error.message);
-        details.textContent+=' Автоматическое сопоставление недоступно, выберите столбцы вручную.';
-        details.hidden=false;
-      });
+    const work={file,profiles,needsAI};
+    currentRecognition=work;
+    void resolveRecognition(work);
   });
   const originalConfirm=$('confirmImport').onclick;
   $('confirmImport').onclick=async()=>{
