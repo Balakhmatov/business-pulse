@@ -300,3 +300,63 @@ test('Previously AI-only ledger export now identifies actual paid amount and sta
   assert.equal(result.excludedRows,1);
   assert.equal(smart.financialSemantics(result.head,result.mappingGuess).basis,'cash_receipts');
 });
+
+
+test('Ordinary paid transactions never require an extra confirmation for generic AI caveats',()=>{
+  const local=smart.financialSemantics(
+    ['Дата фиксации','№ записи журнала','Предмет выполнения',
+      'Начислено по прайсу','Факт поступления денег','Событие'],
+    {date:0,id:1,item:2,amount:4,status:5});
+  assert.equal(local.blocksImport,false);
+  assert.equal(local.requiresConfirmation,false);
+  for(const ai of [
+    {basis:'cash_receipts',confidence:'high',risk_flags:[]},
+    {basis:'cash_receipts',confidence:'medium',risk_flags:['refunds','tax_or_vat','status_uncertain','accruals']},
+    {basis:'unknown',confidence:'low',risk_flags:[]}
+  ]){
+    const review=smart.financialConfirmation(local,ai);
+    assert.equal(review.blocked,false);
+    assert.equal(review.needsConfirm,false,'No extra confirmation for '+ai.basis);
+  }
+});
+
+test('A mere refund or tax header is an informational notice, not a blocking checkbox',()=>{
+  const local=smart.financialSemantics(
+    ['Дата','Чек','Оплачено','Статус возврата','НДС'],
+    {date:0,id:1,amount:2,status:3});
+  assert.equal(local.requiresConfirmation,false);
+  assert.equal(smart.financialConfirmation(local,{
+    basis:'cash_receipts',risk_flags:['refunds','tax_or_vat']
+  }).needsConfirm,false);
+});
+
+test('Confirmed financial risks still require acknowledgment',()=>{
+  const local=smart.financialSemantics(
+    ['Дата','Чек','Оплачено','Сумма аванса','Частичная оплата'],
+    {date:0,id:1,amount:2});
+  assert.equal(local.blocksImport,false);
+  assert.equal(local.requiresConfirmation,true);
+  assert.equal(smart.financialConfirmation(local,{
+    basis:'cash_receipts',risk_flags:[]
+  }).needsConfirm,true);
+  const plain=smart.financialSemantics(['Дата','Чек','Оплачено'],{amount:2});
+  for(const ai of [
+    {basis:'cash_receipts',risk_flags:['prepayments']},
+    {basis:'cash_receipts',risk_flags:['partial_payments']},
+    {basis:'cash_receipts',risk_flags:['double_counting']},
+    {basis:'mixed',risk_flags:[]}
+  ]){
+    assert.equal(smart.financialConfirmation(plain,ai).needsConfirm,true,
+      'Material risk should require confirmation: '+JSON.stringify(ai));
+  }
+});
+
+test('Hard financial blocks cannot be bypassed by model suggestions',()=>{
+  const local=smart.financialSemantics(
+    ['Дата','Чек','Аванс клиента'],{date:0,id:1,amount:2});
+  const decision=smart.financialConfirmation(local,{
+    basis:'cash_receipts',risk_flags:[]
+  });
+  assert.equal(decision.blocked,true);
+  assert.equal(decision.needsConfirm,false);
+});
