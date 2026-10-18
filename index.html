@@ -372,7 +372,7 @@ function parseImported(f,m){
       return;
     }
     const val=refund?-Math.abs(amount):amount;
-    const key=JSON.stringify([date,identifier,item,val,refund,quantity]);
+    const key=JSON.stringify([date,identifier,item,val,refund,quantity===null?null:Math.abs(quantity)]);
     if(seen.has(key)){duplicate++;return}
     seen.add(key);
     const operation={date,amount:val,id:identifier,item:item||'Без категории',status:refund?'refund':'sale'};
