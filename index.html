@@ -259,14 +259,58 @@ $('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{c
 document.dispatchEvent(new CustomEvent('bp:import-table-ready',{detail:{file}}));
 }
 function parseDate(t){const v=String(t||'').trim();let y,m,d;let match=v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T].*)?$/);if(match){[,y,m,d]=match}else{match=v.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:\s.*)?$/);if(!match)return null;[,d,m,y]=match}const s=String(y).padStart(4,'0')+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');return !Number.isNaN(new Date(s+'T12:00:00').getTime())&&dayStamp(new Date(s+'T12:00:00'))===s?s:null}
-function parseAmount(value){let t=String(value??'').replace(/[\s\u00a0\u202f₽]/g,'').replace(/[^\d,\.\-+]/g,'');if(!t)return null;if(t.includes(',')&&t.includes('.'))t=t.lastIndexOf(',')>t.lastIndexOf('.')?t.replace(/\./g,'').replace(',','.'):t.replace(/,/g,'');else if(t.includes(','))t=t.replace(',','.');const n=Number(t);return Number.isFinite(n)?n:null}
+function parseAmount(value){
+  let text=String(value??'').trim();
+  if(!text)return null;
+  // Never turn free-form text like "ошибка 1500" into a money value.
+  text=text.replace(/[\s\u00a0\u202f₽]/g,'').replace(/руб(?:лей|ля|ль)?\.?/gi,'');
+  if(!/^[+-]?\d[\d.,]*$/.test(text))return null;
+  if(text.includes(',')&&text.includes('.')){
+    text=text.lastIndexOf(',')>text.lastIndexOf('.')
+      ?text.replace(/\./g,'').replace(',','.')
+      :text.replace(/,/g,'');
+  }else if(text.includes(','))text=text.replace(',','.');
+  const amount=Number(text);
+  return Number.isFinite(amount)?amount:null;
+}
 function parseImported(f,m){
- if(f?.reportType==='aggregate')throw Error('Обнаружена сводка с агрегированными данными. Для накопления нужны отдельные операции с устойчивыми ID чеков или визитов. Выберите другой лист или детализацию отчёта.');
- if(m.date<0||m.amount<0)throw Error('Выберите дату и сумму');if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');const rows=[],seen=new Set();let skipped=0,duplicate=0,refunds=0;
-f.rows.forEach((values,i)=>{const date=parseDate(values[m.date]),amount=parseAmount(values[m.amount]);if(!date||amount===null){skipped++;return}const id=m.id>=0?values[m.id]:String(i+1),item=m.item>=0?values[m.item]:'Без категории',raw=m.status>=0?String(values[m.status]).toLowerCase():'',refund=/возврат|refund|return|сторно/.test(raw)||amount<0;if(/отмен|cancel|неоплач|ожидан|pending|неявк/.test(raw)){skipped++;return}
-const val=refund?-Math.abs(amount):amount;
-if(m.id>=0&&id){const key=[date,id,item,val,refund].join('|');if(seen.has(key)){duplicate++;return}seen.add(key)}rows.push({date,amount:val,id:id||String(i+1),item:item||'Без категории',status:refund?'refund':'sale'});if(refund)refunds++});
-if(!rows.length)throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');return{rows,skipped,duplicate,refunds}}
+  if(f?.reportType==='aggregate')throw Error('Обнаружена сводка с агрегированными данными. Для накопления нужны отдельные операции с устойчивыми ID чеков или визитов. Выберите другой лист или детализацию отчёта.');
+  if(m.date<0||m.amount<0)throw Error('Выберите дату и сумму');
+  if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');
+  const rows=[],seen=new Set();
+  const invalidExamples=[];
+  let skipped=0,duplicate=0,refunds=0,invalid=0;
+  f.rows.forEach((values,i)=>{
+    const raw=m.status>=0?String(values[m.status]??'').toLowerCase():'';
+    // Fully cancelled/unpaid entries are legitimately excluded from payments.
+    if(/отмен|cancel|неоплач|ожидан|pending|неявк/.test(raw)){
+      skipped++;return;
+    }
+    const date=parseDate(values[m.date]),amount=parseAmount(values[m.amount]);
+    const identifier=m.id>=0?String(values[m.id]??'').trim():String(i+1);
+    const rowNumber=(f.headerRow||1)+i+1;
+    let reason='';
+    if(!date)reason='некорректная дата';
+    else if(amount===null||amount===0)reason='отсутствует или некорректна сумма';
+    else if(m.id>=0&&!identifier)reason='пустой ID чека/визита';
+    else if(!Number.isSafeInteger(Math.round(amount*100))||Math.abs(amount*100)>1e12)reason='сумма вне допустимого диапазона';
+    if(reason){
+      invalid++;
+      if(invalidExamples.length<5)invalidExamples.push('строка '+rowNumber+': '+reason);
+      return;
+    }
+    const item=m.item>=0?String(values[m.item]??'').trim():'Без категории';
+    const refund=/возврат|refund|return|сторно/.test(raw)||amount<0;
+    const val=refund?-Math.abs(amount):amount;
+    const key=JSON.stringify([date,identifier,item,val,refund]);
+    if(seen.has(key)){duplicate++;return}
+    seen.add(key);
+    rows.push({date,amount:val,id:identifier,item:item||'Без категории',status:refund?'refund':'sale'});
+    if(refund)refunds++;
+  });
+  if(!rows.length&&!invalid)throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');
+  return {rows,skipped,duplicate,refunds,invalid,invalidExamples};
+}
 const financialFlagLabels={
   prepayments:'Возможны авансы и предоплаты. Проверьте, не учитывается ли аванс повторно при зачёте.',
   partial_payments:'Возможны частичные оплаты. Одна продажа может соответствовать нескольким поступлениям.',
