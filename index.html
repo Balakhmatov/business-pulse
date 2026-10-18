@@ -247,8 +247,8 @@ for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(inQuote&&text[i+1]
 row.push(field);if(row.some(x=>x.trim()))table.push(row);if(inQuote)throw Error('Некорректные кавычки в CSV');if(table.length<2)throw Error('В файле нет строк с данными');if(table.length>150001)throw Error('Слишком большой файл (больше 150 000 строк)');
 if(!window.BP_SmartImport)throw Error('Модуль распознавания таблицы не загрузился.');
  return window.BP_SmartImport.detect(table,'');}
-const mappingLabels={date:'Дата операции *',amount:'Сумма в отчёте *',item:'Товар или услуга',id:'ID чека или операции',status:'Статус операции'};
-const patterns={date:/дата|date|day|время/i,amount:/^сумма$|sum|amount|выручка|стоимость|value|total|цена/i,item:/товар|услуг|позиц|продукт|номенклат|name|product|item/i,id:/номер чека|чек|визит|id|order|transaction|receipt/i,status:/статус|тип|возврат|status|operation/i};
+const mappingLabels={date:'Дата операции *',amount:'Сумма в отчёте *',item:'Товар или услуга',id:'ID чека или операции',status:'Статус операции',quantity:'Количество (если есть)'};
+const patterns={date:/дата|date|day|время/i,amount:/^сумма$|sum|amount|выручка|стоимость|value|total|цена/i,item:/товар|услуг|позиц|продукт|номенклат|name|product|item/i,id:/номер чека|чек|визит|id|order|transaction|receipt/i,status:/статус|тип|возврат|status|operation/i,quantity:/^(?:количество(?:\s+(?:товаров|услуг|работ|единиц|штук))?|кол-во|шт\.?|quantity|qty|units?)(?:\s*\([^)]*\))?$/i};
 function mapping(){const m={};Object.keys(mappingLabels).forEach(k=>m[k]=Number($('col_'+k).value));return m}
 function renderMapping(file){
  state.fileTable=file;
@@ -266,7 +266,7 @@ function renderMapping(file){
    detail.hidden=!hints.length;
  }
 
-$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.mappingGuess?file.mappingGuess[key]:file.head.findIndex(t=>patterns[key].test(t));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>{
+$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.mappingGuess?.[key]??file.head.findIndex(t=>patterns[key].test(t));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>{
   if(!file._bpApplying)file._bpUserAdjusted=true;
   preview(file);
 }));preview(file);
@@ -290,6 +290,13 @@ function parseAmount(value){
   }else if(text.includes(','))text=text.replace(',','.');
   const amount=Number(text);
   return Number.isFinite(amount)?amount:null;
+}
+function parseQuantity(value){
+  const input=String(value??'').trim().replace(/[\s\u00a0\u202f]/g,'').replace(',','.');
+  if(!input)return null;
+  if(!/^\d+(?:\.\d{1,3})?$/.test(input))return NaN;
+  const milli=Math.round(Number(input)*1000);
+  return Number.isSafeInteger(milli)&&milli>0&&milli<=1000000000?milli:NaN;
 }
 function parseImported(f,m){
   if(f?.reportType==='aggregate')throw Error('Обнаружена сводка с агрегированными данными. Для накопления нужны отдельные операции с устойчивыми ID чеков или визитов. Выберите другой лист или детализацию отчёта.');
@@ -317,12 +324,14 @@ function parseImported(f,m){
       skipped++;return;
     }
     const date=parseDate(values[m.date]),amount=parseAmount(values[m.amount]);
+    const quantity=m.quantity>=0?parseQuantity(values[m.quantity]):null;
     const identifier=m.id>=0?String(values[m.id]??'').trim():String(i+1);
     const rowNumber=(f.headerRow||1)+i+1;
     let reason='';
     if(!date)reason='некорректная дата';
     else if(amount===null||amount===0)reason='отсутствует или некорректна сумма';
     else if(m.id>=0&&!identifier)reason='пустой ID чека/визита';
+    else if(Number.isNaN(quantity))reason='некорректное количество';
     else if(!Number.isSafeInteger(Math.round(amount*100))||Math.abs(amount*100)>1e12)reason='сумма вне допустимого диапазона';
     if(reason){
       invalid++;
@@ -332,10 +341,12 @@ function parseImported(f,m){
     const item=m.item>=0?String(values[m.item]??'').trim():'Без категории';
     const refund=/возврат|refund|return|сторно/.test(raw)||amount<0;
     const val=refund?-Math.abs(amount):amount;
-    const key=JSON.stringify([date,identifier,item,val,refund]);
+    const key=JSON.stringify([date,identifier,item,val,refund,quantity]);
     if(seen.has(key)){duplicate++;return}
     seen.add(key);
-    rows.push({date,amount:val,id:identifier,item:item||'Без категории',status:refund?'refund':'sale'});
+    const operation={date,amount:val,id:identifier,item:item||'Без категории',status:refund?'refund':'sale'};
+    if(quantity!==null)operation.quantity_milli=quantity;
+    rows.push(operation);
     if(refund)refunds++;
   });
   const correctionMode=typeof document!=='undefined'&&document.getElementById('useCorrections')?.checked===true;
