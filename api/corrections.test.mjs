@@ -202,3 +202,22 @@ test('Old correction snapshots without finance basis remain reversible after mig
   assert.equal(f.values()[0].amount_kopecks,10000);
   assert.equal(f.db.prepare('SELECT financial_basis FROM operations').get().financial_basis,'unverified');
 });
+
+test('Signed correction changes quantity alone and undo restores it with no impact on revenue',t=>{
+  const f=fixture();t.after(f.close);
+  const before={...f.row('job-1','2026-10-12',180000),quantity_milli:2000};
+  f.seed('a',[before]);
+  const proposed={...before,quantity_milli:5000};
+  const data=f.input([proposed]);
+  const checked=f.preview('a',data);
+  assert.equal(checked.summary.updated,1);
+  const applied=f.apply('a',data,checked);
+  assert.equal(applied.changed,true);
+  const updated=f.db.prepare('SELECT amount_kopecks,quantity_milli FROM operations').get();
+  assert.equal(updated.amount_kopecks,180000);
+  assert.equal(updated.quantity_milli,5000);
+  f.accumulator.undoLatest({id:'a'},applied.batch_id);
+  const restored=f.db.prepare('SELECT amount_kopecks,quantity_milli FROM operations').get();
+  assert.equal(restored.amount_kopecks,180000);
+  assert.equal(restored.quantity_milli,2000);
+});
