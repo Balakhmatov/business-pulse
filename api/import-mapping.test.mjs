@@ -152,3 +152,27 @@ test('Model returning unknown report type or malformed financial risk must not a
   const result=await f.service.resolve({id:'a'},{head:headers,profiles:profile(),needs_ai:true});
   assert.equal(result.source,'heuristic');
 });
+
+test('Confirmed financial caveats survive cached-template retrieval for the same company',async t=>{
+  const f=fixture();t.after(f.close);
+  const caveat={basis:'mixed',confidence:'medium',risk_flags:['prepayments','partial_payments','double_counting']};
+  f.service.confirm({id:'a'},{head:headers,mapping:selected,financial:caveat});
+  const remembered=await f.service.resolve({id:'a'},{head:headers,needs_ai:false});
+  assert.equal(remembered.source,'template');
+  assert.deepEqual(remembered.mapping,selected);
+  assert.deepEqual(remembered.financial,caveat);
+  const other=await f.service.resolve({id:'b'},{head:headers,needs_ai:false});
+  assert.equal(other.financial,undefined);
+  assert.throws(()=>f.service.confirm({id:'a'},{
+    head:headers,mapping:selected,
+    financial:{basis:'cash_receipts',confidence:'high',risk_flags:['malicious_label']}
+  }),/финансовая оценка/);
+});
+test('Old templates without financial metadata still load normally',async t=>{
+  const f=fixture();t.after(f.close);
+  f.service.confirm({id:'a'},{head:headers,mapping:selected});
+  const restored=await f.service.resolve({id:'a'},{head:headers,needs_ai:false});
+  assert.equal(restored.source,'template');
+  assert.deepEqual(restored.mapping,selected);
+  assert.equal(restored.financial,undefined);
+});
