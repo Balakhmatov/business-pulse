@@ -8,8 +8,8 @@
   'use strict';
   const MAX_ROWS=150000;
   const LIBRARY_URLS=[
-    'https://cdn.jsdelivr.net/npm/read-excel-file@7.0.0/bundle/read-excel-file.min.js',
-    'https://unpkg.com/read-excel-file@7.0.0/bundle/read-excel-file.min.js'
+    'https://cdn.jsdelivr.net/npm/read-excel-file@6.0.0/bundle/read-excel-file.min.js',
+    'https://unpkg.com/read-excel-file@6.0.0/bundle/read-excel-file.min.js'
   ];
   let libraryPromise=null;
   function text(value){
