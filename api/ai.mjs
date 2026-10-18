@@ -11,6 +11,16 @@ export function createAI({ db, report, listOperations }) {
     "version TEXT NOT NULL, status TEXT NOT NULL, payload TEXT," +
     "updated_ms INTEGER NOT NULL);"
   );
+  // One-time invalidate pre-split cached analyses; financial operations remain intact.
+  db.exec("CREATE TABLE IF NOT EXISTS analysis_schema_migrations (id TEXT PRIMARY KEY)");
+  if(!db.prepare("SELECT 1 AS ok FROM analysis_schema_migrations WHERE id='financial_basis_v2'").get()){
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      db.exec("DELETE FROM ai_analyses");
+      db.prepare('INSERT OR IGNORE INTO analysis_schema_migrations(id) VALUES(?)').run('financial_basis_v2');
+      db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error;}
+  }
   const read = db.prepare('SELECT version,status,payload,updated_ms FROM ai_analyses WHERE company_id=?');
   const upsert = db.prepare('INSERT INTO ai_analyses(company_id,version,status,payload,updated_ms) VALUES(?,?,?,?,?) ON CONFLICT(company_id) DO UPDATE SET version=excluded.version,status=excluded.status,payload=excluded.payload,updated_ms=excluded.updated_ms');
   const finish = db.prepare('UPDATE ai_analyses SET status=?,payload=?,updated_ms=? WHERE company_id=? AND version=?');
@@ -33,14 +43,17 @@ export function createAI({ db, report, listOperations }) {
     const currentReceipts = r.receipt_count;
     const refunds = cur.filter(x => x.status === 'refund').length;
     const comparable = curDays >= 25 && prevDays >= 25 && r.previous30_kopecks > 0;
+    const title=r.primary_basis==='cash_receipts'?'Денежные поступления':
+      r.primary_basis==='recognized_revenue'?'Выручка по оказанным услугам или переданным товарам':
+      'Сумма операций (финансовый тип не подтверждён)';
     const facts = {};
     const add = (id, value) => { facts[id] = value; };
-    add('revenue', 'Выручка за последние 30 завершённых дней: ' + money(r.revenue30_kopecks) + '.');
+    add('revenue', title+' за последние 30 завершённых дней: '+money(r.revenue30_kopecks)+'.');
     add('receipts', 'За тот же период зарегистрировано ' + currentReceipts + ' уникальных чеков или визитов.');
     if (r.average_receipt_kopecks !== null) add('average', 'Средняя сумма чека: ' + money(r.average_receipt_kopecks) + '.');
     add('data_coverage', 'Операции присутствуют за ' + curDays + ' из последних 30 дней; отсутствие операций не доказывает нулевые продажи.');
     if (comparable) {
-      add('revenue_change', 'Изменение выручки к предыдущим 30 дням: ' + percent(r.change_percent) + '.');
+      add('revenue_change', 'Изменение выбранного финансового показателя к предыдущим 30 дням: ' + percent(r.change_percent) + '.');
       if (prevReceipts > 0) {
         const change = (currentReceipts - prevReceipts) / prevReceipts * 100;
         add('receipt_change', 'Изменение количества уникальных чеков к предыдущим 30 дням: ' + percent(change) + '.');
@@ -52,14 +65,14 @@ export function createAI({ db, report, listOperations }) {
     } else {
       add('comparison_limited', 'Сравнение периодов ограничено: в текущем периоде операции есть за ' + curDays + ' дней, в предыдущем за ' + prevDays + ' дней.');
     }
-    if (refunds) add('refunds', 'За 30 дней отмечено ' + refunds + ' строк возврата; суммы возвратов учтены в выручке.');
+    if (refunds) add('refunds', 'За 30 дней отмечено ' + refunds + ' строк возврата; суммы учтены в выбранном показателе.');
     if (r.top3.length && r.revenue30_kopecks > 0) {
       const topAmount = r.top3.filter(x => x.amount_kopecks > 0).reduce((v, x) => v + x.amount_kopecks, 0);
       const share = topAmount / r.revenue30_kopecks * 100;
-      if (share >= 0 && share <= 100) add('top_share', 'Доля трёх лидирующих позиций в чистой выручке: ' + percent(share).replace(/^\+/, '') + '.');
+      if (share >= 0 && share <= 100) add('top_share', 'Доля трёх лидирующих позиций в выбранном показателе: ' + percent(share).replace(/^\+/, '') + '.');
     }
     // Only aggregate figures. Never send item names, transaction IDs, file names, people or customers.
-    return { facts, stats: {
+    return { financial_basis:r.primary_basis,facts, stats: {
       current_covered_days: curDays, previous_covered_days: prevDays,
       comparable, revenue_change_percent: comparable ? r.change_percent : null,
       receipt_count: currentReceipts, refund_rows: refunds,
@@ -89,6 +102,8 @@ export function createAI({ db, report, listOperations }) {
   const instructions =
     'Ты аналитик малого офлайн-бизнеса. Отвечай по-русски кратко и конкретно. ' +
     'Цель: отобрать наиболее значимые негативные сигналы и позитивные признаки, дать действия для проверки. ' +
+    'Денежные поступления, признанная выручка и данные с неподтверждённым типом — разные показатели. ' +
+    'Не выдавай поступления, особенно авансы, за выручку и не смешивай суммы разных типов. ' +
     'Опирайся СТРОГО на переданные агрегированные факты. Нельзя выдумывать причины, прогнозы, внешние события, ' +
     'количество новых клиентов, маркетинговые затраты, рентабельность, прибыль, конверсию или сезонность. ' +
     'Корреляция не доказывает причину. Дни без операций не обязательно означают отсутствие продаж. ' +
@@ -187,13 +202,15 @@ export function createAI({ db, report, listOperations }) {
     if (!hasImport.get(c.id)) return { status: 'no_data', analysis: null };
     const saved = read.get(c.id);
     if (saved?.status === 'ready' && saved.payload) {
-      try { return { status: 'ready', analysis: JSON.parse(saved.payload), model }; }
+      try { return { status: 'ready', analysis: JSON.parse(saved.payload), model,
+        primary_basis:report(c).primary_basis }; }
       catch { return { status: 'error', analysis: null }; }
     }
     if (!apiKey) return { status: 'disabled', analysis: null };
     schedule(c);
     const record = read.get(c.id);
-    return { status: record?.status === 'error' ? 'error' : 'pending', analysis: null };
+    return { status: record?.status === 'error' ? 'error' : 'pending',
+      analysis: null,primary_basis:report(c).primary_basis };
   }
   function onImport(c) {
     // Invalidate stale analysis on EVERY import, including when the key is absent.
