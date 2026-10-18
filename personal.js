@@ -436,6 +436,8 @@
     if(cols.id<0)throw Error('Для исправлений обязателен уникальный ID операции.');
     const parsed=parseImported(file,cols);
     if(parsed.invalid>0)throw Error('Исправьте '+parsed.invalid+' ошибочных строк: '+parsed.invalidExamples.join('; '));
+    if(parsed.skipped>parsed.cancelled)
+      throw Error('В выгрузке есть неоплаченные или ожидающие операции. В режиме исправлений нельзя пропускать такие строки незаметно. Уточните их статус и выгрузите только окончательные операции или явные отмены.');
     if(parsed.duplicate>0)throw Error('В файле есть одинаковые строки. Для сверки нужен уникальный ID каждого платежа.');
     const rows=parsed.rows.map(x=>({
       date:x.date,id:String(x.id),item:String(x.item),
