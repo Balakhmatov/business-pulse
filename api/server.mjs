@@ -5,6 +5,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
+import { createCorrectionService } from './corrections.mjs';
 import { resetTestData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 
@@ -28,6 +29,7 @@ db.exec(
 );
 // Upgrade existing SQLite schema before preparing statements that use the new columns.
 const accumulator=createAccumulator(db);
+const correctionService=createCorrectionService({db,secret:token});
 const importMapper=createImportMapper({db});
 const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
@@ -186,6 +188,16 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='POST'&&url.pathname==='/api/import/mapping/save'){
       const input=await readJSON(req);
       return reply(res,200,importMapper.confirm(c,input),origin);
+    }
+    if(req.method==='POST'&&url.pathname==='/api/import/corrections/preview'){
+      const input=await readJSON(req);
+      return reply(res,200,correctionService.preview(c,input),origin);
+    }
+    if(req.method==='POST'&&url.pathname==='/api/import/corrections/apply'){
+      const input=await readJSON(req);
+      const result=correctionService.apply(c,input);
+      if(result.changed)ai.onImport(c);
+      return reply(res,200,{...result,report:report(c),history:accumulator.history(c)},origin);
     }
     if(req.method==='GET'&&url.pathname==='/api/import/history'){
       return reply(res,200,{history:accumulator.history(c)},origin);
