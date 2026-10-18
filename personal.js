@@ -467,6 +467,25 @@
     renderMine();
     if(!state.mineReport)loadMine();
   };
+  $('industrySelect').onchange=async()=>{
+    if(state.business!=='mine'||!state.mineReport)return;
+    const previous=state.mineReport.company?.industry||'other';
+    const selected=$('industrySelect').value;
+    if(selected===previous)return;
+    const status=$('industryStatus');
+    const select=$('industrySelect');
+    select.disabled=true;status.textContent='Сохраняем…';
+    try{
+      const result=await request('/company/industry',{industry:selected});
+      state.mineReport=result.report;
+      if(state.mineViewBasis)state.mineReport=await request('/report?basis='+state.mineViewBasis);
+      status.textContent='Направление сохранено';
+      renderMine();
+    }catch(error){
+      status.textContent=error.message||'Не удалось сохранить направление.';
+      select.value=previous;
+    }finally{select.disabled=false;}
+  };
   // Existing demo tab handlers are installed by index.html before this module.
   document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(btn=>{
     btn.addEventListener('click',()=>{
