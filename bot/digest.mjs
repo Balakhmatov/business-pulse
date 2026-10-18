@@ -93,9 +93,9 @@ export function dailyDigestFor(telegramId, {
     const available=new Set(basisCounts.filter(x=>x.n>0).map(x=>x.financial_basis));
     const basis=available.has('cash_receipts')?'cash_receipts':
       available.has('recognized_revenue')?'recognized_revenue':'unverified';
-    const metric=basis==='cash_receipts'?'Денежные поступления':
-      basis==='recognized_revenue'?'Выручка по выполненным продажам':
-        'Сумма операций (тип не подтверждён)';
+    const metric=basis==='cash_receipts'?'Поступления':
+      basis==='recognized_revenue'?'Продажи':
+        'Суммы без уточнения';
     const ops = hasBasis?database.prepare(
       'SELECT sold_on,source_id,amount_kopecks,status FROM operations '+
       'WHERE company_id=? AND financial_basis=? AND sold_on>=? AND sold_on<=?'
@@ -128,21 +128,21 @@ export function dailyDigestFor(telegramId, {
       '',
       '<b>Основные показатели</b>',
       '1. '+metric+' за 30 дней: <b>' + money(currentRevenue) + '</b>',
-      '2. Чеков / визитов за 30 дней: <b>' + salesCount + '</b>'
+      '2. Операций за 30 дней: <b>' + salesCount + '</b>'
     ];
     if (yesterday.length) {
       lines.push('3. '+metric+' за ' + displayDate(end) + ': <b>' + money(sum(yesterday)) + '</b>');
     } else {
-      lines.push('3. За ' + displayDate(end) + ' <b>нет операций в выгрузке</b> (это не подтверждённая нулевая выручка).');
+      lines.push('3. За ' + displayDate(end) + ' <b>нет операций в выгрузке</b> (это не означает, что продаж или поступлений не было).');
     }
     if (comparable) {
       lines.push('4. Изменение к предыдущим 30 дням: <b>' + signedPercent((currentRevenue - previousRevenue) / previousRevenue * 100) + '</b>');
     } else {
-      lines.push('4. <b>Сравнение с предыдущим периодом ограничено:</b> данных недостаточно.');
+      lines.push('4. <b>Пока не с чем сравнить:</b> нужно больше данных за прошлый месяц.');
     }
     if (currentCoverage < 30 || previousCoverage < 30) {
-      lines.push('', '<i>Полнота данных:</i> ' + currentCoverage + '/30 дней в текущем периоде, ' +
-        previousCoverage + '/30 дней в предыдущем.');
+      lines.push('', '<i>Дни с операциями:</i> ' + currentCoverage + ' из 30 дней сейчас, ' +
+        previousCoverage + ' из 30 дней за прошлый период.');
     }
     if (latest && latest < end) {
       lines.push('', '<b>Обратите внимание:</b> последняя дата операции — ' + displayDate(latest) +
@@ -151,15 +151,15 @@ export function dailyDigestFor(telegramId, {
       lines.push('', '<b>Обратите внимание:</b> в отчёте нет операций до ' + displayDate(end) + '.');
     }
     if(hasBasis){
-      const labels={cash_receipts:'Денежные поступления',recognized_revenue:'Выручка по выполненным продажам',
-        unverified:'Операции без подтверждённого типа'};
+      const labels={cash_receipts:'Поступления',recognized_revenue:'Продажи',
+        unverified:'Суммы без уточнения'};
       for(const other of books){
         if(other===basis||!available.has(other))continue;
         const rows=database.prepare(
           'SELECT COALESCE(SUM(amount_kopecks),0) AS total FROM operations '+
           'WHERE company_id=? AND financial_basis=? AND sold_on>=? AND sold_on<=?'
         ).get(company.id,other,cut,end);
-        lines.push(labels[other]+' за 30 дней: <b>'+money(rows.total)+'</b> (отдельный показатель).');
+        lines.push(labels[other]+' за 30 дней: <b>'+money(rows.total)+'</b> (считаем отдельно).');
       }
       if(available.has('unverified'))
         lines.push('', '<i>Данные с неподтверждённым финансовым типом не входят в проверенные поступления или выручку.</i>');
@@ -171,7 +171,7 @@ export function dailyDigestFor(telegramId, {
     lines.push('', '<i>Отчёт загружен: ' + escapeHTML(importLabel) + ' МСК.</i>');
     const analysis = briefAI(database, company.id, company.last_change_at || company.imported_at);
     if (analysis) lines.push('', analysis);
-    else lines.push('', '<b>Аналитическое заключение</b>', '', 'Заключение пока формируется. Выше представлены расчётные показатели.');
+    else lines.push('', '<b>Выводы по данным</b>', '', 'Готовим выводы. Основные цифры уже показаны выше.');
     return lines.join('\n');
   } finally {
     database.close();
