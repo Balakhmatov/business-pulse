@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
@@ -424,4 +424,42 @@ test('Undo fails atomically if a changed operation no longer matches its recorde
   assert.equal(f.all().length,2);
   assert.equal(f.amount(),35000);
   assert.equal(engine.history({id:'a'})[0].undone,false);
+});
+
+
+test('UI parser must never silently drop malformed financial rows',()=>{
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const start=html.indexOf('function parseDate(');
+  const end=html.indexOf('const financialFlagLabels=',start);
+  assert.ok(start>=0&&end>start,'Import parser exists in Mini App');
+  const parseImported=Function('dayStamp',html.slice(start,end)+'return parseImported;')(
+    date=>date.toISOString().slice(0,10));
+  const parsed=parseImported({
+    headerRow:4,head:['Дата','Чек','Сумма','Статус'],
+    rows:[
+      ['2026-10-17','A','1700','оплата'],
+      ['2026-10-17','B','Ошибка 2500','оплата'],
+      ['2026-10-17','','900','оплата'],
+      ['2026-10-17','C','','отмена'],
+      ['2026-10-17','D','2000','ожидание']
+    ]
+  },{date:0,id:1,amount:2,status:3,item:-1});
+  assert.equal(parsed.rows.length,1);
+  assert.equal(parsed.invalid,2);
+  assert.equal(parsed.cancelled,1);
+  assert.equal(parsed.skipped,2);
+  assert.match(parsed.invalidExamples.join(' '),/строка 6.*строка 7/);
+});
+test('UI parser accepts a complete CSV with multiple currency formats and zero errors',()=>{
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const source=html.slice(html.indexOf('function parseDate('),html.indexOf('const financialFlagLabels='));
+  const parseImported=Function('dayStamp',source+'return parseImported;')(
+    date=>date.toISOString().slice(0,10));
+  const parsed=parseImported({headerRow:1,rows:[
+    ['2026-10-17','A','1 500 ₽','оплата'],
+    ['2026-10-18','B','2 350,50','оплата'],
+  ]},{date:0,id:1,amount:2,status:3,item:-1});
+  assert.equal(parsed.invalid,0);
+  assert.equal(parsed.cancelled,0);
+  assert.deepEqual(parsed.rows.map(r=>r.amount),[1500,2350.5]);
 });
