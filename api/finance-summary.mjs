@@ -40,7 +40,7 @@ function volumeForIndustry(rows,industry,books){
   // how many service lines belong to that job. Cafe receipt IDs are normally
   // day-scoped: use day+ID to avoid conflating check numbers on different days.
   const ids=new Set(periodRows.map(x=>industry==='auto'?x.source_id:x.sold_on+'\u0000'+x.source_id));
-  if(!ids.size)return {...base,value:0,coverage:'complete',caption:'По уникальным номерам в отчёте.'};
+  if(!ids.size)return {...base,caption:'За последние 30 дней нет записей для подсчёта.'};
   return {...base,value:ids.size,coverage:'complete',
     caption:industry==='auto'?'По уникальным номерам выполненных заказов.':
       industry==='cafe'?'По уникальным номерам оплаченных чеков.':
