@@ -103,7 +103,11 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
       }
       if(!before||!rowEqual(before,after)){
         changes.push({id:row.id,before,after});
-        if(samples.length<8)samples.push({id:row.id,change:!before?'Добавить':before.sold_on!==after.sold_on?'Перенос даты':'Исправить',old_date:before?.sold_on||null,new_date:after.sold_on});
+        if(samples.length<8)samples.push({
+          id:row.id,change:!before?'Добавить':before.sold_on!==after.sold_on?'Перенос даты':'Исправить',
+          old_date:before?.sold_on||null,new_date:after.sold_on,
+          old_amount_kopecks:before?.amount_kopecks??null,new_amount_kopecks:after.amount_kopecks
+        });
       }
     }
     for(const id of data.cancelled_ids){
@@ -112,7 +116,8 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
         'Нет ранее загруженной операции с ID '+id.slice(0,32)+'. Отменять нечего.',409);
       totals.deleted++;
       changes.push({id,before:hits[0],after:null});
-      if(samples.length<8)samples.push({id,change:'Отменить',old_date:hits[0].sold_on,new_date:null});
+      if(samples.length<8)samples.push({id,change:'Отменить',old_date:hits[0].sold_on,new_date:null,
+        old_amount_kopecks:hits[0].amount_kopecks,new_amount_kopecks:null});
     }
     const revision=Number(maxBatch.get(company.id).id||0);
     const digest=createHash('sha256').update(JSON.stringify({company:company.id,data,changes,revision})).digest('hex');
