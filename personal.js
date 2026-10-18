@@ -355,7 +355,7 @@
     $('countLabel').textContent='Операций за 30 дней';
     $('salesCount').textContent=imported?number(r.receipt_count):'—';
     $('salesCaption').textContent='По уникальным номерам в отчёте';
-    $('averageLabel').textContent='В среднем на операцию';
+    $('averageLabel').textContent='Средний чек';
     $('averageTicket').textContent=imported&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
     $('averageCaption').textContent='Сумма за 30 дней / число операций';
     $('specialLabel').textContent='Другие показатели';
