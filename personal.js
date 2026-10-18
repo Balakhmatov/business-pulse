@@ -275,6 +275,7 @@
       if(state.mineImportStats){
         const x=state.mineImportStats;
         $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' обновлено, '+number(x.unchanged)+' без изменений.';
+        if(state.mineTemplateNotice)$('bottomDataHint').textContent+=state.mineTemplateNotice;
       }
       const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Интеллектуальная аналитика не подключена: доступны расчётные выводы.':ai?.status==='error'?' Интеллектуальная аналитика временно недоступна: показаны расчётные выводы.':'';
       $('bottomDataHint').textContent+=message;
@@ -321,6 +322,56 @@
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','bottomImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
+  // Column labels and numeric type ratios only. Never upload spreadsheet values,
+  // receipt IDs, financial amounts, client identities, filenames or raw rows for AI.
+  document.addEventListener('bp:import-table-ready',event=>{
+    const file=event.detail?.file;
+    if(!file||state.business!=='mine'||file.reportType==='aggregate')return;
+    const header=file.head;
+    const statistical=window.BP_SmartImport?.guess(header,file.rows)?.profiles;
+    if(!Array.isArray(statistical))return;
+    const profiles=statistical.map(p=>({
+      dates:p.dates,nums:p.nums,statuses:p.statuses,unique:p.unique,
+      words:p.words,zeroids:p.zeroids,filled:p.filled
+    }));
+    const missing=['date','id','amount'].some(k=>file.mappingGuess?.[k]<0);
+    const ambiguous=Object.values(file.confidence||{}).some(v=>v==='неоднозначно'||v==='требует проверки');
+    const needsAI=missing||ambiguous||file.mappingGuess?.item<0;
+    const details=$('smartImportInfo');
+    if(details&&!details.hidden)details.textContent+=' Проверяем сохранённый шаблон компании…';
+    void request('/import/mapping/resolve',{head:header,profiles,needs_ai:needsAI})
+      .then(answer=>{
+        if(state.business!=='mine'||state.fileTable!==file||file._bpUserAdjusted||
+          !$('modal').classList.contains('show'))return;
+        if(!answer?.mapping)return;
+        if(!['template','ai'].includes(answer.source))return;
+        file._bpApplying=true;
+        try{
+          for(const key of ['date','amount','id','item','status']){
+            const select=$('col_'+key);
+            const column=answer.mapping[key];
+            if(select&&Number.isInteger(column)&&column>=-1&&column<header.length){
+              select.value=String(column);
+            }
+          }
+          // Run the same immutable source-row financial validation as for CSV.
+          $('col_date').dispatchEvent(new Event('change'));
+        }finally{file._bpApplying=false;}
+        if(details){
+          details.textContent+=' '+(answer.source==='template'
+            ?'Применён ранее подтверждённый шаблон этой компании.'
+            :'ИИ предложил сопоставление без доступа к строкам операций. Проверьте поля и предварительный просмотр.');
+          details.hidden=false;
+        }
+      })
+      .catch(error=>{
+        if(state.fileTable!==file||!details)return;
+        // The offline/manual import flow remains functional when OpenAI is down.
+        console.warn('Mapping lookup unavailable:',error.message);
+        details.textContent+=' Автоматическое сопоставление недоступно, выберите столбцы вручную.';
+        details.hidden=false;
+      });
+  });
   const originalConfirm=$('confirmImport').onclick;
   $('confirmImport').onclick=async()=>{
     if(state.business!=='mine'){intro.textContent=localIntro;return originalConfirm();}
@@ -339,7 +390,18 @@
       state.mineSaving=true;
       $('confirmImport').disabled=true;
       $('importAlert').textContent='Сохраняем отчёт на сервере…';
+      const template={head:state.fileTable.head,mapping:columns};
       const answer=await request('/import',{source:state.fileTable.name.slice(0,120),rows});
+      // Saving the mapping is independent of successful accounting: a template
+      // API outage must not undo or retry a completed transaction import.
+      let savedTemplate=false;
+      try{
+        const result=await request('/import/mapping/save',template);
+        savedTemplate=result.saved===true;
+      }catch(error){console.warn('Mapping could not be saved:',error.message);}
+      state.mineTemplateNotice=savedTemplate
+        ?' Формат выгрузки запомнен для следующих загрузок.'
+        :' Соответствие столбцов не удалось запомнить; операции сохранены.';
       state.mineImportStats=answer.stats||null;
       state.mineReport=answer.report;
       state.mineAI=null;
