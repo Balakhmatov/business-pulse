@@ -290,18 +290,18 @@
     });
   }
   const financialTitles={
-    cash_receipts:'Денежные поступления',
-    recognized_revenue:'Выручка от выполненных продаж',
-    unverified:'Старые данные без подтверждённого типа'
+    cash_receipts:'Поступления',
+    recognized_revenue:'Продажи',
+    unverified:'Суммы без уточнения'
   };
   function renderFinanceBooks(report){
     const holder=$('financeBooks');
     if(state.business!=='mine'||!report?.financial_books){holder.hidden=true;return;}
     holder.hidden=false;
     const labels=[
-      ['cash_receipts','Поступления за 30 дней','Включая авансы, если они в источнике'],
-      ['recognized_revenue','Выручка за 30 дней','По выполненным продажам или услугам'],
-      ['unverified','Тип данных не проверен','Старые выгрузки без подтверждения']
+      ['cash_receipts','Поступления за 30 дней','Все полученные деньги, включая авансы'],
+      ['recognized_revenue','Продажи за 30 дней','Оказанные услуги и проданные товары — даже если ещё не оплачены'],
+      ['unverified','Тип сумм пока неизвестен','Старые отчёты: нужно уточнить, что означают суммы']
     ];
     holder.innerHTML=labels.map(([basis,name,hint])=>{
       const book=report.financial_books[basis]||{};
@@ -329,13 +329,13 @@
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
     const change=imported?r.change_percent:null;
-    $('businessDesc').textContent='Ваши показатели · поступления и выручка отдельно';
+    $('businessDesc').textContent='Ваши показатели · полученные деньги и продажи отдельно';
     renderFinanceBooks(r);
     const financialLabel=financialTitles[r?.primary_basis]||financialTitles.unverified;
     const shortMetric=r?.primary_basis==='cash_receipts'?'Поступления':
-      r?.primary_basis==='recognized_revenue'?'Выручка':'Сумма операций';
+      r?.primary_basis==='recognized_revenue'?'Продажи':'Суммы';
     const metricTitle=r?.primary_basis==='unverified'
-      ?'Сумма операций (не подтверждена)':financialLabel;
+      ?'Суммы без уточнения':financialLabel;
     document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' за 30 дней';
     $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика: '+shortMetric.toLowerCase();
     $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=shortMetric+' по дням';
@@ -345,24 +345,24 @@
     $('dataBadge').textContent=imported?'Ваши данные':'Личная панель';
     $('dataBadge').style.cssText='color:#6252a4;background:#f1edff;border-color:#e5dfff';
     $('revenue30').textContent=imported?fmtK(r.revenue30_kopecks):'—';
-    $('revenueChange').textContent=change===null?'Нет данных для сравнения':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
+    $('revenueChange').textContent=change===null?'Пока не с чем сравнить':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
-    $('comparisonDesc').textContent=imported&&r.coverage&&!r.coverage.comparable?'Сравнение ограничено: данные за '+r.coverage.current_days+'/30 и '+r.coverage.previous_days+'/30 дней':'Последние 30 завершённых дней с учётом возвратов';
+    $('comparisonDesc').textContent=imported&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из 30 дней, ранее — за '+r.coverage.previous_days+' из 30':'Последние 30 завершённых дней с учётом возвратов';
     $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
       shortMetric+' за вчера';
     $('revenueYesterday').textContent=imported?fmtK(r.yesterday_kopecks):'—';
     $('yesterdayDate').textContent=verboseDate(end);
-    $('countLabel').textContent='Чеков / операций за 30 дней';
+    $('countLabel').textContent='Операций за 30 дней';
     $('salesCount').textContent=imported?number(r.receipt_count):'—';
-    $('salesCaption').textContent='Уникальные ID из CSV / Excel';
-    $('averageLabel').textContent='Средняя сумма чека';
+    $('salesCaption').textContent='По уникальным номерам в отчёте';
+    $('averageLabel').textContent='В среднем на операцию';
     $('averageTicket').textContent=imported&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
-    $('averageCaption').textContent=shortMetric+' / количество операций';
-    $('specialLabel').textContent='Дополнительные показатели';
+    $('averageCaption').textContent='Сумма за 30 дней / число операций';
+    $('specialLabel').textContent='Другие показатели';
     $('specialIcon').innerHTML=svgIcon('alert');
     $('specialValue').textContent='—';
-    $('specialCaption').textContent='Зависят от состава отчёта';
-    $('topTitle').textContent='Топ-3 позиции';
+    $('specialCaption').textContent='Появятся, когда будут нужные данные';
+    $('topTitle').textContent='Топ-3 товаров и услуг';
     const top=imported?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
@@ -372,8 +372,8 @@
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
     if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
-    if(imported&&top.length)good.push({title:'Лидер по выбранному показателю — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
-    if(imported)bad.push({title:'Проверьте полноту отчёта',desc:'Дни без операций считаются нулевыми. Пропуски могут исказить сравнение периодов.'});
+    if(imported&&top.length)good.push({title:'Больше всего по сумме — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
+    if(imported)bad.push({title:'Проверьте, все ли данные загружены',desc:'Дни без записей могут быть пропусками в отчёте. Это влияет на сравнение с прошлым месяцем.'});
     if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV или Excel (.xlsx) с датой, суммой и названиями товаров или услуг.'});
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
@@ -386,17 +386,17 @@
       });
       bad.splice(0,bad.length,...ai.analysis.issues.map(asItem));
       good.splice(0,good.length,...ai.analysis.positives.map(asItem));
-      if(!good.length)good.push({title:'Пока нет подтверждённых позитивных сигналов',desc:'ИИ не обнаружил достаточно оснований для отдельного позитивного вывода.'});
+      if(!good.length)good.push({title:'Пока нет заметных положительных изменений',desc:'По загруженным данным пока нельзя уверенно выделить положительные изменения.'});
     }
     for(const [id] of [['concerns'],['positives']]){
       const chip=$(id).closest('.panel')?.querySelector('.subtle-chip');
-      if(chip)chip.textContent=ready?'Интеллектуальная аналитика':imported&&ai?.status==='pending'?'Анализируется':'Расчётная аналитика';
+      if(chip)chip.textContent=ready?'Выводы по данным':imported&&ai?.status==='pending'?'Готовим выводы':'Показатели и выводы';
     }
     $('concerns').innerHTML=insightHTML(bad.slice(0,3),true);
     $('positives').innerHTML=insightHTML(good.slice(0,2),false);
     $('warningBanner').classList.toggle('show',!!state.mineError);
     $('warningBanner').textContent=state.mineError||'';
-    $('bottomDataTitle').textContent=imported?'Показатели рассчитаны по накопленной истории.':(loading?'Получаем показатели…':state.mineError?'Не удалось получить сохранённые данные.':'Загрузите первый отчёт вашей компании.');
+    $('bottomDataTitle').textContent=imported?'Данные сохранены. Новые отчёты дополняют историю.':(loading?'Получаем показатели…':state.mineError?'Не удалось получить сохранённые данные.':'Загрузите первый отчёт вашей компании.');
     $('bottomDataHint').textContent=imported?'Последняя загрузка: '+r.source.name+'. Всего операций в базе: '+number(r.source.rows)+'. Новые файлы дополняют историю.':state.mineError?'Сохранённые операции не удалены. Повторите запрос, когда соединение восстановится.':'Загрузите обезличенный CSV или Excel (.xlsx). Данные сохраняются на сервере.';
     if(imported){
       if(state.mineImportStats){
@@ -404,7 +404,7 @@
         $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' исправлено'+(x.deleted?', '+number(x.deleted)+' отменено':'')+', '+number(x.unchanged)+' без изменений.';
         if(state.mineTemplateNotice)$('bottomDataHint').textContent+=state.mineTemplateNotice;
       }
-      const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Интеллектуальная аналитика не подключена: доступны расчётные выводы.':ai?.status==='error'?' Интеллектуальная аналитика временно недоступна: показаны расчётные выводы.':'';
+      const message=ready?' Аналитическое заключение сформировано и сохранено.':ai?.status==='pending'?' Формируется аналитическое заключение по обновлённым показателям…':ai?.status==='disabled'?' Автоматические выводы недоступны, но основные показатели рассчитаны.':ai?.status==='error'?' Автоматические выводы временно недоступны. Основные показатели рассчитаны.':'';
       $('bottomDataHint').textContent+=message;
     }
     $('clearImport').hidden=true;
@@ -434,10 +434,10 @@
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
       $('financeBooks').hidden=true;
-      document.querySelector('.revenue-panel .kpi-name').textContent='Выручка за 30 дней';
-      $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent='Выручка за вчера';
-      $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика выручки';
-      $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent='Выручка по дням';
+      document.querySelector('.revenue-panel .kpi-name').textContent='Продажи за 30 дней';
+      $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent='Продажи за вчера';
+      $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика продаж';
+      $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent='Продажи по дням';
       const concernsChip=$('concerns').closest('.panel')?.querySelector('.subtle-chip');
       const positivesChip=$('positives').closest('.panel')?.querySelector('.subtle-chip');
       if(concernsChip)concernsChip.textContent='Анализ';
@@ -463,14 +463,14 @@
   bookChoice.innerHTML=
     '<label for="financialBookSelect" style="display:block;font-size:13px;font-weight:800;margin-bottom:8px">Что означают суммы в этом файле?</label>'+
     '<select id="financialBookSelect" style="width:100%;min-height:43px;background:white;color:#29334f;border:1px solid #cfd5e5;border-radius:10px;padding:9px;font-size:13px">'+
-    '<option value="unverified">Не могу подтвердить — оставить отдельно</option>'+
-    '<option value="cash_receipts">Фактически полученные деньги (включая авансы)</option>'+
-    '<option value="recognized_revenue">Выручка: оказанные услуги / проданные товары</option>'+
+    '<option value="unverified">Не знаю, что за суммы — сохранить отдельно</option>'+
+    '<option value="cash_receipts">Полученные деньги (включая авансы)</option>'+
+    '<option value="recognized_revenue">Продажи: оказанные услуги и проданные товары</option>'+
     '</select>'+
     '<div id="financialBookHelp" style="margin-top:7px;font-size:12px;line-height:1.5;color:#66718a"></div>'+
     '<label id="earnedConfirmLabel" hidden style="display:flex;align-items:flex-start;gap:9px;margin-top:10px;font-size:12px">'+
     '<input type="checkbox" id="earnedConfirm" style="flex:none;margin-top:2px;accent-color:#625fea">'+
-    '<span>Подтверждаю: услуги оказаны или товары переданы; неоплаченные счета и авансы без исполнения не включены.</span></label>';
+    '<span>Подтверждаю: услуги уже оказаны или товары переданы. Просто выставленные счета и авансы за будущие услуги не включены.</span></label>';
   $('financialPanel').before(bookChoice);
   const bookSelect=$('financialBookSelect'),earnedConfirm=$('earnedConfirm');
   const earnedConfirmLabel=$('earnedConfirmLabel'),bookHelp=$('financialBookHelp');
@@ -478,19 +478,19 @@
     if(!state.fileTable)return '';
     const local=window.BP_SmartImport?.financialSemantics(state.fileTable.head,mapping());
     if(bookSelect.value==='recognized_revenue'&&local?.basis==='cash_receipts')
-      return 'Выбран столбец фактических поступлений. Оплаты и авансы нельзя считать выручкой от выполненных продаж.';
+      return 'Здесь указаны оплаты. Нельзя считать их продажами без данных об оказанных услугах или переданных товарах.';
     if(bookSelect.value==='cash_receipts'&&local?.basis==='reported_revenue')
-      return 'Выбран столбец отражённой выручки. Для поступлений выберите колонку подтверждённых оплат.';
+      return 'Здесь указана стоимость продаж. Для поступлений выберите суммы реально полученных оплат.';
     return '';
   }
   function validateBookChoice(){
     const earned=bookSelect.value==='recognized_revenue';
     earnedConfirmLabel.hidden=!earned;
     bookHelp.textContent=earned
-      ?'Выручка возникает при выполненной продаже, не при получении аванса. Проверьте состав строк.'
+      ?'Стоимость уже оказанных услуг и переданных товаров — даже если клиент заплатит позже. Авансы за будущие услуги сюда не входят.'
       :bookSelect.value==='cash_receipts'
-        ?'Все фактически поступившие платежи. Авансы относятся к поступлениям, но не становятся выручкой автоматически.'
-        :'Эти данные не будут добавлены ни к поступлениям, ни к выручке.';
+        ?'Все деньги, которые пришли в кассу или на счёт, включая авансы. Это не то же самое, что продажи.'
+        :'Эти суммы сохраним отдельно, пока не выясним, что именно они означают.';
     const conflict=basisConflict();
     if(conflict)bookHelp.textContent=conflict;
     const approved=(!earned||earnedConfirm.checked)&&!conflict;
@@ -801,7 +801,7 @@
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
       if(!validateBookChoice())
-        throw Error(basisConflict()||'Подтвердите, что в выбранной выручке нет авансов без исполнения и неоплаченных счетов.');
+        throw Error(basisConflict()||'Подтвердите, что услуги уже оказаны или товары переданы. Авансы за будущие услуги и просто выставленные счета сюда не входят.');
       const financialBasis=bookSelect.value;
       const correctionData=isCorrection?correctionPayload():null;
       if(isCorrection&&(!checkedCorrection||checkedCorrection.file!==state.fileTable||
