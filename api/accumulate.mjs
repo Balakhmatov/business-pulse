@@ -33,6 +33,24 @@ export function createAccumulator(db) {
       put.run(lineKey(row.sold_on,row.source_id,row.item,row.status,index),row.id);
     }
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_operations_identity ON operations(company_id,import_key)');
+    // Reversible, company-scoped audit trail. No patient/customer data or raw
+    // spreadsheets are stored here, only changed amounts and import metadata.
+    db.exec(
+      'CREATE TABLE IF NOT EXISTS import_batches ('+
+      'id INTEGER PRIMARY KEY AUTOINCREMENT,'+
+      'company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,'+
+      'source TEXT NOT NULL,imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,'+
+      'received INTEGER NOT NULL,added INTEGER NOT NULL,updated INTEGER NOT NULL,'+
+      'unchanged INTEGER NOT NULL,total INTEGER NOT NULL,'+
+      'prev_source TEXT,prev_row_count INTEGER,prev_imported_at TEXT,prev_last_change_at TEXT,'+
+      'undone_at TEXT);'+
+      'CREATE INDEX IF NOT EXISTS ix_import_batches_company ON import_batches(company_id,id DESC);'+
+      'CREATE TABLE IF NOT EXISTS import_batch_changes ('+
+      'batch_id INTEGER NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,'+
+      'company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,'+
+      'import_key TEXT NOT NULL,old_amount_kopecks INTEGER,new_amount_kopecks INTEGER NOT NULL,'+
+      'PRIMARY KEY(batch_id,import_key));'
+    );
     db.exec('COMMIT');
   } catch(error) {db.exec('ROLLBACK');throw error;}
 
@@ -45,7 +63,29 @@ export function createAccumulator(db) {
   );
   const getPrevious = db.prepare('SELECT amount_kopecks FROM operations WHERE company_id=? AND import_key=?');
   const count = db.prepare('SELECT count(*) AS n FROM operations WHERE company_id=?');
-  const latest = db.prepare('SELECT company_id FROM imports WHERE company_id=?');
+  const latest = db.prepare('SELECT source,row_count,imported_at,last_change_at FROM imports WHERE company_id=?');
+  const batchInsert = db.prepare(
+    'INSERT INTO import_batches(company_id,source,received,added,updated,unchanged,total,'+
+    'prev_source,prev_row_count,prev_imported_at,prev_last_change_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
+  );
+  const changeInsert = db.prepare(
+    'INSERT INTO import_batch_changes(batch_id,company_id,import_key,old_amount_kopecks,new_amount_kopecks) VALUES(?,?,?,?,?)'
+  );
+  const pruneChanges = db.prepare(
+    'DELETE FROM import_batch_changes WHERE company_id=? AND batch_id NOT IN ('+
+    'SELECT id FROM import_batches WHERE company_id=? AND undone_at IS NULL ORDER BY id DESC LIMIT 5)'
+  );
+  const pruneBatches = db.prepare(
+    'DELETE FROM import_batches WHERE company_id=? AND id NOT IN ('+
+    'SELECT id FROM import_batches WHERE company_id=? ORDER BY id DESC LIMIT 100)'
+  );
+  const newest = db.prepare('SELECT * FROM import_batches WHERE company_id=? AND undone_at IS NULL ORDER BY id DESC LIMIT 1');
+  const undoChanges = db.prepare('SELECT import_key,old_amount_kopecks,new_amount_kopecks FROM import_batch_changes WHERE batch_id=? AND company_id=?');
+  const removeInserted = db.prepare('DELETE FROM operations WHERE company_id=? AND import_key=? AND amount_kopecks=?');
+  const revertUpdated = db.prepare('UPDATE operations SET amount_kopecks=? WHERE company_id=? AND import_key=? AND amount_kopecks=?');
+  const markUndone = db.prepare("UPDATE import_batches SET undone_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=? AND undone_at IS NULL");
+  const restoreMeta = db.prepare('UPDATE imports SET source=?,row_count=?,imported_at=?,last_change_at=? WHERE company_id=?');
+  const deleteMeta = db.prepare('DELETE FROM imports WHERE company_id=?');
   const createImport = db.prepare(
     'INSERT INTO imports(company_id,source,row_count,last_change_at) VALUES(?,?,?,CURRENT_TIMESTAMP)'
   );
@@ -66,8 +106,10 @@ export function createAccumulator(db) {
       keyed.push({ row, key: lineKey(row.date,row.id,row.item,row.status,occurrence) });
     }
     const stats = {received:rows.length,added:0,updated:0,unchanged:0,total:0};
+    const changedRows=[];
     db.exec('BEGIN IMMEDIATE');
     try {
+      const oldMeta=latest.get(company.id);
       for (const entry of keyed) {
         const {row,key} = entry;
         const prev = getPrevious.get(company.id,key);
@@ -76,18 +118,82 @@ export function createAccumulator(db) {
         else stats.updated++;
         if (!prev || prev.amount_kopecks !== row.amount_kopecks) {
           insert.run(company.id,row.date,row.id,row.item,row.amount_kopecks,row.status,key);
+          changedRows.push({key,oldAmount:prev?.amount_kopecks??null,newAmount:row.amount_kopecks});
         }
       }
       stats.total = count.get(company.id).n;
       const changed = stats.added + stats.updated > 0;
-      if (latest.get(company.id)) {
+      if (oldMeta) {
         updateMeta.run(input.source.trim(),rows.length,changed?1:0,company.id);
       } else {
         createImport.run(company.id,input.source.trim(),rows.length);
       }
+      const record=batchInsert.run(company.id,input.source.trim(),rows.length,
+        stats.added,stats.updated,stats.unchanged,stats.total,
+        oldMeta?.source??null,oldMeta?.row_count??null,
+        oldMeta?.imported_at??null,oldMeta?.last_change_at??null);
+      const batchId=Number(record.lastInsertRowid);
+      for(const row of changedRows){
+        changeInsert.run(batchId,company.id,row.key,row.oldAmount,row.newAmount);
+      }
+      pruneChanges.run(company.id,company.id);
+      pruneBatches.run(company.id,company.id);
       db.exec('COMMIT');
+      stats.batch_id=batchId;
       return stats;
     } catch(error) { db.exec('ROLLBACK');throw error; }
   }
-  return { ingest };
+  function history(company){
+    const batches=db.prepare(
+      'SELECT id,source,imported_at,received,added,updated,unchanged,total,undone_at '+
+      'FROM import_batches WHERE company_id=? ORDER BY id DESC LIMIT 20'
+    ).all(company.id);
+    const latestActive=batches.find(x=>!x.undone_at);
+    return batches.map(x=>({
+      id:x.id,source:x.source,imported_at:x.imported_at,
+      received:x.received,added:x.added,updated:x.updated,
+      unchanged:x.unchanged,total:x.total,undone:!!x.undone_at,
+      can_undo:!x.undone_at&&x.id===latestActive?.id
+    }));
+  }
+
+  function undoLatest(company,expectedId){
+    if(!Number.isSafeInteger(expectedId)||expectedId<1){
+      const e=Error('Неверный номер загрузки.');e.status=400;throw e;
+    }
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      const latestBatch=newest.get(company.id);
+      if(!latestBatch||latestBatch.id!==expectedId){
+        const e=Error('Отменить можно только последнюю действующую загрузку этой компании.');
+        e.status=409;throw e;
+      }
+      const changes=undoChanges.all(expectedId,company.id);
+      if(changes.length!==latestBatch.added+latestBatch.updated){
+        const e=Error('Данные для безопасной отмены этой загрузки недоступны.');
+        e.status=409;throw e;
+      }
+      for(const row of changes){
+        const result=row.old_amount_kopecks===null
+          ?removeInserted.run(company.id,row.import_key,row.new_amount_kopecks)
+          :revertUpdated.run(row.old_amount_kopecks,company.id,row.import_key,row.new_amount_kopecks);
+        if(result.changes!==1){
+          const e=Error('Операции изменились после загрузки. Отмена остановлена.');
+          e.status=409;throw e;
+        }
+      }
+      if(latestBatch.prev_source===null){
+        deleteMeta.run(company.id);
+      }else{
+        restoreMeta.run(latestBatch.prev_source,latestBatch.prev_row_count,
+          latestBatch.prev_imported_at,latestBatch.prev_last_change_at,company.id);
+      }
+      if(markUndone.run(expectedId,company.id).changes!==1)throw Error('Не удалось отметить отмену загрузки.');
+      const total=count.get(company.id).n;
+      db.exec('COMMIT');
+      return {undone:true,batch_id:expectedId,removed:latestBatch.added,
+        restored:latestBatch.updated,total};
+    }catch(error){db.exec('ROLLBACK');throw error;}
+  }
+  return { ingest,history,undoLatest };
 }
