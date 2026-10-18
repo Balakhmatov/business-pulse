@@ -528,6 +528,9 @@
       if(columns.id<0)throw Error('Для накопительной загрузки выберите столбец «ID чека / визита». Без него нельзя надёжно исключить дубли.');
       if(state.fileTable.rows.some(values=>!String(values[columns.id]??'').trim()))throw Error('В столбце ID есть пустые значения. Нужны стабильные идентификаторы.');
       const result=parseImported(state.fileTable,columns);
+      if(result.cancelled>0)throw Error('В файле есть отменённые операции. До полноценной сверки отмен загрузка остановлена, чтобы не сохранить неверные показатели.');
+      if(result.invalid>0)throw Error('Обнаружено '+result.invalid+' строк с ошибками: '+result.invalidExamples.join('; ')+'. Исправьте данные перед загрузкой.');
+      if(!result.rows.length)throw Error('Нет корректных оплаченных операций для импорта.');
       if(result.rows.length>10000)throw Error('Сервер принимает до 10 000 операций за одну загрузку.');
       const rows=result.rows.map(x=>({
         date:x.date,id:String(x.id),item:String(x.item),
