@@ -48,13 +48,13 @@
   quick.className='ghost-btn';
   quick.textContent='Загрузить тестовые данные';
   quick.hidden=true;
-  $('bottomImport').parentElement.insertBefore(quick,$('bottomImport'));
+  $('importUtilities').appendChild(quick);
   const retryLoad=document.createElement('button');
   retryLoad.type='button';
   retryLoad.className='ghost-btn';
   retryLoad.textContent='Повторить загрузку';
   retryLoad.hidden=true;
-  $('bottomImport').parentElement.insertBefore(retryLoad,$('bottomImport'));
+  $('importUtilities').appendChild(retryLoad);
   retryLoad.onclick=()=>{ if(!state.mineLoading)void loadMine(); };
 
   const clearTests=document.createElement('button');
@@ -63,7 +63,7 @@
   clearTests.className='ghost-btn';
   clearTests.textContent='Очистить тестовые данные';
   clearTests.hidden=true;
-  $('bottomImport').parentElement.insertBefore(clearTests,$('bottomImport'));
+  $('importUtilities').appendChild(clearTests);
   function updateQuickButton(){
     const busy=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving||state.mineClearing);
     quick.hidden=state.business!=='mine'||!!state.mineReport?.source||!!state.mineError;
@@ -321,7 +321,7 @@
       ?'CSV и Excel (.xlsx) дополняют историю: совпадающие операции обновляются. Обязателен стабильный ID чека или визита. Не загружайте персональные данные клиентов.'
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
-  ['openImport','bottomImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
+  ['openImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
   // Mapping lookup sends only column headers and coarse numeric type ratios.
   // Never send cell values, payments, receipt IDs, filenames or raw rows.
   const recognitionStatus=document.createElement('div');
