@@ -246,3 +246,37 @@ test('Fallback Excel reader recovers explicit blank cells and shorter total row'
     if(oldSmart===undefined)delete globalThis.BP_SmartImport;else globalThis.BP_SmartImport=oldSmart;
   }
 });
+
+test('Financial semantics distinguishes collected cash from accrual and debt',()=>{
+  const heads=['Дата закрытия','Код реализации','Номенклатура','Начислено по прайсу','Факт поступления денег','Событие'];
+  const cash=smart.financialSemantics(heads,{date:0,id:1,item:2,amount:4,status:5});
+  assert.equal(cash.basis,'cash_receipts');
+  assert.equal(cash.blocksImport,false);
+  const accrual=smart.financialSemantics(heads,{date:0,id:1,item:2,amount:3,status:5});
+  assert.equal(accrual.basis,'accrual');
+  assert.equal(accrual.blocksImport,true);
+  const debt=smart.financialSemantics(['Дата','ID','Дебиторская задолженность'],{date:0,id:1,amount:2});
+  assert.equal(debt.blocksImport,true);
+});
+test('Financial semantics blocks prepayments, tax and unit prices as transaction revenue',()=>{
+  for(const label of ['Аванс клиента','Предоплата','НДС сумма','Цена за единицу','Сумма долга']){
+    const info=smart.financialSemantics(['Дата','Чек',label],{date:0,id:1,amount:2});
+    assert.equal(info.blocksImport,true,'Expected block: '+label);
+  }
+});
+test('Financial semantics requires explicit confirmation on mixed payments, advances, refunds',()=>{
+  const head=['Дата','Чек','Оплачено','Сумма предоплаты','Частично оплачено','Возврат'];
+  const x=smart.financialSemantics(head,{date:0,id:1,amount:2,status:5});
+  assert.equal(x.basis,'cash_receipts');
+  assert.equal(x.blocksImport,false);
+  assert.equal(x.requiresConfirmation,true);
+  assert.ok(x.flags.includes('advance_present'));
+  assert.ok(x.flags.includes('partial_present'));
+  assert.ok(x.flags.includes('refund_present'));
+});
+test('Normal existing CSV import is still allowed without forcing financial checkbox',()=>{
+  const info=smart.financialSemantics(['Дата','Номер чека','Товар или услуга','Сумма','Статус'],
+      {date:0,id:1,item:2,amount:3,status:4});
+  assert.equal(info.blocksImport,false);
+  assert.equal(info.requiresConfirmation,false);
+});
