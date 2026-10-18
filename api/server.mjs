@@ -105,7 +105,7 @@ function normalize(input){
       (Number.isSafeInteger(r.quantity_milli)&&r.quantity_milli>0&&r.quantity_milli<=1000000000)))
       throw Error('Неверное количество: проверьте столбец «Количество».');
     if(!['sale','refund'].includes(r.status)||(r.status==='sale'&&r.amount_kopecks<0)||(r.status==='refund'&&r.amount_kopecks>0))throw Error('Invalid status');
-    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status].join('\u0000');
+    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null].join('\u0000');
     if(!seen.has(key)){result.push(r);seen.add(key);}
   }
   return result;
