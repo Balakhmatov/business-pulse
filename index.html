@@ -283,12 +283,21 @@ function parseImported(f,m){
   if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');
   const rows=[],seen=new Set();
   const invalidExamples=[];
+  const cancelled_ids=[];
   let skipped=0,duplicate=0,refunds=0,invalid=0,cancelled=0;
   f.rows.forEach((values,i)=>{
     const raw=m.status>=0?String(values[m.status]??'').toLowerCase():'';
     // Fully cancelled/unpaid entries are legitimately excluded from payments.
     if(/отмен|cancel/.test(raw)){
-      skipped++;cancelled++;return;
+      const id=m.id>=0?String(values[m.id]??'').trim():'';
+      if(!id){
+        invalid++;
+        if(invalidExamples.length<5)invalidExamples.push('строка '+((f.headerRow||1)+i+1)+': отсутствует ID отменённой операции');
+      }else{
+        cancelled_ids.push(id);
+        cancelled++;
+      }
+      skipped++;return;
     }
     if(/неоплач|ожидан|pending|неявк/.test(raw)){
       skipped++;return;
@@ -315,8 +324,10 @@ function parseImported(f,m){
     rows.push({date,amount:val,id:identifier,item:item||'Без категории',status:refund?'refund':'sale'});
     if(refund)refunds++;
   });
-  if(!rows.length&&!invalid)throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');
-  return {rows,skipped,duplicate,refunds,invalid,cancelled,invalidExamples};
+  const correctionMode=document.getElementById('useCorrections')?.checked===true;
+  if(!rows.length&&!invalid&&!(correctionMode&&cancelled_ids.length))
+    throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');
+  return {rows,skipped,duplicate,refunds,invalid,cancelled,cancelled_ids,invalidExamples};
 }
 const financialFlagLabels={
   prepayments:'Возможны авансы и предоплаты. Проверьте, не учитывается ли аванс повторно при зачёте.',
@@ -386,8 +397,9 @@ function preview(f){
     $('financialType').textContent=financialBasisTitles[review.type]||financialBasisTitles.unknown;
     $('financialMessage').textContent=[...new Set(review.warnings)].join('\n');
     ackLabel.hidden=!review.needsConfirm||review.blocked;
-    $('importAlert').textContent=result.cancelled>0
-      ?'Импорт остановлен: найдено '+number(result.cancelled)+' отменённых операций. Для них нужна сверка с историей, иначе выручка может быть завышена. Выгрузите только действующие оплаченные операции.'
+    const correctionMode=document.getElementById('useCorrections')?.checked===true;
+    $('importAlert').textContent=result.cancelled>0&&!correctionMode
+      ?'Импорт остановлен: найдено '+number(result.cancelled)+' отменённых операций. Для них нужна отдельная проверка исправлений (режим ниже).'
       :result.invalid>0
         ?'Импорт остановлен: '+number(result.invalid)+' строк с ошибками. '+result.invalidExamples.join('; ')+'. Исправьте файл или выбор столбцов.'
       :review.blocked
@@ -397,7 +409,7 @@ function preview(f){
           :'';
     const examples=result.rows.slice(0,4);
     $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':'Оплата')+'</td></tr>').join('')+'</tbody></table>';
-    $('confirmImport').disabled=review.blocked||result.invalid>0||result.cancelled>0||!result.rows.length||(review.needsConfirm&&!ack.checked);
+    $('confirmImport').disabled=review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
   }catch(e){
     f._bpFinancialReview=null;
     panel.hidden=true;
@@ -479,7 +491,7 @@ async function readFile(file){
 }
 $('fileInput').onchange=e=>readFile(e.target.files[0]);const zone=$('dropZone');zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag')});zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');readFile(e.dataTransfer.files[0])});
 $('confirmImport').onclick=()=>{try{const m=mapping(),res=parseImported(state.fileTable,m);state.datasets[state.business]={rows:res.rows,imported:true,special:{},meta:{name:state.fileTable.name,hasOrderId:m.id>=0}};showModal(false);render()}catch(e){$('importAlert').textContent=e.message}};
-window.BP_Demo={state,parseImported,mapping,showModal,render,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday};
+window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday};
 render();
 })();
 </script>
