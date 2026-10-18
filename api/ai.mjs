@@ -60,7 +60,7 @@ export function createAI({ db, report, listOperations }) {
     const add = (id, value) => { facts[id] = value; };
     add('revenue', title+' за последние 30 завершённых дней: '+money(r.revenue30_kopecks)+'.');
     add('receipts', 'За тот же период было ' + currentReceipts + ' операций с уникальными номерами.');
-    if (r.average_receipt_kopecks !== null) add('average', 'В среднем на операцию: ' + money(r.average_receipt_kopecks) + '.');
+    if (r.average_receipt_kopecks !== null) add('average', 'Средний чек: ' + money(r.average_receipt_kopecks) + '.');
     add('data_coverage', 'Операции присутствуют за ' + curDays + ' из последних 30 дней; отсутствие операций не доказывает нулевые продажи.');
     if (comparable) {
       add('revenue_change', 'Изменение к предыдущим 30 дням: ' + percent(r.change_percent) + '.');
@@ -69,7 +69,7 @@ export function createAI({ db, report, listOperations }) {
         add('receipt_change', 'Изменение числа операций к предыдущим 30 дням: ' + percent(change) + '.');
         const prevAverage = r.previous30_kopecks / prevReceipts;
         if (prevAverage > 0 && r.average_receipt_kopecks !== null) {
-          add('average_change', 'Изменение средней суммы на операцию: ' + percent((r.average_receipt_kopecks - prevAverage) / prevAverage * 100) + '.');
+          add('average_change', 'Изменение среднего чека: ' + percent((r.average_receipt_kopecks - prevAverage) / prevAverage * 100) + '.');
         }
       }
     } else {
