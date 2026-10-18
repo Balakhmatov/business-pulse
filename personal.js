@@ -446,6 +446,70 @@
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
+  // Financial classification is explicit: field names alone cannot prove
+  // whether a sum was collected or earned. Historical data stays unverified.
+  const bookChoice=document.createElement('section');
+  bookChoice.hidden=true;
+  bookChoice.className='import-preview';
+  bookChoice.style.cssText='margin:12px 0';
+  bookChoice.innerHTML=
+    '<label for="financialBookSelect" style="display:block;font-size:13px;font-weight:800;margin-bottom:8px">Что означают суммы в этом файле?</label>'+
+    '<select id="financialBookSelect" style="width:100%;min-height:43px;background:white;color:#29334f;border:1px solid #cfd5e5;border-radius:10px;padding:9px;font-size:13px">'+
+    '<option value="unverified">Не могу подтвердить — оставить отдельно</option>'+
+    '<option value="cash_receipts">Фактически полученные деньги (включая авансы)</option>'+
+    '<option value="recognized_revenue">Выручка: оказанные услуги / проданные товары</option>'+
+    '</select>'+
+    '<div id="financialBookHelp" style="margin-top:7px;font-size:12px;line-height:1.5;color:#66718a"></div>'+
+    '<label id="earnedConfirmLabel" hidden style="display:flex;align-items:flex-start;gap:9px;margin-top:10px;font-size:12px">'+
+    '<input type="checkbox" id="earnedConfirm" style="flex:none;margin-top:2px;accent-color:#625fea">'+
+    '<span>Подтверждаю: услуги оказаны или товары переданы; неоплаченные счета и авансы без исполнения не включены.</span></label>';
+  $('financialPanel').before(bookChoice);
+  const bookSelect=$('financialBookSelect'),earnedConfirm=$('earnedConfirm');
+  const earnedConfirmLabel=$('earnedConfirmLabel'),bookHelp=$('financialBookHelp');
+  function validateBookChoice(){
+    const earned=bookSelect.value==='recognized_revenue';
+    earnedConfirmLabel.hidden=!earned;
+    bookHelp.textContent=earned
+      ?'Выручка возникает при выполненной продаже, не при получении аванса. Проверьте состав строк.'
+      :bookSelect.value==='cash_receipts'
+        ?'Все фактически поступившие платежи. Авансы относятся к поступлениям, но не становятся выручкой автоматически.'
+        :'Эти данные не будут добавлены ни к поступлениям, ни к выручке.';
+    const approved=!earned||earnedConfirm.checked;
+    if(!approved)$('confirmImport').disabled=true;
+    if(typeof correctionMode!=='undefined'&&correctionMode.checked)setCorrectionButton();
+    return approved;
+  }
+  function inferCashBook(file){
+    if(!file||!file.head)return;
+    const semantic=window.BP_SmartImport?.financialSemantics(file.head,mapping());
+    if(!bookSelect.dataset.manuallyChosen)
+      bookSelect.value=semantic?.basis==='cash_receipts'?'cash_receipts':'unverified';
+    earnedConfirm.checked=false;
+    validateBookChoice();
+  }
+  bookSelect.onchange=()=>{
+    bookSelect.dataset.manuallyChosen='yes';
+    earnedConfirm.checked=false;
+    invalidateCorrection();
+    if(state.fileTable)demo.preview(state.fileTable);
+    validateBookChoice();
+  };
+  earnedConfirm.onchange=()=>{
+    if(state.fileTable)demo.preview(state.fileTable);
+    validateBookChoice();
+  };
+  document.addEventListener('bp:import-table-ready',event=>{
+    bookChoice.hidden=state.business!=='mine';
+    delete bookSelect.dataset.manuallyChosen;
+    bookSelect.value='unverified';
+    inferCashBook(event.detail?.file);
+  });
+  document.addEventListener('change',event=>{
+    if(event.target?.closest?.('#mappingFields')&&state.business==='mine'){
+      inferCashBook(state.fileTable);
+    }
+    if(event.target?.id==='financialConfirm')validateBookChoice();
+  });
   // A separate, opt-in operation-correction workflow. Missing rows in an
   // ordinary/partial report can NEVER imply deletion from the company ledger.
   const correctionsPanel=document.createElement('section');
@@ -489,13 +553,15 @@
     }));
     if(rows.length+parsed.cancelled_ids.length>1000)
       throw Error('Пакет исправлений ограничен 1000 строками. Разделите выгрузку.');
-    return {source:file.name.slice(0,120),rows,cancelled_ids:parsed.cancelled_ids};
+    return {source:file.name.slice(0,120),rows,cancelled_ids:parsed.cancelled_ids,
+      financial_basis:bookSelect.value};
   }
   function setCorrectionButton(){
     if(!correctionMode.checked)return;
     const financial=state.fileTable?._bpFinancialReview;
     let canApply=!!checkedCorrection&&checkedCorrection.file===state.fileTable&&
-      correctionApprove.checked&&!financial?.blocked&&
+      correctionApprove.checked&&
+      (bookSelect.value!=='recognized_revenue'||earnedConfirm.checked)&&!financial?.blocked&&
       (!financial?.needsConfirm||$('financialConfirm').checked);
     if(canApply){
       try{
@@ -714,6 +780,9 @@
         amount_kopecks:Math.round(x.amount*100),status:x.status
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
+      if(!validateBookChoice())
+        throw Error('Подтвердите, что в выбранной выручке нет авансов без исполнения и неоплаченных счетов.');
+      const financialBasis=bookSelect.value;
       const correctionData=isCorrection?correctionPayload():null;
       if(isCorrection&&(!checkedCorrection||checkedCorrection.file!==state.fileTable||
           !correctionApprove.checked||
@@ -734,7 +803,8 @@
           ...correctionData,confirm_token:checkedCorrection.confirm_token,
           expires_at_ms:checkedCorrection.expires_at_ms
         })
-        :await request('/import',{source:state.fileTable.name.slice(0,120),rows});
+        :await request('/import',{source:state.fileTable.name.slice(0,120),
+          financial_basis:financialBasis,rows});
       // Saving the mapping is independent of successful accounting: a template
       // API outage must not undo or retry a completed transaction import.
       let savedTemplate=false;
@@ -746,7 +816,10 @@
         ?' Формат выгрузки запомнен для следующих загрузок.'
         :' Соответствие столбцов не удалось запомнить; операции сохранены.';
       state.mineImportStats=answer.stats||null;
-      state.mineReport=answer.report;
+      state.mineViewBasis=financialBasis;
+      try{
+        state.mineReport=await request('/report?basis='+financialBasis);
+      }catch{state.mineReport=answer.report;}
       state.mineAI=null;
       state.mineError='';
       invalidateCorrection();
