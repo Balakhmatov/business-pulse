@@ -5,6 +5,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { createAccumulator } from './accumulate.mjs';
+import excel from '../excel-adapter.js';
 
 function makeFixture(){
   const dir=mkdtempSync(path.join(tmpdir(),'bp-accumulate-'));
@@ -77,4 +78,46 @@ test('A failed import is fully rolled back: operations and metadata unchanged',t
   ]),/symbol|type|bind|unsupported|invalid/i);
   assert.equal(f.all().length,1);
   assert.equal(f.amount(),15000);
+});
+
+test('Excel table handles dates, blank cells and numeric amounts without changing identity',()=>{
+  const matrix=[
+    ['Дата','Номер чека','Товар или услуга','Сумма','Статус'],
+    [new Date('2026-10-17T00:00:00.000Z'),'00125','УЗИ',3540,'оплата'],
+    [null,null,null,null,null],
+    ['2026-10-18','00007','Приём',1700,'оплата']
+  ];
+  const parsed=excel.table(matrix,'import.xlsx');
+  assert.equal(parsed.head[0],'Дата');
+  assert.equal(parsed.rows.length,2);
+  assert.deepEqual(parsed.rows[0],['2026-10-17','00125','УЗИ','3540','оплата']);
+  assert.deepEqual(parsed.rows[1],['2026-10-18','00007','Приём','1700','оплата']);
+});
+
+test('Excel workbook lets user choose between multiple sheets before importing',async()=>{
+  const old=globalThis.readXlsxFile;
+  globalThis.readXlsxFile=async (file,options)=>{
+    if(options.getSheets)return [{name:'Сводка'},{name:'Продажи'}];
+    return options.sheet==='Продажи'
+      ? [['Дата','Чек','Сумма'],[new Date('2026-10-17T00:00:00.000Z'),'00001',1500]]
+      : [['Дата','Чек'],['2026-10-17','не продажа']];
+  };
+  try{
+    const book=await excel.workbook({name:'multiple.xlsx'});
+    assert.deepEqual(book.names,['Сводка','Продажи']);
+    const selected=await book.readSheet('Продажи');
+    assert.equal(selected.rows[0][1],'00001');
+    assert.equal(selected.rows[0][0],'2026-10-17');
+    await assert.rejects(()=>book.readSheet('Неизвестный'),/Такого листа/);
+  }finally{
+    if(old===undefined)delete globalThis.readXlsxFile;
+    else globalThis.readXlsxFile=old;
+  }
+});
+
+test('Excel empty and malformed sheets are refused rather than imported',()=>{
+  assert.throws(()=>excel.table([['Дата','Сумма']],'blank.xlsx'),/нет строк/);
+  assert.throws(()=>excel.table([['Дата'],['2026-10-17']],'one-column.xlsx'),/меньше двух/);
+  assert.equal(excel.text(null),'');
+  assert.equal(excel.text(0),'0');
 });
