@@ -51,7 +51,7 @@ test('Template confirmation updates corrected user mapping without adding new te
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM import_mapping_templates WHERE company_id=?').get('a').n,1);
 });
 test('AI only receives column names and coarse type ratios, without operation data',async t=>{
-  const expected={report_type:'operations',mapping:selected};
+  const expected={report_type:'operations',mapping:selected,financial:{basis:'cash_receipts',confidence:'high',risk_flags:[]}};
   let calls=0,posted;
   const fetchFn=async(_url,opts)=>{
     calls++;
@@ -64,6 +64,7 @@ test('AI only receives column names and coarse type ratios, without operation da
   const result=await f.service.resolve({id:'a'},input);
   assert.equal(result.source,'ai');
   assert.deepEqual(result.mapping,selected);
+  assert.deepEqual(result.financial,{basis:'cash_receipts',confidence:'high',risk_flags:[]});
   assert.equal(calls,1);
   assert.equal(posted.store,false);
   assert.equal(posted.text.format.type,'json_schema');
@@ -84,7 +85,7 @@ test('Malformed or uncertain AI outputs cannot silently select financial columns
   const fetchFn=async()=>({ok:true,json:async()=>({
     status:'completed',
     output:[{type:'message',content:[{type:'output_text',
-      text:JSON.stringify({report_type:'operations',mapping:{date:0,id:1,item:2,amount:0,status:4}})}]}]
+      text:JSON.stringify({report_type:'operations',mapping:{date:0,id:1,item:2,amount:0,status:4},financial:{basis:'cash_receipts',confidence:'high',risk_flags:[]}})}]}]
   })});
   const f=fixture({apiKey:'test-only',fetchFn});t.after(f.close);
   const result=await f.service.resolve({id:'a'},{head:headers,profiles:profile(),needs_ai:true});
