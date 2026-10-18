@@ -193,6 +193,7 @@ test('Old correction snapshots without finance basis remain reversible after mig
   for(const snapshot of rows){
     const before=JSON.parse(snapshot.before_row),after=JSON.parse(snapshot.after_row);
     delete before.financial_basis;delete after.financial_basis;
+    delete before.quantity_milli;delete after.quantity_milli;
     f.db.prepare(
       'UPDATE operation_correction_changes SET before_row=?,after_row=? WHERE batch_id=? AND source_id=?'
     ).run(JSON.stringify(before),JSON.stringify(after),snapshot.batch_id,snapshot.source_id);
