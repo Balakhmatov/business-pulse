@@ -98,7 +98,7 @@
  <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button><button type="button" class="neutral-btn" id="bottomImport"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить CSV / Excel</button></div></div>
  <div class="foot">Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений</div>
 </main></div>
-<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
+<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Что именно отражают суммы</strong><div id="financialMessage" style="margin-top:8px"></div><label id="financialConfirmLabel" style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил тип поступлений, авансы, частичные оплаты и возвраты. Подтверждаю, что выбранные суммы можно включить в этот отчёт.</span></label></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
 <script src="smart-import.js?v=20261018-smart-v1"></script>
 <script src="excel-adapter.js?v=20261018-smart-v2-fallback"></script>
 <script>
@@ -247,7 +247,82 @@ f.rows.forEach((values,i)=>{const date=parseDate(values[m.date]),amount=parseAmo
 const val=refund?-Math.abs(amount):amount;
 if(m.id>=0&&id){const key=[date,id,item,val,refund].join('|');if(seen.has(key)){duplicate++;return}seen.add(key)}rows.push({date,amount:val,id:id||String(i+1),item:item||'Без категории',status:refund?'refund':'sale'});if(refund)refunds++});
 if(!rows.length)throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');return{rows,skipped,duplicate,refunds}}
-function preview(f){try{const m=mapping(),result=parseImported(f,m);$('importAlert').textContent='';const examples=result.rows.slice(0,4);$('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>`<tr><td>${r.date}</td><td>${escapeHTML(r.item)}</td><td>${money(r.amount)}</td><td>${r.status==='refund'?'Возврат':'Оплата'}</td></tr>`).join('')+'</tbody></table>';$('confirmImport').disabled=false}catch(e){$('importPreview').textContent='Выберите столбцы для просмотра данных.';$('importAlert').textContent=e.message;$('confirmImport').disabled=true}}
+const financialFlagLabels={
+  prepayments:'Возможны авансы и предоплаты. Проверьте, не учитывается ли аванс повторно при зачёте.',
+  partial_payments:'Возможны частичные оплаты. Одна продажа может соответствовать нескольким поступлениям.',
+  receivables:'В отчёте может быть дебиторская задолженность — это не полученные деньги.',
+  refunds:'Возможны возвраты или сторно: проверьте знак суммы и статус каждой операции.',
+  tax_or_vat:'Есть признаки НДС или налогов: проверьте состав суммы и единый подход в разных отчётах.',
+  double_counting:'Есть риск двойного учёта одной продажи, аванса и его зачёта.',
+  status_uncertain:'Проверьте статусы оплат, отмен, возвратов и неоплаченных операций.',
+  accruals:'Начисления и фактические поступления нельзя суммировать как один показатель.'
+};
+const financialBasisLabels={
+  cash_receipts:'Выбран показатель поступивших денежных средств. Это не всегда признанная выручка.',
+  reported_revenue:'Выбран показатель выручки по данным источника. Он может отличаться от фактических поступлений.',
+  accrual:'Начисление или выставленный счёт — это не подтверждённое поступление денег.',
+  advance:'Аванс или депозит — это не автоматически признанная выручка.',
+  debt:'Дебиторская задолженность — деньги ещё не получены.',
+  mixed:'Возможно смешение начислений, оплат, авансов и зачётов. Нужна проверка.',
+  unknown:'По заголовкам невозможно уверенно установить финансовый смысл показателя.'
+};
+function financialReview(file,columns){
+  const local=window.BP_SmartImport?.financialSemantics(file.head,columns);
+  const ai=file._bpAiFinancial;
+  const aiValid=ai&&typeof ai==='object'&&financialBasisLabels[ai.basis];
+  const warnings=[...(local?.notes||[])];
+  let blocked=local?.blocksImport===true;
+  let needsConfirm=local?.requiresConfirmation===true;
+  if(aiValid){
+    const label=financialBasisLabels[ai.basis];
+    warnings.push('Предположение ИИ: '+label);
+    for(const risk of ai.risk_flags||[]){
+      if(financialFlagLabels[risk]&&!warnings.includes(financialFlagLabels[risk])){
+        warnings.push(financialFlagLabels[risk]);
+      }
+    }
+    if(['accrual','advance','debt','mixed','unknown'].includes(ai.basis) ||
+       (ai.risk_flags||[]).length)needsConfirm=true;
+    // AI hints are never allowed to override a deterministic hard block.
+  }else if(local?.basis==='unknown'){
+    warnings.push('По названию выбранной суммы неясно, является ли она оплатой, начислением или выручкой. Проверьте источник.');
+  }else if(local?.basis){
+    warnings.unshift(financialBasisLabels[local.basis]||'Проверьте значение денежного поля.');
+  }
+  return {blocked,needsConfirm,warnings,local,ai:aiValid?ai:null};
+}
+function preview(f){
+  const panel=$('financialPanel');
+  try{
+    const m=mapping(),result=parseImported(f,m);
+    const review=financialReview(f,m);
+    f._bpFinancialReview=review;
+    const key=JSON.stringify([m,review.warnings,review.blocked,review.needsConfirm]);
+    const ack=$('financialConfirm');
+    if(f._bpReviewKey!==key){ack.checked=false;f._bpReviewKey=key;}
+    const ackLabel=$('financialConfirmLabel');
+    panel.hidden=false;
+    $('financialMessage').textContent=review.warnings.join(' ');
+    ackLabel.hidden=!review.needsConfirm||review.blocked;
+    $('importAlert').textContent=review.blocked
+      ?'Нельзя импортировать выбранный денежный показатель как поступления. Выберите столбец фактической оплаты.'
+      :review.needsConfirm&&!ack.checked
+        ?'Проверьте финансовые предупреждения и подтвердите их перед импортом.'
+        :'';
+    const examples=result.rows.slice(0,4);
+    $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':'Оплата')+'</td></tr>').join('')+'</tbody></table>';
+    $('confirmImport').disabled=review.blocked||(review.needsConfirm&&!ack.checked);
+  }catch(e){
+    f._bpFinancialReview=null;
+    panel.hidden=true;
+    $('importPreview').textContent='Выберите столбцы для просмотра данных.';
+    $('importAlert').textContent=e.message;
+    $('confirmImport').disabled=true;
+  }
+}
+$('financialConfirm').addEventListener('change',()=>{
+  if(state.fileTable)preview(state.fileTable);
+});
 async function showExcelSheet(name){
   if(!excelBook)return;
   const ticket=++importReadToken;
