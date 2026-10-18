@@ -25,12 +25,13 @@
   function table(matrix,name){
     if(!Array.isArray(matrix))throw Error('Не удалось прочитать лист Excel.');
     if(matrix.length>MAX_ROWS+1)throw Error('Слишком большой лист Excel: более 150 000 строк.');
-    const data=matrix.map(row=>Array.isArray(row)?row.map(text):[]).filter(row=>row.some(cell=>cell.trim()));
+    const physicalRows=matrix.map(row=>Array.isArray(row)?row.map(text):[]);
+    const data=physicalRows.filter(row=>row.some(cell=>cell.trim()));
     if(data.length<2)throw Error('На выбранном листе нет строк с данными.');
     const width=Math.max(...data.slice(0,100).map(row=>row.length));
     if(width<2)throw Error('На выбранном листе меньше двух столбцов.');
     if(width>300)throw Error('В Excel слишком много столбцов (максимум 300).');
-    if(root.BP_SmartImport?.detect)return root.BP_SmartImport.detect(data,name);
+    if(root.BP_SmartImport?.detect)return root.BP_SmartImport.detect(physicalRows,name);
     // Node/tests without a browser can still use the legacy table adapter.
     return {
       name,
