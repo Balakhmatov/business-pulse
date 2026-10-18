@@ -44,7 +44,9 @@
     if(key==='id'&&badId.test(s))score=0;
     if(key==='item'&&/код.{0,12}(товар|услуг)|артикул|sku/i.test(s))score=0;
     if(key==='date'&&/дата.{0,15}(рождени|поставк|регистрац|доставк)/i.test(s))score=1;
-    if(key==='amount'&&/\bитого\b|сумма к оплате|фактически оплачено/.test(s))score+=2;
+    if(key==='amount'&&/фактически оплачено|оплачено|сумма оплат|сумма платеж|поступило|paid|payment/i.test(s))score+=4;
+    if(key==='amount'&&/выручк|revenue/i.test(s))score+=3;
+    if(key==='amount'&&/\bитого\b|сумма к оплате/i.test(s))score+=1;
     return score;
   }
   function profiles(head,rows){
@@ -64,7 +66,10 @@
   function score(p,key){
     const h=fieldHeader(p.label,key);
     if(key==='date')return h*3+p.dates*14-p.nums*2;
-    if(key==='amount')return h*3+p.nums*10+(p.nums>.8&&p.zeroids===0?2:0)-p.dates*12-p.statuses*12;
+    if(key==='amount'){
+      if(badAmount.test(p.label)||/^(цена|price|тариф)$/i.test(norm(p.label)))return -20;
+      return h*3+p.nums*10+(p.nums>.8&&p.zeroids===0?2:0)-p.dates*12-p.statuses*12;
+    }
     if(key==='id')return h*3+(p.filled>.8&&p.unique>.65?6:0)+(p.zeroids>.2?6:0)-p.dates*13-p.statuses*8-(/код.{0,8}(товар|услуг)|артикул/i.test(p.label)?15:0);
     if(key==='item')return h*3+p.words*8+(p.unique>.3?2:0)-p.dates*12-p.statuses*8;
     if(key==='status')return h*3+p.statuses*12-p.dates*7;
@@ -77,7 +82,7 @@
     }
     candidates.sort((a,b)=>b.points-a.points);
     const mapping={date:-1,id:-1,item:-1,amount:-1,status:-1};
-    const confidence={},claimed=new Set();
+    const confidence={},claimed=new Set(),ambiguities=[];
     for(const x of candidates){
       if(mapping[x.key]>=0||claimed.has(x.index))continue;
       const cutoff=x.key==='date'||x.key==='amount'?9:x.key==='id'?10:x.key==='item'?8:11;
@@ -85,7 +90,24 @@
       mapping[x.key]=x.index;claimed.add(x.index);
       confidence[x.key]=x.points>=22?'высокая':x.points>=16?'средняя':'требует проверки';
     }
-    return {mapping,confidence,profiles:ps};
+    // Equal plausible date/receipt/payment columns require a human selection.
+    // The first equally-named numeric column must never silently become revenue.
+    for(const key of ['date','id','amount']){
+      const selected=mapping[key];
+      if(selected<0)continue;
+      const values=ps.map((p,index)=>({index,points:score(p,key)}))
+        .sort((a,b)=>b.points-a.points);
+      const best=values.find(v=>v.index===selected);
+      const alternate=values.find(v=>v.index!==selected);
+      if(best&&alternate&&alternate.points>=10&&best.points-alternate.points<4){
+        mapping[key]=-1;
+        confidence[key]='неоднозначно';
+        ambiguities.push(key==='date'?'Несколько столбцов похожи на дату операции.':
+          key==='id'?'Несколько столбцов похожи на номер чека или документа.':
+          'Несколько столбцов похожи на сумму выручки. Укажите правильный вручную.');
+      }
+    }
+    return {mapping,confidence,profiles:ps,ambiguities};
   }
   function headerCandidate(matrix,i){
     const h=matrix[i]||[],prev=matrix.slice(Math.max(0,i-4),i);
@@ -146,6 +168,7 @@
     const aggregate=(explicitSummary||summaryColumns)&&id<0&&amount>=0;
     const warnings=[];
     if(aggregate)warnings.push('Похоже на сводный отчёт. Его нельзя объединять с отдельными продажами: возникнет двойной учёт.');
+    warnings.push(...result.ambiguities);
     if(id<0)warnings.push('Не найден надёжный ID чека/визита. В личной компании потребуется выбрать этот столбец вручную.');
     if(date<0||amount<0)warnings.push('Дата или сумма определены неоднозначно — проверьте выбор столбцов.');
     if(footer)warnings.push('Пропущены итоговые строки: '+footer+'.');
