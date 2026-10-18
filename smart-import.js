@@ -141,8 +141,9 @@
     const names=padded.join(' ');
     const id=result.mapping.id,amount=result.mapping.amount,date=result.mapping.date;
     const explicitSummary=summary.test(preamble)||summary.test(name||'')||summary.test(names);
-    const summaryColumns=/^(количеств|средний чек|средн|процент|доля|показател|период|филиал|подразделени|врач)/i.test(names);
-    const aggregate=explicitSummary&&id<0 || id<0&&summaryColumns&&amount>=0&&date>=0;
+    const summaryColumns=/количеств|средний чек|средн|процент|доля выручки|показател|группиров|всего за период/i.test(names);
+    // A daily/monthly totals table with no receipt ID is not a transaction export.
+    const aggregate=(explicitSummary||summaryColumns)&&id<0&&amount>=0;
     const warnings=[];
     if(aggregate)warnings.push('Похоже на сводный отчёт. Его нельзя объединять с отдельными продажами: возникнет двойной учёт.');
     if(id<0)warnings.push('Не найден надёжный ID чека/визита. В личной компании потребуется выбрать этот столбец вручную.');
