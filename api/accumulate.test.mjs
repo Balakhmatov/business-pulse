@@ -360,3 +360,68 @@ test('Hard financial blocks cannot be bypassed by model suggestions',()=>{
   assert.equal(decision.blocked,true);
   assert.equal(decision.needsConfirm,false);
 });
+
+
+test('Import history keeps scoped batch statistics and rollback restores original operations',t=>{
+  const f=makeFixture();t.after(f.close);const engine=f.importer();
+  const first=f.run(engine,[f.row('2026-10-13','R1',10000)],'first.xlsx');
+  const second=f.run(engine,[
+    f.row('2026-10-13','R1',15000),
+    f.row('2026-10-14','R2',20000)
+  ],'corrected.xlsx');
+  assert.equal(f.amount(),35000);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM import_batch_changes').get().n,3);
+  const entries=engine.history({id:'a'});
+  assert.equal(entries.length,2);
+  assert.equal(entries[0].source,'corrected.xlsx');
+  assert.deepEqual([entries[0].added,entries[0].updated,entries[0].unchanged],[1,1,0]);
+  assert.equal(entries[0].can_undo,true);
+  assert.equal(entries[1].can_undo,false);
+  assert.equal(engine.history({id:'b'}).length,0);
+  const undone=engine.undoLatest({id:'a'},second.batch_id);
+  assert.deepEqual([undone.removed,undone.restored,undone.total],[1,1,1]);
+  assert.equal(f.amount(),10000);
+  assert.equal(f.db.prepare('SELECT source FROM imports WHERE company_id=?').get('a').source,'first.xlsx');
+  const entriesAfter=engine.history({id:'a'});
+  assert.equal(entriesAfter[0].undone,true);
+  assert.equal(entriesAfter[1].can_undo,true);
+  assert.equal(engine.undoLatest({id:'a'},first.batch_id).total,0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM imports WHERE company_id=?').get('a').n,0);
+});
+test('Undo is rejected for a nonlatest batch, other company, wrong ID and repeated undo',t=>{
+  const f=makeFixture();t.after(f.close);const engine=f.importer();
+  const one=f.run(engine,[f.row('2026-10-13','R1',10000)],'first.csv');
+  const two=f.run(engine,[f.row('2026-10-14','R2',20000)],'second.csv');
+  const amt=f.amount();
+  assert.throws(()=>engine.undoLatest({id:'a'},one.batch_id),/последнюю/i);
+  assert.throws(()=>engine.undoLatest({id:'b'},two.batch_id),/последнюю/i);
+  assert.throws(()=>engine.undoLatest({id:'a'},-1),/номер/i);
+  assert.equal(f.amount(),amt);
+  engine.undoLatest({id:'a'},two.batch_id);
+  assert.throws(()=>engine.undoLatest({id:'a'},two.batch_id),/последнюю/i);
+});
+test('Undo removes only the latest newly added transactions; unchanged rows are not deleted',t=>{
+  const f=makeFixture();t.after(f.close);const engine=f.importer();
+  f.run(engine,[f.row('2026-10-13','A',10000)],'a.csv');
+  const delta=f.run(engine,[
+    f.row('2026-10-13','A',10000),
+    f.row('2026-10-14','B',20000),
+  ],'b.csv');
+  assert.equal(delta.unchanged,1);
+  assert.equal(delta.added,1);
+  engine.undoLatest({id:'a'},delta.batch_id);
+  assert.equal(f.amount(),10000);
+  assert.equal(f.all().length,1);
+});
+test('Undo fails atomically if a changed operation no longer matches its recorded amount',t=>{
+  const f=makeFixture();t.after(f.close);const engine=f.importer();
+  const batch=f.run(engine,[
+    f.row('2026-10-13','A',10000),
+    f.row('2026-10-14','B',20000)
+  ],'bad.csv');
+  f.db.prepare('UPDATE operations SET amount_kopecks=? WHERE source_id=?').run(25000,'B');
+  assert.throws(()=>engine.undoLatest({id:'a'},batch.batch_id),/изменились/i);
+  assert.equal(f.all().length,2);
+  assert.equal(f.amount(),35000);
+  assert.equal(engine.history({id:'a'})[0].undone,false);
+});
