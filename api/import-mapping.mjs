@@ -52,7 +52,7 @@ function sanitizeAIHeader(x){
     .slice(0,72);
 }
 function validateAIResult(raw,head,profiles){
-  if(!raw||typeof raw!=='object'||Array.isArray(raw)||raw.report_type!=='operations'&&raw.report_type!=='unknown')return null;
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||raw.report_type!=='operations')return null;
   const m=raw.mapping;
   if(!m||typeof m!=='object')return null;
   const mapping={};const occupied=new Set();
