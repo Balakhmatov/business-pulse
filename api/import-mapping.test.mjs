@@ -67,7 +67,7 @@ test('AI only receives column names and coarse type ratios, without operation da
   assert.equal(calls,1);
   assert.equal(posted.store,false);
   assert.equal(posted.text.format.type,'json_schema');
-  assert.deepEqual(JSON.parse(posted.input).columns.map(c=>c.column),[1,2,3,4,5]);
+  assert.deepEqual(JSON.parse(posted.input).columns.map(c=>c.index),[0,1,2,3,4]);
   assert.ok(!posted.input.includes('Пациент Петров'));
   assert.ok(!posted.input.includes('500000'));
   assert.ok(!posted.input.includes('receipt-'));
