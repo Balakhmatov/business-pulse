@@ -273,3 +273,17 @@ test('At most two AI attempts per company within a cooldown window',async t=>{
   assert.equal(third.reason,'limit');
   assert.equal(third.can_retry,false);
 });
+
+test('An optional item quantity column is company-scoped, remembered and never overlaps money',async t=>{
+  const f=fixture();t.after(f.close);
+  const cols=[...headers,'Количество'];
+  const selectedWithQuantity={...selected,quantity:5};
+  assert.deepEqual(validateMapping(cols,selectedWithQuantity),selectedWithQuantity);
+  assert.throws(()=>validateMapping(cols,{...selectedWithQuantity,quantity:3}),/один столбец|Количество/);
+  f.service.confirm({id:'a'},{head:cols,mapping:selectedWithQuantity});
+  const saved=await f.service.resolve({id:'a'},{head:cols,needs_ai:false});
+  assert.equal(saved.source,'template');
+  assert.deepEqual(saved.mapping,selectedWithQuantity);
+  const other=await f.service.resolve({id:'b'},{head:cols,needs_ai:false});
+  assert.equal(other.mapping,null);
+});
