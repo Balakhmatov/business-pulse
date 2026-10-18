@@ -141,7 +141,7 @@
     const names=padded.join(' ');
     const id=result.mapping.id,amount=result.mapping.amount,date=result.mapping.date;
     const explicitSummary=summary.test(preamble)||summary.test(name||'')||summary.test(names);
-    const summaryColumns=/^((количеств|средний чек|средн|процент|доля|показател|период|филиал|подразделени|врач)/i.test(names);
+    const summaryColumns=/^(количеств|средний чек|средн|процент|доля|показател|период|филиал|подразделени|врач)/i.test(names);
     const aggregate=explicitSummary&&id<0 || id<0&&summaryColumns&&amount>=0&&date>=0;
     const warnings=[];
     if(aggregate)warnings.push('Похоже на сводный отчёт. Его нельзя объединять с отдельными продажами: возникнет двойной учёт.');
