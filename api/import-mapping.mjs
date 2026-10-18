@@ -94,7 +94,7 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
   const rate=new Map(),inFlight=new Set();
   const key=apiKey.trim();
   async function propose(head,profiles){
-    const hints=head.map((h,i)=>({column:i+1,label:sanitizeAIHeader(h),...profiles[i]}));
+    const hints=head.map((h,i)=>({index:i,label:sanitizeAIHeader(h),...profiles[i]}));
     const payload={
       model,store:false,reasoning:{effort:'low'},max_output_tokens:500,
       instructions:'Определи индексы столбцов в таблице продаж (индексы начинаются с нуля). '+
