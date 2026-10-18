@@ -82,8 +82,9 @@
  <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button><button type="button" class="neutral-btn" id="bottomImport"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить CSV / Excel</button></div></div>
  <div class="foot">Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений</div>
 </main></div>
-<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
-<script src="excel-adapter.js?v=20261018-xlsx-v1"></script>
+<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
+<script src="smart-import.js?v=20261018-smart-v1"></script>
+<script src="excel-adapter.js?v=20261018-smart-v1"></script>
 <script>
 'use strict';
 (function(){
@@ -183,19 +184,44 @@ function showModal(open){
 $('openImport').onclick=()=>showModal(true);$('bottomImport').onclick=()=>showModal(true);$('sideImport').onclick=()=>showModal(true);$('closeModal').onclick=()=>showModal(false);$('cancelImport').onclick=()=>showModal(false);$('modal').addEventListener('click',e=>{if(e.target===$('modal'))showModal(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape')showModal(false)});$('downloadSample').onclick=downloadSample;
 $('clearImport').onclick=()=>{state.datasets[state.business]=demo(configs[state.business]);render()};
 document.querySelectorAll('.company-tab').forEach(b=>b.addEventListener('click',()=>{state.business=b.dataset.business;render()}));
-function guessDelimiter(line){const s=[';',',','\t'];return s.map(d=>[d,line.split(d).length]).sort((a,b)=>b[1]-a[1])[0][0]}
-function parseCSV(text){text=text.replace(/^\ufeff/,'');const delim=guessDelimiter(text.split(/\r?\n/,1)[0]),table=[];let row=[],field='',inQuote=false;
+function guessDelimiter(text){
+  const lines=text.split(/\r?\n/).slice(0,35).filter(Boolean);
+  const scores=[';',',','\t'].map(d=>[d,lines.reduce((sum,line)=>{
+    const count=line.split(d).length-1;
+    return sum+(count>=2?count*2:count);
+  },0)]);
+  return scores.sort((a,b)=>b[1]-a[1])[0][0];
+}
+function parseCSV(text){text=text.replace(/^\ufeff/,'');const delim=guessDelimiter(text),table=[];let row=[],field='',inQuote=false;
 for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(inQuote&&text[i+1]==='"'){field+='"';i++}else inQuote=!inQuote}else if(c===delim&&!inQuote){row.push(field);field=''}else if((c==='\n'||c==='\r')&&!inQuote){if(c==='\r'&&text[i+1]==='\n')i++;row.push(field);if(row.some(x=>x.trim()))table.push(row);row=[];field=''}else{field+=c}}
 row.push(field);if(row.some(x=>x.trim()))table.push(row);if(inQuote)throw Error('Некорректные кавычки в CSV');if(table.length<2)throw Error('В файле нет строк с данными');if(table.length>150001)throw Error('Слишком большой файл (больше 150 000 строк)');
-const width=table[0].length;if(width<2)throw Error('Не удалось определить столбцы CSV');return{head:table[0].map(x=>x.trim()),rows:table.slice(1).map(row=>Array.from({length:width},(_,i)=>(row[i]||'').trim()))}}
+if(!window.BP_SmartImport)throw Error('Модуль распознавания таблицы не загрузился.');
+ return window.BP_SmartImport.detect(table,'');}
 const mappingLabels={date:'Дата операции *',amount:'Сумма операции *',item:'Товар / услуга',id:'ID чека / визита',status:'Статус (оплата / возврат)'};
 const patterns={date:/дата|date|day|время/i,amount:/^сумма$|sum|amount|выручка|стоимость|value|total|цена/i,item:/товар|услуг|позиц|продукт|номенклат|name|product|item/i,id:/номер чека|чек|визит|id|order|transaction|receipt/i,status:/статус|тип|возврат|status|operation/i};
 function mapping(){const m={};Object.keys(mappingLabels).forEach(k=>m[k]=Number($('col_'+k).value));return m}
-function renderMapping(file){state.fileTable=file;$('mappingSection').hidden=false;$('fileStatus').textContent='Найдено '+number(file.rows.length)+' строк и '+file.head.length+' столбцов.';
-$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.head.findIndex(t=>patterns[key].test(t));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>preview(file)));preview(file)}
+function renderMapping(file){
+ state.fileTable=file;
+ $('mappingSection').hidden=false;
+ $('fileStatus').textContent='Найдено '+number(file.rows.length)+' строк и '+file.head.length+' столбцов.'+
+   (file.headerRow?' Заголовки на строке '+file.headerRow+'.':'');
+ const detail=document.getElementById('smartImportInfo');
+ if(detail){
+   const hints=[];
+   if(file.headerRow>1)hints.push('Найдены заголовки: строка '+file.headerRow+'.');
+   if(file.hasManyColumns)hints.push('Лишние столбцы не мешают импорту.');
+   if(file.mappingGuess)hints.push('Поля подобраны автоматически по заголовкам и значениям — проверьте перед сохранением.');
+   if(file.warnings?.length)hints.push(...file.warnings);
+   detail.textContent=hints.join(' ');
+   detail.hidden=!hints.length;
+ }
+
+$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.mappingGuess?file.mappingGuess[key]:file.head.findIndex(t=>patterns[key].test(t));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>preview(file)));preview(file)}
 function parseDate(t){const v=String(t||'').trim();let y,m,d;let match=v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T].*)?$/);if(match){[,y,m,d]=match}else{match=v.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:\s.*)?$/);if(!match)return null;[,d,m,y]=match}const s=String(y).padStart(4,'0')+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');return !Number.isNaN(new Date(s+'T12:00:00').getTime())&&dayStamp(new Date(s+'T12:00:00'))===s?s:null}
 function parseAmount(value){let t=String(value??'').replace(/[\s\u00a0\u202f₽]/g,'').replace(/[^\d,\.\-+]/g,'');if(!t)return null;if(t.includes(',')&&t.includes('.'))t=t.lastIndexOf(',')>t.lastIndexOf('.')?t.replace(/\./g,'').replace(',','.'):t.replace(/,/g,'');else if(t.includes(','))t=t.replace(',','.');const n=Number(t);return Number.isFinite(n)?n:null}
-function parseImported(f,m){if(m.date<0||m.amount<0)throw Error('Выберите дату и сумму');if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');const rows=[],seen=new Set();let skipped=0,duplicate=0,refunds=0;
+function parseImported(f,m){
+ if(f?.reportType==='aggregate')throw Error('Обнаружена сводка с агрегированными данными. Для накопления нужны отдельные операции с устойчивыми ID чеков или визитов. Выберите другой лист или детализацию отчёта.');
+ if(m.date<0||m.amount<0)throw Error('Выберите дату и сумму');if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');const rows=[],seen=new Set();let skipped=0,duplicate=0,refunds=0;
 f.rows.forEach((values,i)=>{const date=parseDate(values[m.date]),amount=parseAmount(values[m.amount]);if(!date||amount===null){skipped++;return}const id=m.id>=0?values[m.id]:String(i+1),item=m.item>=0?values[m.item]:'Без категории',raw=m.status>=0?String(values[m.status]).toLowerCase():'',refund=/возврат|refund|return|сторно/.test(raw)||amount<0;if(/отмен|cancel|неоплач|ожидан|pending|неявк/.test(raw)){skipped++;return}
 const val=refund?-Math.abs(amount):amount;
 if(m.id>=0&&id){const key=[date,id,item,val,refund].join('|');if(seen.has(key)){duplicate++;return}seen.add(key)}rows.push({date,amount:val,id:id||String(i+1),item:item||'Без категории',status:refund?'refund':'sale'});if(refund)refunds++});
@@ -275,6 +301,6 @@ window.BP_Demo={state,parseImported,mapping,showModal,render,chart,insightHTML,e
 render();
 })();
 </script>
-<script src="personal.js?v=20261018-xlsx-v1" defer></script>
+<script src="personal.js?v=20261018-smart-v1" defer></script>
 </body>
 </html>
