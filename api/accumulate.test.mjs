@@ -171,3 +171,23 @@ test('Smart import refuses single-line report and impossible preamble',()=>{
   assert.throws(()=>smart.detect([['Только заголовок']],'broken.csv'),/нет строк/i);
   assert.throws(()=>smart.detect([['Отчёт'],['Строка']],'broken.xlsx'),/Не удалось найти строку заголовков/);
 });
+
+test('Smart import selects actually paid revenue, not unit price or quantity',()=>{
+  const file=smart.detect([
+    ['Дата','Номер чека','Название','Стоимость','Оплачено','Цена','Количество'],
+    ['2026-10-15','001','УЗИ','3000','2850','1500','2'],
+    ['2026-10-16','002','Приём','4000','3500','1000','4']
+  ],'clinic.xlsx');
+  assert.equal(file.reportType,'operations');
+  assert.equal(file.mappingGuess.amount,4);
+  assert.equal(file.mappingGuess.id,1);
+});
+test('Smart import must ask a human when multiple equal monetary columns could be revenue',()=>{
+  const file=smart.detect([
+    ['Дата','Номер чека','Название','Сумма','Стоимость'],
+    ['2026-10-15','001','УЗИ','3000','3000'],
+    ['2026-10-16','002','Приём','4000','4000']
+  ],'report.xlsx');
+  assert.equal(file.mappingGuess.amount,-1);
+  assert.ok(file.warnings.some(x=>x.includes('Несколько столбцов')));
+});
