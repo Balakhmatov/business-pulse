@@ -240,7 +240,28 @@
     if(normalized.some(x=>cues.tax.test(x))){
       flag('tax_present','Есть столбцы НДС/налогов: определите, включает ли денежный показатель налог, прежде чем сравнивать отчёты.');
     }
-    return {basis,severity,flags,notes,requiresConfirmation:severity==='warning',blocksImport:severity==='blocked'};
+    // A mere "Возврат"/"НДС" column is informational: the label alone does
+    // not prove a dangerous transaction. Acknowledgment is reserved for
+    // material ambiguity (advances, partial settlements and receivables).
+    const materialLocalFlags=new Set(['advance_present','partial_present','debt_present']);
+    return {basis,severity,flags,notes,
+      requiresConfirmation:severity==='warning'&&flags.some(code=>materialLocalFlags.has(code)),
+      blocksImport:severity==='blocked'};
   }
-  return {detect,guess,dateLike,numberLike,financialSemantics};
+  function financialConfirmation(local,ai){
+    const blocked=local?.blocksImport===true;
+    const materialLocal=new Set(['advance_present','partial_present','debt_present']);
+    const materialAi=new Set(['prepayments','partial_payments','receivables','double_counting']);
+    const localCodes=(local?.flags||[]).filter(x=>materialLocal.has(x));
+    const aiCodes=(ai?.risk_flags||[]).filter(x=>materialAi.has(x));
+    const seriousBasis=['mixed','accrual','advance','debt'].includes(ai?.basis);
+    // Refund/VAT/status informational notices and low AI confidence by
+    // themselves must never disable a valid, uncomplicated import.
+    return {
+      blocked,
+      needsConfirm:!blocked&&(localCodes.length>0||aiCodes.length>0||seriousBasis),
+      materialRisks:[...new Set([...localCodes,...aiCodes])]
+    };
+  }
+  return {detect,guess,dateLike,numberLike,financialSemantics,financialConfirmation};
 });
