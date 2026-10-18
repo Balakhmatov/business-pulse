@@ -413,8 +413,9 @@ function preview(f){
     ackLabel.hidden=!review.needsConfirm||review.blocked;
     const correctionMode=typeof document!=='undefined'&&document.getElementById('useCorrections')?.checked===true;
     const idMissing=state.business==='mine'&&m.id<0;
+    const idHint=f.head.find(h=>/^(?:id|ид)[\s_-]*(?:операц|платеж|платёж|чек|визит|документ|заказ)/i.test(h));
     const requiredFieldsMessage=idMissing
-      ?'Укажите «ID чека / визита». Для текущей выгрузки это столбец «ID операции».'
+      ?'Укажите «ID чека / визита»'+(idHint?' — выберите «'+idHint+'».':'.')
       :'';
     $('importActionError').textContent=requiredFieldsMessage;
     $('importActionError').hidden=!requiredFieldsMessage;
