@@ -323,6 +323,8 @@ function parseImported(f,m){
   if(f?.reportType==='aggregate')throw Error('Обнаружена сводка с агрегированными данными. Для накопления нужны отдельные операции с устойчивыми ID чеков или визитов. Выберите другой лист или детализацию отчёта.');
   if(m.date<0||m.amount<0)throw Error('Выберите дату и сумму');
   if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');
+  if(m.quantity>=0&&Object.entries(m).some(([key,col])=>key!=='quantity'&&col===m.quantity))
+    throw Error('Для количества выберите отдельный столбец, не дату, сумму или ID.');
   const rows=[],seen=new Set();
   const invalidExamples=[];
   const cancelled_ids=[];
