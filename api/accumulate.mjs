@@ -225,6 +225,10 @@ export function createAccumulator(db) {
         const parsed=changes.map(change=>{
           const before=change.before_row?JSON.parse(change.before_row):null;
           const after=change.after_row?JSON.parse(change.after_row):null;
+          // Previous correction snapshots predate the financial_basis column.
+          // They always belong to the unverified book, not to verified cash.
+          if(before&&!Object.hasOwn(before,'financial_basis'))before.financial_basis='unverified';
+          if(after&&!Object.hasOwn(after,'financial_basis'))after.financial_basis='unverified';
           const current=after?findRowId.get(company.id,after.id):null;
           if(after&&JSON.stringify(current||null)!==JSON.stringify(after)){
             const e=Error('Операции изменились после загрузки. Отмена остановлена.');
