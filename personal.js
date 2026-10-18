@@ -812,6 +812,8 @@
       state.mineSaving=true;
       $('confirmImport').disabled=true;
       $('importAlert').textContent='Сохраняем отчёт на сервере…';
+      const actionError=$('importActionError');
+      if(actionError){actionError.hidden=true;actionError.textContent='';}
       const template={
         head:state.fileTable.head,mapping:columns,
         financial:state.fileTable._bpAiMappingAmount===columns.amount
@@ -846,7 +848,12 @@
       renderMine();
       if(!importHistoryPanel.hidden)void refreshImportHistory();
       void loadAI();
-    }catch(error){$('importAlert').textContent=error.message||'Не удалось сохранить отчёт.';}
+    }catch(error){
+      const message=error.message||'Не удалось сохранить отчёт.';
+      $('importAlert').textContent=message;
+      const actionError=$('importActionError');
+      if(actionError){actionError.textContent=message;actionError.hidden=false;}
+    }
     finally{
       state.mineSaving=false;
       if($('modal').classList.contains('show')){
