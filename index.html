@@ -113,15 +113,15 @@
  <div id="financeBooks" class="finance-books" aria-label="Раздельные финансовые показатели" hidden></div>
  <div class="warning-banner" id="warningBanner"></div>
  <section class="kpi-grid" aria-label="Главные показатели">
- <article class="panel revenue-panel"><div><div class="kpi-name">Выручка за 30 дней</div><div id="revenue30" class="kpi-value-big mono">—</div><div class="compare" id="revenueChange">—</div></div><div class="hero-bottom" id="comparisonDesc">Сравнение с предыдущими 30 днями</div></article>
- <article class="panel mini-kpi"><div class="mini-top"><span class="kpi-name">Выручка за вчера</span><span class="icon-bubble"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-trend"/></svg></span></div><div><div class="mini-val mono" id="revenueYesterday">—</div><div class="mini-caption" id="yesterdayDate">Последний закрытый день</div></div></article>
+ <article class="panel revenue-panel"><div><div class="kpi-name">Продажи за 30 дней</div><div id="revenue30" class="kpi-value-big mono">—</div><div class="compare" id="revenueChange">—</div></div><div class="hero-bottom" id="comparisonDesc">Сравнение с предыдущими 30 днями</div></article>
+ <article class="panel mini-kpi"><div class="mini-top"><span class="kpi-name">Продажи за вчера</span><span class="icon-bubble"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-trend"/></svg></span></div><div><div class="mini-val mono" id="revenueYesterday">—</div><div class="mini-caption" id="yesterdayDate">Последний закрытый день</div></div></article>
  <article class="panel mini-kpi"><div class="mini-top"><span class="kpi-name" id="countLabel">Визитов за 30 дней</span><span class="icon-bubble"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-receipt"/></svg></span></div><div><div class="mini-val mono" id="salesCount">—</div><div class="mini-caption" id="salesCaption">За последние 30 дней</div></div></article>
  <article class="panel mini-kpi"><div class="mini-top"><span class="kpi-name" id="averageLabel">Средний визит</span><span class="icon-bubble"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-wallet"/></svg></span></div><div><div class="mini-val mono" id="averageTicket">—</div><div class="mini-caption" id="averageCaption">Среднее по оплаченным визитам</div></div></article>
  <article class="panel mini-kpi"><div class="mini-top"><span class="kpi-name" id="specialLabel">Неявки за вчера</span><span class="icon-bubble" id="specialIcon"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg></span></div><div><div class="mini-val mono" id="specialValue">—</div><div class="mini-caption" id="specialCaption">Не пришли на запись</div></div></article>
  </section>
  <div class="two-col">
-  <section class="panel"><div class="panel-head"><div><h2 class="section-title">Динамика выручки</h2><p class="section-muted">Последние 7 полных дней</p></div><span class="subtle-chip">Выручка по дням</span></div><div class="chart-box"><svg id="revenueChart" class="trend-chart" viewBox="0 0 600 228" role="img" aria-label="График выручки за последние семь дней" preserveAspectRatio="xMidYMid meet"></svg><div class="chart-labels" id="chartLabels"></div></div><div class="chart-caption" id="chartCaption">Суммы из данных по продажам и возвратам</div></section>
-  <section class="panel"><div class="panel-head"><div><h2 class="section-title" id="topTitle">Топ-3 услуги</h2><p class="section-muted">По выручке за 30 дней</p></div><span class="subtle-chip">ТОП-3</span></div><div class="top-list" id="topItems"></div></section>
+  <section class="panel"><div class="panel-head"><div><h2 class="section-title">Динамика продаж</h2><p class="section-muted">Последние 7 полных дней</p></div><span class="subtle-chip">Продажи по дням</span></div><div class="chart-box"><svg id="revenueChart" class="trend-chart" viewBox="0 0 600 228" role="img" aria-label="График продаж за последние семь дней" preserveAspectRatio="xMidYMid meet"></svg><div class="chart-labels" id="chartLabels"></div></div><div class="chart-caption" id="chartCaption">Суммы из данных по продажам и возвратам</div></section>
+  <section class="panel"><div class="panel-head"><div><h2 class="section-title" id="topTitle">Топ-3 услуги</h2><p class="section-muted">По сумме продаж за 30 дней</p></div><span class="subtle-chip">ТОП-3</span></div><div class="top-list" id="topItems"></div></section>
  </div>
  <div class="bottom-grid">
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">На что обратить внимание</h2><p class="section-muted">Сигналы, которые стоит проверить</p></div><span class="subtle-chip">Анализ</span></div><div id="concerns"></div></section>
@@ -130,7 +130,7 @@
  <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div></div>
  <div class="foot">Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений</div>
 </main></div>
-<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Тип финансовых данных</strong><div id="financialType" style="font-size:14px;font-weight:750;color:#202848;margin-top:8px"></div><div id="financialMessage" style="margin-top:7px;line-height:1.6;white-space:pre-line"></div><label id="financialConfirmLabel" style="align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил тип поступлений, авансы, частичные оплаты и возвраты. Подтверждаю, что выбранные суммы можно включить в этот отчёт.</span></label></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><div class="import-action-error" id="importActionError" role="alert" hidden></div><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
+<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 16 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Что означают суммы в этом столбце</strong><div id="financialType" style="font-size:14px;font-weight:750;color:#202848;margin-top:8px"></div><div id="financialMessage" style="margin-top:7px;line-height:1.6;white-space:pre-line"></div><label id="financialConfirmLabel" style="align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил авансы, частичные оплаты и возвраты. Эти суммы подходят для выбранного отчёта.</span></label></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><div class="import-action-error" id="importActionError" role="alert" hidden></div><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
 <script src="smart-import.js?v=20261018-russian-operation-id-v1"></script>
 <script src="excel-adapter.js?v=20261018-smart-v2-fallback"></script>
 <script>
@@ -184,22 +184,22 @@ function render(){const c=configs[state.business],d=state.datasets[state.busines
 $('businessDesc').textContent=c.type+' · всё главное без сложных отчётов';$('companyName').textContent=c.name;$('asOf').textContent='По '+verboseDate(yesterday)+' включительно';$('rowsInfo').textContent=d.imported?'Загружено '+number(rows.length)+' строк':'90 дней истории';$('dataBadge').textContent=d.imported?'Ваш CSV (локально)':'Демо-данные';$('dataBadge').style.cssText=d.imported?'color:#6252a4;background:#f1edff;border-color:#e5dfff':'';
 $('revenue30').textContent=cov?money(rev):'—';$('revenueChange').textContent=change===null?'Нет полного сравнения':signed(change)+'  ·  '+(rev-old>=0?'+':'−')+money(Math.abs(rev-old));$('revenueChange').classList.toggle('down',change!==null&&change<0);
 $('comparisonDesc').innerHTML=change===null?'Для сравнения нужны данные за предыдущие 30 дней':'К предыдущим 30 дням: <strong>'+escapeHTML(verboseDate(previousStart)+' — '+verboseDate(previousEnd))+'</strong>';
-$('revenueYesterday').textContent=yRows.length?money(sum(yRows)):'—';$('yesterdayDate').textContent=yRows.length?verboseDate(yesterday):'Нет записей за '+dateLabel(yesterday);$('countLabel').textContent=c.counter;$('salesCount').textContent=cov?number(n):'—';$('salesCaption').textContent=d.imported&&!d.meta.hasOrderId?'По строкам (нет ID чека/визита)':'Уникальные '+c.n+' за 30 дней';$('averageLabel').textContent=c.avg;$('averageTicket').textContent=n?money(rev/n):'—';$('averageCaption').textContent='Выручка / '+c.n;
+$('revenueYesterday').textContent=yRows.length?money(sum(yRows)):'—';$('yesterdayDate').textContent=yRows.length?verboseDate(yesterday):'Нет записей за '+dateLabel(yesterday);$('countLabel').textContent=c.counter;$('salesCount').textContent=cov?number(n):'—';$('salesCaption').textContent=d.imported&&!d.meta.hasOrderId?'По строкам (нет ID чека/визита)':'Уникальные '+c.n+' за 30 дней';$('averageLabel').textContent=c.avg;$('averageTicket').textContent=n?money(rev/n):'—';$('averageCaption').textContent='Продажи / '+c.n;
 const refundCount=paidCount(cur.filter(r=>r.status==='refund').map(r=>({...r,status:'sale'})));
 if(state.business==='clinic'){$('specialLabel').textContent='Неявки за вчера';$('specialIcon').innerHTML=svgIcon('alert');$('specialValue').textContent=d.imported?'—':number(d.special[yesterday]?.noShows||0);$('specialCaption').textContent=d.imported?'В CSV нет данных о неявках':'Отмены отдельно: '+number(d.special[yesterday]?.cancellations||0)}
 else{$('specialLabel').textContent='Возвраты за 30 дней';$('specialIcon').innerHTML=svgIcon('return');$('specialValue').textContent=number(refundCount);$('specialCaption').textContent='Отдельно от оплаченных чеков'}
 $('topTitle').textContent=c.top;const totals=new Map();cur.forEach(r=>totals.set(r.item,(totals.get(r.item)||0)+r.amount));const top=Array.from(totals).filter(t=>t[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,3);const max=top[0]?.[1]||1;
 $('topItems').innerHTML=top.length?top.map(([name,val],i)=>`<div><div class="top-row-head"><strong title="${escapeHTML(name)}">${i+1}. ${escapeHTML(name)}</strong><span>${money(val)}</span></div><div class="progress-track"><div class="progress-fill" style="width:${Math.max(0,val/max*100).toFixed(1)}%;opacity:${1-i*.14}"></div></div></div>`).join(''):'<p class="small-muted">Нет продаж с названием товара или услуги.</p>';
 const dates=Array.from({length:7},(_,i)=>dateShift(yesterday,-6+i));const values=dates.map(dt=>sum(byDate(rows,dt)));chart(values,dates);
-$('chartCaption').textContent=d.imported?'Даты без записей показаны нулём. Проверьте полноту выгрузки.':'Выручка за полные сутки, с учётом возвратов';
+$('chartCaption').textContent=d.imported?'Даты без записей показаны нулём. Проверьте полноту выгрузки.':'Продажи по дням с учётом возвратов';
 const bad=[],good=[];
-if(change!==null){if(change<=-1)bad.push({title:'Выручка ниже предыдущего периода',desc:'За последние 30 дней на '+signed(change).replace('-','')+' меньше. Стоит посмотреть, в какие дни снижение было заметнее.'});else if(change>=1)good.push({title:'Выручка выросла',desc:'По сравнению с предыдущими 30 днями рост составил '+signed(change)+'. Это подтверждается данными о продажах.'});else good.push({title:'Выручка стабильна',desc:'Изменение к предыдущему периоду менее 1%.'});}
+if(change!==null){if(change<=-1)bad.push({title:'Продажи снизились',desc:'За последние 30 дней на '+signed(change).replace('-','')+' меньше. Стоит посмотреть, в какие дни снижение было заметнее.'});else if(change>=1)good.push({title:'Продажи выросли',desc:'По сравнению с предыдущими 30 днями рост составил '+signed(change)+'. Это подтверждается данными о продажах.'});else good.push({title:'Продажи почти не изменились',desc:'Изменение к предыдущему периоду менее 1%.'});}
 if(cov<30)bad.push({title:'Не все дни представлены в отчёте',desc:'За последние 30 дней операции есть только за '+cov+' дней. Отсутствие записей не всегда означает нулевые продажи.'});
 if(pcov<25)bad.push({title:'Недостаточно истории для сравнения',desc:'Для корректного сравнения нужны данные за предыдущие 30 дней. Сейчас заполнено '+pcov+' из 30 дат.'});
 if(d.imported&&!d.meta.hasOrderId)bad.push({title:'Количество чеков приблизительное',desc:'В загруженном файле нет ID чека или визита. Одна строка не всегда соответствует одному чеку.'});
 if(state.business==='clinic'&&!d.imported){let ns=d.special[yesterday]?.noShows||0;if(ns>0)bad.push({title:'Есть неявки на запись',desc:'Вчера '+ns+' пациентов не пришли. Это число не является расчётом потерянной выручки.'});good.push({title:'Есть планы лечения в работе',desc:'По демонстрационным данным '+d.special[yesterday]?.plans+' согласованных планов ожидают продолжения; это не гарантированная выручка.'});}
 if(refundCount>0)bad.push({title:'Есть оформленные возвраты',desc:'За 30 дней: '+refundCount+' возвратов. Их суммы уже вычтены из выручки.'});
-if(top.length){good.push({title:'Лидер по выручке — '+top[0][0],desc:'За 30 дней позиция принесла '+money(top[0][1])+'. Это максимум среди загруженных позиций.'})}
+if(top.length){good.push({title:'Больше всего по сумме продаж — '+top[0][0],desc:'За 30 дней позиция принесла '+money(top[0][1])+'. Это максимум среди загруженных позиций.'})}
 if(values.filter(v=>v!==0).length>=5){const biggest=Math.max(...values),idx=values.indexOf(biggest);good.push({title:'Лучший день недели',desc:dateLabel(dates[idx])+': '+money(biggest)+' — максимум за последние семь дней.'})}
 if(!bad.length)bad.push({title:'Критичных отклонений не выявлено',desc:'По доступным показателям явных негативных сигналов нет. Это не заменяет полный финансовый анализ.'});
 if(!good.length)good.push({title:'Появятся при накоплении данных',desc:'Позитивные тенденции формируются только из подтверждённых показателей.'});
@@ -247,7 +247,7 @@ for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(inQuote&&text[i+1]
 row.push(field);if(row.some(x=>x.trim()))table.push(row);if(inQuote)throw Error('Некорректные кавычки в CSV');if(table.length<2)throw Error('В файле нет строк с данными');if(table.length>150001)throw Error('Слишком большой файл (больше 150 000 строк)');
 if(!window.BP_SmartImport)throw Error('Модуль распознавания таблицы не загрузился.');
  return window.BP_SmartImport.detect(table,'');}
-const mappingLabels={date:'Дата операции *',amount:'Сумма операции *',item:'Товар / услуга',id:'ID чека / визита',status:'Статус (оплата / возврат)'};
+const mappingLabels={date:'Дата операции *',amount:'Сумма в отчёте *',item:'Товар или услуга',id:'ID чека или операции',status:'Статус операции'};
 const patterns={date:/дата|date|day|время/i,amount:/^сумма$|sum|amount|выручка|стоимость|value|total|цена/i,item:/товар|услуг|позиц|продукт|номенклат|name|product|item/i,id:/номер чека|чек|визит|id|order|transaction|receipt/i,status:/статус|тип|возврат|status|operation/i};
 function mapping(){const m={};Object.keys(mappingLabels).forEach(k=>m[k]=Number($('col_'+k).value));return m}
 function renderMapping(file){
@@ -346,30 +346,30 @@ function parseImported(f,m){
 const financialFlagLabels={
   prepayments:'Возможны авансы и предоплаты. Проверьте, не учитывается ли аванс повторно при зачёте.',
   partial_payments:'Возможны частичные оплаты. Одна продажа может соответствовать нескольким поступлениям.',
-  receivables:'В отчёте может быть дебиторская задолженность — это не полученные деньги.',
+  receivables:'В отчёте могут быть долги клиентов — это деньги, которые ещё не поступили.',
   refunds:'Возможны возвраты или сторно: проверьте знак суммы и статус каждой операции.',
   tax_or_vat:'Есть признаки НДС или налогов: проверьте состав суммы и единый подход в разных отчётах.',
   double_counting:'Есть риск двойного учёта одной продажи, аванса и его зачёта.',
   status_uncertain:'Проверьте статусы оплат, отмен, возвратов и неоплаченных операций.',
-  accruals:'Начисления и фактические поступления нельзя суммировать как один показатель.'
+  accruals:'Выставленные суммы и полученные деньги нельзя складывать: это разные показатели.'
 };
 const financialBasisTitles={
-  cash_receipts:'Денежные поступления',
-  reported_revenue:'Выручка по данным источника',
-  accrual:'Начисления',
-  advance:'Авансовые платежи',
-  debt:'Задолженность',
-  mixed:'Смешанные показатели',
-  unknown:'Тип суммы требует проверки'
+  cash_receipts:'Полученные деньги',
+  reported_revenue:'Стоимость продаж по отчёту',
+  accrual:'Выставленные суммы',
+  advance:'Авансы',
+  debt:'Долги клиентов',
+  mixed:'Смешанные суммы',
+  unknown:'Нужно уточнить, что это за сумма'
 };
 const financialBasisLabels={
-  cash_receipts:'Поступившие платежи могут включать авансы и суммы, не относящиеся к признанной выручке.',
-  reported_revenue:'Сумма отражённых продаж может отличаться от фактически полученных средств.',
-  accrual:'Начисления и выставленные счета не подтверждают поступление денежных средств.',
-  advance:'Предоплата не всегда является признанной выручкой.',
-  debt:'Задолженность не означает получение денежных средств.',
-  mixed:'В отчёте могут сочетаться оплаты, начисления и зачёты. Сверьте состав показателя.',
-  unknown:'По заголовку невозможно надёжно установить характер денежных сумм.'
+  cash_receipts:'Это полученные деньги, в том числе авансы за будущие услуги.',
+  reported_revenue:'Стоимость оказанных услуг и проданных товаров может отличаться от полученных денег.',
+  accrual:'Выставленный счёт не означает, что деньги получены или услуга оказана.',
+  advance:'Аванс — деньги заранее, до оказания услуги или передачи товара.',
+  debt:'Долг клиента — деньги, которые компания ещё не получила.',
+  mixed:'Здесь могут быть смешаны оплаты, выставленные счета и зачёты авансов. Проверьте данные.',
+  unknown:'По названию столбца пока неясно, что означают суммы.'
 };
 function financialReview(file,columns){
   const local=window.BP_SmartImport?.financialSemantics(file.head,columns);
@@ -387,7 +387,7 @@ function financialReview(file,columns){
     // Financial flags are presented as notes. Only material risks may require
     // user acknowledgment; that decision is centralized in smart-import.js.
   }else if(local?.basis==='unknown'){
-    warnings.push('По названию выбранной суммы неясно, является ли она оплатой, начислением или выручкой. Проверьте источник.');
+    warnings.push('По названию столбца неясно, это полученные деньги или стоимость продаж. Проверьте отчёт.');
   }else if(local?.basis){
     warnings.unshift(financialBasisLabels[local.basis]||'Проверьте значение денежного поля.');
   }
@@ -426,12 +426,15 @@ function preview(f){
       :result.invalid>0
         ?'Импорт остановлен: '+number(result.invalid)+' строк с ошибками. '+result.invalidExamples.join('; ')+'. Исправьте файл или выбор столбцов.'
       :review.blocked
-        ?'Нельзя импортировать выбранный денежный показатель как поступления. Выберите столбец фактической оплаты.'
+        ?'Выбран неподходящий столбец суммы. Нужна сумма полученных оплат или выполненных продаж. Проверьте выбор.'
         :review.needsConfirm&&!ack.checked
-          ?'Проверьте финансовые предупреждения и подтвердите их перед импортом.'
+          ?'Проверьте замечания к суммам и подтвердите их перед загрузкой.'
           :'';
     const examples=result.rows.slice(0,4);
-    $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':'Оплата')+'</td></tr>').join('')+'</tbody></table>';
+    const selectedBook=document.getElementById('financialBookSelect')?.value;
+    const positiveLabel=selectedBook==='recognized_revenue'?'Продажа':
+      selectedBook==='cash_receipts'?'Оплата':'Операция';
+    $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':positiveLabel)+'</td></tr>').join('')+'</tbody></table>';
     $('confirmImport').disabled=idMissing||review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
   }catch(e){
     f._bpFinancialReview=null;
