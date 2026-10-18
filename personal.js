@@ -336,7 +336,11 @@
     }));
     const missing=['date','id','amount'].some(k=>file.mappingGuess?.[k]<0);
     const ambiguous=Object.values(file.confidence||{}).some(v=>v==='неоднозначно'||v==='требует проверки');
-    const needsAI=missing||ambiguous||file.mappingGuess?.item<0;
+    const localFinance=window.BP_SmartImport?.financialSemantics(header,file.mappingGuess);
+    const financialAmbiguity=(localFinance?.flags?.length||0)>0 ||
+      ['accrual','advance','debt','tax','unit_price'].includes(localFinance?.basis) ||
+      /аванс|предоплат|депозит|задат|задолж|дебитор|долг|частичн|рассроч|зачет|зачёт|сторно|возврат|ндс|налог|начислен|акт выполненных/i.test(header.join(' '));
+    const needsAI=missing||ambiguous||file.mappingGuess?.item<0||financialAmbiguity;
     const details=$('smartImportInfo');
     if(details&&!details.hidden)details.textContent+=' Проверяем сохранённый шаблон компании…';
     void request('/import/mapping/resolve',{head:header,profiles,needs_ai:needsAI})
