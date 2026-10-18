@@ -279,11 +279,14 @@ function parseImported(f,m){
   if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');
   const rows=[],seen=new Set();
   const invalidExamples=[];
-  let skipped=0,duplicate=0,refunds=0,invalid=0;
+  let skipped=0,duplicate=0,refunds=0,invalid=0,cancelled=0;
   f.rows.forEach((values,i)=>{
     const raw=m.status>=0?String(values[m.status]??'').toLowerCase():'';
     // Fully cancelled/unpaid entries are legitimately excluded from payments.
-    if(/отмен|cancel|неоплач|ожидан|pending|неявк/.test(raw)){
+    if(/отмен|cancel/.test(raw)){
+      skipped++;cancelled++;return;
+    }
+    if(/неоплач|ожидан|pending|неявк/.test(raw)){
       skipped++;return;
     }
     const date=parseDate(values[m.date]),amount=parseAmount(values[m.amount]);
@@ -309,7 +312,7 @@ function parseImported(f,m){
     if(refund)refunds++;
   });
   if(!rows.length&&!invalid)throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');
-  return {rows,skipped,duplicate,refunds,invalid,invalidExamples};
+  return {rows,skipped,duplicate,refunds,invalid,cancelled,invalidExamples};
 }
 const financialFlagLabels={
   prepayments:'Возможны авансы и предоплаты. Проверьте, не учитывается ли аванс повторно при зачёте.',
@@ -379,8 +382,10 @@ function preview(f){
     $('financialType').textContent=financialBasisTitles[review.type]||financialBasisTitles.unknown;
     $('financialMessage').textContent=[...new Set(review.warnings)].join('\n');
     ackLabel.hidden=!review.needsConfirm||review.blocked;
-    $('importAlert').textContent=result.invalid>0
-      ?'Импорт остановлен: '+number(result.invalid)+' строк с ошибками. '+result.invalidExamples.join('; ')+'. Исправьте файл или выбор столбцов.'
+    $('importAlert').textContent=result.cancelled>0
+      ?'Импорт остановлен: найдено '+number(result.cancelled)+' отменённых операций. Для них нужна сверка с историей, иначе выручка может быть завышена. Выгрузите только действующие оплаченные операции.'
+      :result.invalid>0
+        ?'Импорт остановлен: '+number(result.invalid)+' строк с ошибками. '+result.invalidExamples.join('; ')+'. Исправьте файл или выбор столбцов.'
       :review.blocked
         ?'Нельзя импортировать выбранный денежный показатель как поступления. Выберите столбец фактической оплаты.'
         :review.needsConfirm&&!ack.checked
@@ -388,7 +393,7 @@ function preview(f){
           :'';
     const examples=result.rows.slice(0,4);
     $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':'Оплата')+'</td></tr>').join('')+'</tbody></table>';
-    $('confirmImport').disabled=review.blocked||result.invalid>0||!result.rows.length||(review.needsConfirm&&!ack.checked);
+    $('confirmImport').disabled=review.blocked||result.invalid>0||result.cancelled>0||!result.rows.length||(review.needsConfirm&&!ack.checked);
   }catch(e){
     f._bpFinancialReview=null;
     panel.hidden=true;
