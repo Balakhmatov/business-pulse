@@ -521,3 +521,39 @@ test('Legacy operations are unverified and retain their exact identity after fin
   },[f.row('2026-10-16','old-key',250000)]),/тип финансовых данных/i);
   assert.equal(f.all().length,1);
 });
+
+test('A performed-service Excel with Russian ID операции auto-maps and saves 8,000 RUB earned revenue',t=>{
+  const columns=['Дата оказания услуги','ID операции','Оказанная услуга','Выручка по оказанным услугам','Статус'];
+  const values=['2026-10-17','BP-FIN-REV-001','Оказанная услуга','8000','Оказано'];
+  const d=smart.detect([columns,values],'business_pulse_test_revenue_8000.xlsx');
+  assert.deepEqual(d.mappingGuess,{date:0,id:1,item:2,amount:3,status:4});
+  assert.equal(smart.financialSemantics(columns,d.mappingGuess).basis,'reported_revenue');
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const source=html.slice(html.indexOf('function parseDate('),html.indexOf('const financialFlagLabels='));
+  const parseImported=Function('dayStamp',source+'return parseImported;')(
+    date=>date.toISOString().slice(0,10));
+  const parsed=parseImported(d,d.mappingGuess);
+  assert.equal(parsed.invalid,0);
+  assert.equal(parsed.cancelled,0);
+  assert.deepEqual(parsed.rows,[{
+    date:'2026-10-17',id:'BP-FIN-REV-001',
+    item:'Оказанная услуга',amount:8000,status:'sale'
+  }]);
+  const f=makeFixture();t.after(f.close);const engine=f.importer();
+  const imported=engine.ingest({id:'a'},{
+    source:'business_pulse_test_revenue_8000.xlsx',financial_basis:'recognized_revenue'
+  },parsed.rows.map(x=>({...x,amount_kopecks:Math.round(x.amount*100)})));
+  assert.equal(imported.added,1);
+  assert.equal(imported.book_total,1);
+  assert.equal(f.db.prepare(
+    'SELECT financial_basis,amount_kopecks FROM operations WHERE source_id=?'
+  ).get('BP-FIN-REV-001').financial_basis,'recognized_revenue');
+  assert.equal(f.amount(),800000);
+});
+test('ID операции is recognized but ID клиента and ID товара cannot replace receipt identity',()=>{
+  const cols=['Дата','ID клиента','ID товара','Номер чека','Сумма','Статус'];
+  const sample=['2026-10-17','customer-1','SKU-1','BP-ORDER-777','8000','Оплачено'];
+  const mapping=smart.detect([cols,sample],'transactions.xlsx').mappingGuess;
+  assert.equal(mapping.id,3);
+  assert.equal(mapping.amount,4);
+});
