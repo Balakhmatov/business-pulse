@@ -33,6 +33,7 @@ export function createAccumulator(db) {
       put.run(lineKey(row.sold_on,row.source_id,row.item,row.status,index),row.id);
     }
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_operations_identity ON operations(company_id,import_key)');
+    db.exec('CREATE INDEX IF NOT EXISTS ix_operations_company_source_id ON operations(company_id,source_id)');
     // Reversible, company-scoped audit trail. No patient/customer data or raw
     // spreadsheets are stored here, only changed amounts and import metadata.
     db.exec(
