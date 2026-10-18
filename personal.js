@@ -767,7 +767,7 @@
         }
         file._bpApplying=true;
         try{
-          for(const key of ['date','amount','id','item','status']){
+          for(const key of ['date','amount','id','item','status','quantity']){
             const select=$('col_'+key),column=answer.mapping[key];
             if(select&&Number.isInteger(column)&&column>=-1&&column<file.head.length){
               select.value=String(column);
