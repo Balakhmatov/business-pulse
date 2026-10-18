@@ -324,7 +324,7 @@ function parseImported(f,m){
     rows.push({date,amount:val,id:identifier,item:item||'Без категории',status:refund?'refund':'sale'});
     if(refund)refunds++;
   });
-  const correctionMode=document.getElementById('useCorrections')?.checked===true;
+  const correctionMode=typeof document!=='undefined'&&document.getElementById('useCorrections')?.checked===true;
   if(!rows.length&&!invalid&&!(correctionMode&&cancelled_ids.length))
     throw Error('Нет пригодных для расчёта операций. Проверьте столбцы и формат даты.');
   return {rows,skipped,duplicate,refunds,invalid,cancelled,cancelled_ids,invalidExamples};
@@ -397,7 +397,7 @@ function preview(f){
     $('financialType').textContent=financialBasisTitles[review.type]||financialBasisTitles.unknown;
     $('financialMessage').textContent=[...new Set(review.warnings)].join('\n');
     ackLabel.hidden=!review.needsConfirm||review.blocked;
-    const correctionMode=document.getElementById('useCorrections')?.checked===true;
+    const correctionMode=typeof document!=='undefined'&&document.getElementById('useCorrections')?.checked===true;
     $('importAlert').textContent=result.cancelled>0&&!correctionMode
       ?'Импорт остановлен: найдено '+number(result.cancelled)+' отменённых операций. Для них нужна отдельная проверка исправлений (режим ниже).'
       :result.invalid>0
@@ -495,6 +495,6 @@ window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insig
 render();
 })();
 </script>
-<script src="personal.js?v=20261018-import-audit-v2" defer></script>
+<script src="personal.js?v=20261018-corrections-v1" defer></script>
 </body>
 </html>
