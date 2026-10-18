@@ -202,6 +202,11 @@ export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',
         if(!m||FIELDS.some(k=>!Number.isInteger(m[k])||m[k]<-1||m[k]>=head.length)||
           new Set(Object.values(m).filter(i=>i>=0)).size!==Object.values(m).filter(i=>i>=0).length)
           throw Error('Invalid cached field indices');
+        // Headers may match while the exported data types have changed.
+        if(m.date>=0&&profiles[m.date].dates<0.4 ||
+          m.amount>=0&&profiles[m.amount].nums<0.45 ||
+          m.id>=0&&profiles[m.id].dates>0.7)
+          throw Error('Cached proposal conflicts with current column types');
         const financial=savedFinancial(draft.financial);
         return {source:'suggestion',mapping:m,...(financial?{financial}:{})};
       }catch{suggestionDelete.run(company.id,signature);}
