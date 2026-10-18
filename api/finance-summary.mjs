@@ -2,9 +2,9 @@
 // Historical rows are unverified until an explicit new import declares their basis.
 export const BOOKS=['cash_receipts','recognized_revenue','unverified'];
 export const BOOK_LABELS={
-  cash_receipts:'Денежные поступления',
-  recognized_revenue:'Выручка по выполненным продажам',
-  unverified:'Сумма операций (тип не подтверждён)'
+  cash_receipts:'Поступления',
+  recognized_revenue:'Продажи (оказанные услуги и проданные товары)',
+  unverified:'Суммы без уточнения'
 };
 const sum=rows=>rows.reduce((total,row)=>total+row.amount_kopecks,0);
 const shift=(date,delta)=>{const day=new Date(date+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+delta);return day.toISOString().slice(0,10)};
