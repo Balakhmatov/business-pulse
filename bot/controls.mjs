@@ -21,6 +21,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   db.exec('CREATE TABLE IF NOT EXISTS bot_profiles (telegram_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,username TEXT NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_contact_requests (actor_id TEXT PRIMARY KEY,request_id INTEGER NOT NULL,owner_id TEXT,kind TEXT NOT NULL,expires_ms INTEGER NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_invites (token_hash TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,owner_id TEXT NOT NULL,issued_by TEXT NOT NULL,target_id TEXT,expires_ms INTEGER NOT NULL,used_by TEXT);');
+  db.exec('CREATE TABLE IF NOT EXISTS bot_menu_panels (chat_id TEXT PRIMARY KEY,message_id INTEGER NOT NULL);');
   const cleanup=createChatCleanup({db,api:transport,now});
   const api=async(method,payload)=>{
     const result=await transport(method,payload);
@@ -60,9 +61,26 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       throw Error('У вас нет доступа к этому действию.');
     return c;
   }
-  function send(actor,text,rows){
-    return api('sendMessage',{chat_id:actor,text,disable_web_page_preview:true,
-      reply_markup:{inline_keyboard:rows||[[button('В меню','home')]]}});
+  function setPanel(actor,messageId){
+    if(Number.isSafeInteger(messageId)&&messageId>0)
+      db.prepare('INSERT INTO bot_menu_panels VALUES(?,?) ON CONFLICT(chat_id) DO UPDATE SET message_id=excluded.message_id').run(String(actor),messageId);
+  }
+  async function send(actor,text,rows){
+    const reply_markup={inline_keyboard:rows||[[button('В меню','home')]]};
+    const panel=db.prepare('SELECT message_id FROM bot_menu_panels WHERE chat_id=?').get(String(actor));
+    if(panel){
+      try{
+        const result=await api('editMessageText',{chat_id:actor,message_id:panel.message_id,text,disable_web_page_preview:true,reply_markup});
+        return result&&typeof result==='object'?result:{message_id:panel.message_id};
+      }catch(error){
+        if(/message is not modified/i.test(error.message))return {message_id:panel.message_id};
+        if(!/message to edit not found|can't be edited|cannot be edited/i.test(error.message))throw error;
+        db.prepare('DELETE FROM bot_menu_panels WHERE chat_id=?').run(String(actor));
+      }
+    }
+    const result=await api('sendMessage',{chat_id:actor,text,disable_web_page_preview:true,reply_markup});
+    setPanel(actor,result?.message_id);
+    return result;
   }
   const zoneLabel=timeZone==='Europe/Moscow'?'МСК':timeZone;
   const hourLabel=hour=>String(hour).padStart(2,'0')+':00';
@@ -91,9 +109,12 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     rows.push([button('Очистить чат','clear')]);
     const text='Бизнес Пульс\n\n'+c.name+'\n'+(c.access_role==='member'?'Вы подключены как сотрудник.':'Управление компанией и отчётами.')+suffix;
     if(refresh&&cleanup.welcome(actor)){
-      try{return await api('editMessageText',{chat_id:actor,message_id:cleanup.welcome(actor),text,reply_markup:{inline_keyboard:rows}});}
+      try{
+        const result=await api('editMessageText',{chat_id:actor,message_id:cleanup.welcome(actor),text,reply_markup:{inline_keyboard:rows}});
+        setPanel(actor,cleanup.welcome(actor));return result;
+      }
       catch(error){
-        if(/message is not modified/i.test(error.message))return;
+        if(/message is not modified/i.test(error.message)){setPanel(actor,cleanup.welcome(actor));return;}
         if(!/message to edit not found|can't be edited|cannot be edited/i.test(error.message))throw error;
         cleanup.forgetWelcome(actor);
       }
@@ -189,6 +210,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     cleanup.remember(actor,message.message_id,message.date);
     const isOurCallback=callback?.data?.startsWith('bpu:');
     if(callback&&!isOurCallback)return false;
+    if(isOurCallback)setPanel(actor,message.message_id);
     const command=text.split(/\s+/)[0].split('@')[0].toLowerCase();
     if(!isOurCallback&&!message.users_shared&&!['/start','/menu','/help','/myid'].includes(command)&&text!=='Отмена')return false;
     profile(user);

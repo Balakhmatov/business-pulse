@@ -23,16 +23,16 @@ function fixture(t){
     messages.push({method,...payload});
     for(const row of payload.reply_markup?.inline_keyboard||[])for(const button of row)
       if(button.callback_data)assert.ok(Buffer.byteLength(button.callback_data)<=64,'Telegram callback size limit');
-    return {message_id:messages.length};
+    return {message_id:payload.message_id??messages.length};
   };
   const make=()=>createBotControls({dbPath,api,adminIds:admins,appUrl:'https://example.org/',botUsername:'business_pulse_app_bot',now:()=>clock});
   let controls=make();
   t.after(()=>{controls.close();db.close();rmSync(folder,{recursive:true,force:true});});
   const user=id=>({id:Number(id),first_name:id==='101'?'Иван':id==='303'?'Анна':'Пользователь',username:'user'+id});
   const msg=(id,text)=>controls.handle({message:{from:user(id),chat:{id:Number(id),type:'private'},text}});
-  const click=(id,data,extra={})=>controls.handle({callback_query:{id:'callback',from:user(id),data:'bpu:'+data,message:{chat:{id:Number(id),type:'private'},...extra}}});
+  const click=(id,data,extra={})=>controls.handle({callback_query:{id:'callback',from:user(id),data:'bpu:'+data,message:{chat:{id:Number(id),type:'private'},message_id:db.prepare('SELECT message_id FROM bot_menu_panels WHERE chat_id=?').get(String(id))?.message_id,...extra}}});
   const shared=(id,requestId,target)=>controls.handle({message:{from:user(id),chat:{id:Number(id),type:'private'},users_shared:{request_id:requestId,users:[{user_id:Number(target),first_name:'Сотрудник',username:'staff'+target}]}}});
-  const last=()=>messages.filter(x=>x.method==='sendMessage').at(-1);
+  const last=()=>messages.filter(x=>x.method==='sendMessage'||x.method==='editMessageText').at(-1);
   const request=()=>messages.filter(x=>x.reply_markup?.keyboard).at(-1).reply_markup.keyboard[0][0].request_users.request_id;
   const invite=()=>{
     const share=last().reply_markup.inline_keyboard.flat().find(x=>x.text==='Отправить приглашение');
@@ -170,6 +170,8 @@ test('Clear-chat button requires confirmation, preserves welcome/other chats/fin
   // Mock sendMessage returns the call number as its message ID.
   const kept=f.db.prepare("SELECT message_id FROM bot_chat_messages WHERE chat_id='101' AND keep=1").get().message_id;
   await f.click('101','id');await f.click('101','hour:23');await f.msg('202','/start');
+  // An older menu produced by the previous version becomes known when clicked.
+  await f.click('101','id',{message_id:900,date:Date.parse('2026-10-19T07:00:00Z')/1000});
   await f.click('101','clear');
   assert.match(f.last().text,/Очистить сообщения/);
   assert.equal(f.messages.filter(x=>x.method==='deleteMessages').length,0);
@@ -219,4 +221,15 @@ test('Canceling or expiring a cleanup confirmation never deletes chat messages',
   f.advance(5*60000+1);await f.click('101',expired);
   assert.match(f.last().text,/Подтверждение устарело/);
   assert.equal(f.messages.filter(x=>x.method==='deleteMessages').length,0);
+});
+
+test('Profile, notifications, hours and navigation edit one panel across repeated taps and restart',async t=>{
+  const f=fixture(t);await f.msg('101','/start');
+  const id=f.db.prepare("SELECT message_id FROM bot_menu_panels WHERE chat_id='101'").get().message_id;
+  for(const action of ['id','notify','hours','hour:14','notify','home','m:101','home','id','home'])await f.click('101',action);
+  f.restart();await f.click('101','notify');
+  assert.equal(f.messages.filter(x=>x.method==='sendMessage'&&x.chat_id==='101').length,1);
+  assert.ok(f.messages.filter(x=>x.method==='editMessageText').every(x=>x.message_id===id));
+  assert.match(f.last().text,/14:00/);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM bot_chat_messages WHERE chat_id='101'").get().n,1);
 });
