@@ -9,6 +9,8 @@ import net from 'node:net';
 import { once } from 'node:events';
 import { companyAdmin } from './company-admin.mjs';
 import { dailyDigestFor } from '../bot/digest.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { paymentConfirmation,confirmReceivedPayment } from './billing.mjs';
 
 async function apiFixture(t){
   const folder=mkdtempSync(path.join(tmpdir(),'bp-access-')),dbPath=path.join(folder,'test.db');
@@ -101,4 +103,24 @@ test('Owner and employee import into one company, share history/digest and lose 
   assert.equal((await call('303','/import/undo',{batch_id:history[0].id})).status,409);
   assert.match(dailyDigestFor('303',{dbPath}),/Нет загруженного отчёта/);
   assert.equal((await call('101','/report')).data.revenue30_kopecks,30000);
+});
+
+test('Expired company is blocked on API for owner and staff, retains data, and verified payment restores both',async t=>{
+  const f=await apiFixture(t),{call,dbPath}=f;
+  const c=(await call('101','/me')).data.company;
+  companyAdmin({dbPath,action:'addmember',ownerId:'101',memberId:'303'});
+  const date=(await call('101','/report')).data.as_of;
+  const input={source:'report.csv',financial_basis:'cash_receipts',rows:[{date,id:'paid',item:'Услуга',amount_kopecks:10000,status:'sale'}]};
+  assert.equal((await call('303','/import',input)).status,200);
+  const db=new DatabaseSync(dbPath);t.after(()=>db.close());
+  db.prepare('UPDATE company_billing SET trial_ends_ms=? WHERE company_id=?').run(Date.now()-1,c.id);
+  assert.equal((await call('101','/report')).status,402);
+  assert.equal((await call('303','/report')).status,402);
+  assert.equal((await call('303','/import',input)).status,402);
+  assert.equal((await call('101','/subscription')).data.subscription.state,'expired');
+  assert.match(dailyDigestFor('101',{dbPath}),/завершились/);
+  const token=paymentConfirmation(db,c,'999','month');confirmReceivedPayment(db,c,'999',token);
+  assert.equal((await call('101','/report')).data.revenue30_kopecks,10000);
+  assert.equal((await call('303','/report')).data.revenue30_kopecks,10000);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?').get(c.id).n,1);
 });

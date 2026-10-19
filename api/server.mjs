@@ -10,6 +10,7 @@ import { createCorrectionService } from './corrections.mjs';
 import { resetTestData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
+import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,assertSubscription,PLANS } from './billing.mjs';
 
 // Localhost-only service. Nginx provides HTTPS. Telegram initData is ALWAYS signed and verified.
 const port = Number(process.env.BP_API_PORT || 3117);
@@ -31,6 +32,7 @@ db.exec(
 );
 // Upgrade existing SQLite schema before preparing statements that use the new columns.
 ensureCompanyMembers(db);
+ensureBillingSchema(db);
 const accumulator=createAccumulator(db);
 const correctionService=createCorrectionService({db,secret:token});
 const importMapper=createImportMapper({db});
@@ -70,6 +72,7 @@ function companyFor(id){
   st.user.run(id);
   let c=companyForUser(db,id);
   if(!c){st.newCompany.run(randomUUID(),id,'Моя компания','other');c=companyForUser(db,id);}
+  ensureCompanyBilling(db,c);
   return c;
 }
 
@@ -77,6 +80,7 @@ async function readCompanyJSON(req,c,id){
   const input=await readJSON(req);
   // Access may have been revoked while the request body was still uploading.
   if(companyForUser(db,id)?.id!==c.id){const e=Error('Доступ к компании изменился. Откройте приложение заново.');e.status=403;throw e;}
+  assertSubscription(db,c);
   return input;
 }
 const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -88,7 +92,7 @@ function report(c,requestedBasis=null){
   const counts=Object.fromEntries(st.countBasis.all(c.id).map(x=>[x.financial_basis,x.n]));
   const summary=calculateFinancialSummary(entries,counts,end,requestedBasis,c.industry);
   const src=st.latest.get(c.id);
-  return {...summary,company:c,
+  return {...summary,company:c,subscription:subscriptionFor(db,c),
     source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,
       last_import_rows:src.row_count,last_change_at:src.last_change_at}:null,
     warning:src?null:'Отчёт ещё не загружен. Здесь пока нет финансовых данных.'
@@ -185,7 +189,9 @@ const server=http.createServer(async(req,res)=>{
   let id;try{id=telegramID(req.headers['x-telegram-init-data']);}catch{return reply(res,401,{error:'Open the app in Telegram again'},origin);}
   try{
     const c=companyFor(id);
-    if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c},origin);
+    if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
+    if(req.method==='GET'&&url.pathname==='/api/subscription')return reply(res,200,{company:c,subscription:subscriptionFor(db,c),plans:PLANS},origin);
+    assertSubscription(db,c);
     if(req.method==='GET'&&url.pathname==='/api/report')
       return reply(res,200,report(c,url.searchParams.get('basis')),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
@@ -232,7 +238,7 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,{saved:stats.received,stats,report:updated},origin);
     }
     return reply(res,404,{error:'Unknown API route'},origin);
-  }catch(e){console.error('API request rejected:',e.message);return reply(res,e.status||400,{error:e.status===413?'File too large':e.message},origin);}
+  }catch(e){console.error('API request rejected:',e.message);return reply(res,e.status||400,{error:e.status===413?'File too large':e.message,code:e.code},origin);}
 });
 server.listen(port,'127.0.0.1',()=>console.log('Business Pulse API started on 127.0.0.1:'+port));
 

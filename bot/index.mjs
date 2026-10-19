@@ -243,6 +243,8 @@ async function run() {
   console.log('Business Pulse bot connected: @' + bot.username + '; subscriptions: ' + subscribers.size);
   setInterval(() => { morningTick().catch(e => console.error('Daily tick: ' + e.message)); }, 60000);
   morningTick().catch(e => console.error('Initial daily tick: ' + e.message));
+  setInterval(()=>controls.trialReminderTick().catch(e=>console.error('Trial tick: '+e.message)),60000);
+  controls.trialReminderTick().catch(e=>console.error('Initial trial tick: '+e.message));
   let offset = 0;
   while (true) {
     try {

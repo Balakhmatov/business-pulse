@@ -108,13 +108,15 @@
  <div class="nav-heading">РАБОЧЕЕ ПРОСТРАНСТВО</div>
  <button class="nav-item active" type="button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="8" height="8" rx="1.8"/><rect x="13" y="3" width="8" height="8" rx="1.8"/><rect x="3" y="13" width="8" height="8" rx="1.8"/><rect x="13" y="13" width="8" height="8" rx="1.8"/></svg>Обзор бизнеса</button>
  <button class="nav-item" id="sideImport" type="button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path d="M12 16V3m0 0-4 4m4-4 4 4M4 16v4h16v-4"/></svg>Загрузить отчёт</button>
+ <a class="nav-item" href="./landing.html#pricing">Цены</a>
  <div class="side-note"><strong>Всё главное — за минуту</strong><p>Ежедневные показатели вашего бизнеса. Без таблиц, лишних графиков и сложных терминов.</p></div>
  <div class="side-foot">Прототип · Данные демонстрационные</div>
 </aside>
 <main class="main">
  <header class="topbar"><div><div class="eyebrow">Панель собственника</div><h1 class="heading">Ваш бизнес сегодня</h1><div class="subheading" id="businessDesc">Главное о компании — на одном экране</div></div>
- <div class="right-top"><button id="downloadSample" type="button" class="ghost-btn" title="Скачать пример файла для импорта"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Пример CSV</button><button id="openImport" type="button" class="primary-btn" aria-label="Загрузить отчёт CSV или Excel"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить отчёт</button></div></header>
+ <div class="right-top"><a class="ghost-btn" style="display:inline-flex;align-items:center;text-decoration:none" href="./landing.html#pricing">Цены</a><button id="downloadSample" type="button" class="ghost-btn" title="Скачать пример файла для импорта"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Пример CSV</button><button id="openImport" type="button" class="primary-btn" aria-label="Загрузить отчёт CSV или Excel"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-upload"/></svg>Загрузить отчёт</button></div></header>
  <div class="import-utilities" id="importUtilities"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button></div>
+ <div id="subscriptionInfo" class="data-review" hidden></div>
  <div class="switchbar"><div class="company-switch" role="group" aria-label="Выбор демонстрационной компании"><button class="company-tab active" data-business="clinic" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-clinic"/></svg> Клиника</button><button class="company-tab" data-business="store" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-store"/></svg> Магазин</button><button class="company-tab" data-business="cafe" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-cafe"/></svg> Кофейня</button></div><span class="demo-pill" id="dataBadge">Демо-данные</span></div>
  <div class="source-note"><span class="dot"></span><strong id="companyName">Клиника «Гармония»</strong><span>·</span><span id="asOf">Данные по вчера включительно</span><span>·</span><span id="rowsInfo">90 дней истории</span></div>
 <div id="financeBooks" class="finance-books" aria-label="Полученные оплаты и выполненные продажи" hidden></div>
@@ -553,6 +555,6 @@ window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insig
 render();
 })();
 </script>
-<script src="personal.js?v=20261019-admin-industry-v2" defer></script>
+<script src="personal.js?v=20261019-trial-prices-v1" defer></script>
 </body>
 </html>

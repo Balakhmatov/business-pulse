@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { calculateFinancialSummary } from '../api/finance-summary.mjs';
 import { companyForUser } from '../api/company-members.mjs';
+import { subscriptionFor } from '../api/billing.mjs';
 
 // Read-only reader for the subscriber's owned or explicitly assigned company.
 // The API owns imports and all financial calculations; ordinary digest delivery never writes to SQLite.
@@ -82,6 +83,10 @@ export function dailyDigestFor(telegramId, {
       'LEFT JOIN imports i ON i.company_id=c.id ' +
       'WHERE c.id=? LIMIT 1'
     ).get(workspace?.id||'');
+    if(workspace){
+      const subscription=subscriptionFor(database,workspace,now.getTime());
+      if(subscription&&!subscription.access)return '<b>Бизнес Пульс</b>\n\nТестовый период или подписка завершились. Данные компании сохранены. Откройте раздел «Цены» в меню бота.';
+    }
     const hasIndustry=database.prepare('PRAGMA table_info(companies)').all().some(x=>x.name==='industry');
     const industry=hasIndustry?database.prepare('SELECT industry FROM companies WHERE id=?').get(company?.id||'')?.industry:'other';
     const prelude = '📊 <b>Бизнес Пульс · утренний обзор</b>';

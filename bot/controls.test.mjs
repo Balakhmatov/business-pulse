@@ -39,7 +39,7 @@ function fixture(t){
     const parsed=new URL(share.url);
     return parsed.searchParams.get('url')?new URL(parsed.searchParams.get('url')).searchParams.get('start').slice(5):parsed.searchParams.get('text').match(/join_([A-Za-z0-9_-]{32})/)[1];
   };
-  return {db,dbPath,messages,admins,msg,click,shared,last,request,invite,advance:ms=>clock+=ms,
+  return {db,dbPath,messages,admins,msg,click,shared,last,request,invite,tick:()=>controls.trialReminderTick(),advance:ms=>clock+=ms,
     restart:()=>{controls.close();controls=make();}};
 }
 
@@ -232,4 +232,34 @@ test('Profile, notifications, hours and navigation edit one panel across repeate
   assert.ok(f.messages.filter(x=>x.method==='editMessageText').every(x=>x.message_id===id));
   assert.match(f.last().text,/14:00/);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM bot_chat_messages WHERE chat_id='101'").get().n,1);
+});
+
+test('Prices are visible to clients; only admin can confirm a real payment, and double click cannot extend twice',async t=>{
+  const f=fixture(t);await f.msg('101','/start prices');
+  assert.match(f.last().text,/1 990 ₽/);assert.match(f.last().text,/33%/);assert.match(f.last().text,/40%/);
+  await f.click('101','grant:101:year');assert.match(f.last().text,/нет доступа/);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM billing_grants').get().n,0);
+  await f.click('999','grant:101:welcome');
+  const action=f.last().reply_markup.inline_keyboard[0][0].callback_data.slice(4);
+  assert.match(f.last().text,/действительно получен/);
+  await f.click('999',action);
+  const until=f.db.prepare("SELECT paid_until_ms FROM company_billing WHERE company_id='a'").get().paid_until_ms;
+  await f.click('999',action);
+  assert.equal(f.db.prepare("SELECT paid_until_ms FROM company_billing WHERE company_id='a'").get().paid_until_ms,until);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM billing_grants').get().n,1);
+});
+
+test('Trial reminder delivery is owner-only, persistent and suppresses unused notice when data is uploaded',async t=>{
+  const f=fixture(t);
+  f.db.prepare("INSERT INTO operations VALUES('b',10000)").run();
+  await f.msg('101','/start');
+  f.advance(24*3600000);await f.tick();
+  const inactivity=f.messages.filter(x=>x.method==='sendMessage'&&x.text?.includes('Первый день тестового периода'));
+  assert.equal(inactivity.length,1);assert.equal(inactivity[0].chat_id,'101');
+  f.restart();await f.tick();
+  assert.equal(f.messages.filter(x=>x.method==='sendMessage'&&x.text?.includes('Первый день тестового периода')).length,1);
+  f.advance(22*3600000);await f.tick();
+  assert.equal(f.messages.filter(x=>x.method==='sendMessage'&&x.text?.includes('Тестовый период скоро закончится')).length,2);
+  f.advance(2*3600000);await f.tick();
+  assert.equal(f.messages.filter(x=>x.method==='sendMessage'&&x.text?.includes('Тестовый период завершился')).length,2);
 });

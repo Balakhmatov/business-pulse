@@ -279,7 +279,7 @@
     }
     let result;
     try{result=await response.json()}catch{throw Error('Сервер вернул некорректный ответ.')}
-    if(!response.ok)throw Error(response.status===401?'Авторизация Telegram устарела. Закройте и снова откройте Mini App.':result.error||'Ошибка сервера '+response.status);
+    if(!response.ok){const error=Error(response.status===401?'Авторизация Telegram устарела. Закройте и снова откройте Mini App.':result.error||'Ошибка сервера '+response.status);error.status=response.status;throw error;}
     return result;
   }
   function activeTab(){
@@ -353,6 +353,16 @@
   }
   function renderMine(){
     const r=state.mineReport||null;
+    const subscription=r?.subscription||state.mineSubscription;
+    const subscriptionBox=$('subscriptionInfo');
+    subscriptionBox.hidden=!subscription||subscription.state==='admin';
+    if(!subscriptionBox.hidden){
+      const until=subscription.state==='paid'?subscription.paid_until_ms:subscription.trial_ends_ms;
+      const label=subscription.state==='paid'?'Подписка до ':subscription.state==='expired'?'Тестовый период или подписка завершились. Данные сохранены.':'48 часов бесплатно — до ';
+      const date=subscription.state==='expired'?'':new Date(until).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК.';
+      subscriptionBox.innerHTML=escapeHTML(label+date)+' <a href="./landing.html#pricing">Цены</a>';
+    }
+
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
     const end=r&&r.as_of?r.as_of:yesterday;
     const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
@@ -456,7 +466,10 @@
     if(state.business==='mine')renderMine();
     try{
       state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
-    }catch(error){state.mineError=error.message||'Не удалось получить данные.';}
+    }catch(error){
+      state.mineError=error.message||'Не удалось получить данные.';
+      if(error.status===402){state.mineReport=null;try{state.mineSubscription=(await request('/subscription')).subscription;}catch{}}
+    }
     finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }
 
@@ -470,6 +483,7 @@
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
+      $('subscriptionInfo').hidden=true;
       $('financeBooks').hidden=true;
       $('unverifiedReview').hidden=true;
       $('debtInfo').hidden=true;

@@ -173,6 +173,16 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
   .final-box{padding:34px 24px;border-radius:23px}
   .footer-inner{flex-direction:column}
 }
+
+.pricing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.price-card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:28px;display:flex;flex-direction:column;align-items:flex-start}
+.price-card.featured{border-color:#a7a3f1;background:#faf9ff;box-shadow:var(--shadow-soft)}
+.price-card h3{font-size:18px;margin:14px 0 18px}.price-amount{font-size:38px;line-height:1.1;font-weight:850;letter-spacing:-1.4px;white-space:nowrap}
+.price-card p{font-size:13px;line-height:1.65;color:#747d97;margin:14px 0 24px}.price-card .btn{margin-top:auto;width:100%}
+.price-badge{font-size:11px;font-weight:800;color:#625bce;background:#efedff;padding:7px 10px;border-radius:9px}
+.trial-offer{padding:22px 25px;border-radius:17px;background:#efedff;color:#38315f;margin-bottom:24px;font-size:15px;line-height:1.65}
+.pricing-note{font-size:12px;line-height:1.7;color:#8189a0;margin-top:22px;max-width:860px}
+@media(max-width:760px){.pricing-grid{grid-template-columns:1fr}.price-card{padding:23px}.price-amount{font-size:34px}}
 </style>
 </head>
 <body>
@@ -188,6 +198,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
       <a href="#value">Возможности</a>
       <a href="#how">Как работает</a>
       <a href="#security">Данные</a>
+      <a href="#pricing">Цены</a>
     </nav>
     <div class="header-cta">
       <a class="btn btn-secondary" href="./index.html">Демо</a>
@@ -384,6 +395,24 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
         <p>Если данных недостаточно для сравнения, сервис так и говорит. Выводы ИИ — подсказка для внимания, а не замена финансовому аудиту.</p>
       </article>
     </div>
+  </div>
+</section>
+
+
+<section class="section alt" id="pricing" aria-labelledby="pricing-title">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-kicker">Цены</div>
+      <h2 id="pricing-title">48 часов, чтобы увидеть свой бизнес в цифрах</h2>
+      <p>Два полных дня бесплатно с момента подключения компании. Руководитель получает сводку, сотрудник загружает отчёты — подписка общая для компании.</p>
+    </div>
+    <div class="trial-offer"><strong>Первый месяц за 1 990 ₽ вместо 2 490 ₽ — скидка 20%.</strong><br>Оплатите в течение тестовых 48 часов. Следующее помесячное продление — 2 490 ₽. Оставшееся время теста сохраняется.</div>
+    <div class="pricing-grid">
+      <article class="price-card"><span class="price-badge">Помесячно</span><h3>1 месяц</h3><div class="price-amount">2 490 ₽</div><p>Обычная цена за месяц.<br>При первой оплате в тестовый период — 1 990 ₽.</p><a class="btn btn-primary" href="https://t.me/business_pulse_app_bot?start=prices">Попробовать 48 часов</a></article>
+      <article class="price-card"><span class="price-badge">Скидка 33%</span><h3>6 месяцев</h3><div class="price-amount">9 990 ₽</div><p>Вместо 14 940 ₽ при помесячной оплате.<br>Экономия — 4 950 ₽.</p><a class="btn btn-primary" href="https://t.me/business_pulse_app_bot?start=prices">Начать бесплатно</a></article>
+      <article class="price-card featured"><span class="price-badge">Скидка 40%</span><h3>12 месяцев</h3><div class="price-amount">17 990 ₽</div><p>Вместо 29 880 ₽ при помесячной оплате.<br>Экономия — 11 890 ₽.</p><a class="btn btn-primary" href="https://t.me/business_pulse_app_bot?start=prices">Начать бесплатно</a></article>
+    </div>
+    <p class="pricing-note">Скидки рассчитаны от стандартной цены 2 490 ₽ за месяц и округлены до целого процента. Полгода и год оплачиваются целиком. Льготная цена первого месяца не суммируется со скидками за полгода и год. После тестового периода данные сохраняются; для продолжения работы нужна подписка.</p>
   </div>
 </section>
 

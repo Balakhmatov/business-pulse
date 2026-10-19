@@ -5,6 +5,7 @@ import { companyAdmin } from '../api/company-admin.mjs';
 import { INDUSTRIES } from '../api/finance-summary.mjs';
 import { validNotificationHour } from './notification-schedule.mjs';
 import { createChatCleanup } from './chat-cleanup.mjs';
+import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,pricesText,PLANS,rub,mskDate,paymentConfirmation,confirmReceivedPayment,reminderFor } from '../api/billing.mjs';
 
 const button=(text,data)=>({text,callback_data:'bpu:'+data});
 const idOK=value=>/^[1-9]\d{0,15}$/.test(String(value||''));
@@ -17,6 +18,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   const db=new DatabaseSync(dbPath);
   db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
   ensureCompanyMembers(db);
+  ensureBillingSchema(db,now());
   db.exec('CREATE TABLE IF NOT EXISTS notification_preferences (telegram_id TEXT PRIMARY KEY REFERENCES users(telegram_id),hour INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23));');
   db.exec('CREATE TABLE IF NOT EXISTS bot_profiles (telegram_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,username TEXT NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_contact_requests (actor_id TEXT PRIMARY KEY,request_id INTEGER NOT NULL,owner_id TEXT,kind TEXT NOT NULL,expires_ms INTEGER NOT NULL);'+
@@ -47,6 +49,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)').run(randomUUID(),actor,'Моя компания','other');
       c=companyForUser(db,actor);
     }
+    ensureCompanyBilling(db,c,now());
     return c;
   }
   function owned(owner){
@@ -94,7 +97,10 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   }
   function card(actor,c,prefix=''){
     const rows=[];
-    if(adminIds.has(actor))rows.push([button('Выбрать отрасль','i:'+c.owner_id)]);
+    if(adminIds.has(actor)){
+      rows.push([button('Выбрать отрасль','i:'+c.owner_id)]);
+      rows.push([button('Подписка и подтверждение оплаты','bill:'+c.owner_id)]);
+    }
     if(adminIds.has(actor)||actor===c.owner_id)rows.push([button('Сотрудники','m:'+c.owner_id)]);
     rows.push([button('В меню','home')]);
     return send(actor,prefix+c.name+'\nРуководитель: '+name(c.owner_id)+'\nОтрасль: '+(INDUSTRIES[c.industry]?.name||'Универсальный'),rows);
@@ -104,10 +110,12 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     const rows=[[{text:'Открыть Бизнес Пульс',web_app:{url:appUrl}}],
       [{text:'Моя сводка',callback_data:'bp:report'},button('Уведомления','notify')]];
     if(c.access_role==='owner')rows.push([button('Сотрудники','m:'+c.owner_id)]);
-    rows.push([button('Мой профиль и ID','id')]);
+    rows.push([button('Цены','prices'),button('Мой профиль и ID','id')]);
     if(adminIds.has(actor))rows.push([button('Управление компаниями','list:0')]);
     rows.push([button('Очистить чат','clear')]);
-    const text='Бизнес Пульс\n\n'+c.name+'\n'+(c.access_role==='member'?'Вы подключены как сотрудник.':'Управление компанией и отчётами.')+suffix;
+    const subscription=subscriptionFor(db,c,now());
+    const accessNote=subscription.state==='trial'?'\n\n48 часов бесплатно — до '+mskDate(subscription.trial_ends_ms)+'.\nПервый месяц за 1 990 ₽ при оплате в тестовый период (скидка 20%).':subscription.state==='paid'?'\n\nПодписка до '+mskDate(subscription.paid_until_ms)+'.':subscription.state==='expired'?'\n\nТестовый период или подписка завершились. Данные сохранены. Тарифы — в разделе «Цены».':'';
+    const text='Бизнес Пульс\n\n'+c.name+'\n'+(c.access_role==='member'?'Вы подключены как сотрудник.':'Управление компанией и отчётами.')+accessNote+suffix;
     if(refresh&&cleanup.welcome(actor)){
       try{
         const result=await api('editMessageText',{chat_id:actor,message_id:cleanup.welcome(actor),text,reply_markup:{inline_keyboard:rows}});
@@ -202,6 +210,34 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     }catch(error){db.exec('ROLLBACK');throw error;}
     return home(actor);
   }
+  function prices(actor){
+    const c=workspace(actor),s=subscriptionFor(db,c,now());
+    return send(actor,pricesText(s)+'\n\nДля оформления подписки свяжитесь со специалистом, который подключал вашу компанию.',[[{text:'Открыть панель',web_app:{url:appUrl}}],[button('В меню','home')]]);
+  }
+  function billingCard(actor,owner,prefix=''){
+    const c=access(actor,owner,true),s=subscriptionFor(db,c,now());
+    const rows=Object.entries(PLANS).filter(([key])=>key!=='welcome'||s.promo_available)
+      .map(([key,p])=>[button(p.name+' · '+rub(p.price),'grant:'+owner+':'+key)]);
+    rows.push([button('Назад','c:'+owner)]);
+    return send(actor,prefix+c.name+'\n\nТестовый период: до '+mskDate(s.trial_ends_ms)+'\n'+
+      (s.paid_until_ms?'Оплачено до '+mskDate(s.paid_until_ms):'Оплата пока не подтверждена.')+
+      '\n\nПодтверждайте тариф только после проверки фактически полученной оплаты.',rows);
+  }
+  let reminding=false;
+  async function trialReminderTick(){
+    if(reminding)return;reminding=true;
+    try{
+      const companies=db.prepare('SELECT c.* FROM companies c JOIN company_billing b ON b.company_id=c.id WHERE b.plan IS NULL AND NOT EXISTS(SELECT 1 FROM company_members m WHERE m.telegram_id=c.owner_id)').all();
+      for(const c of companies){
+        if(adminIds.has(String(c.owner_id)))continue;
+        const notice=reminderFor(db,c,now());if(!notice)continue;
+        try{
+          await api('sendMessage',{chat_id:c.owner_id,text:notice.text,reply_markup:{inline_keyboard:[[{text:'Загрузить отчёт',web_app:{url:appUrl}}],[button('Цены','prices')]]}});
+          db.prepare('INSERT OR IGNORE INTO billing_reminders VALUES(?,?,?)').run(c.id,notice.kind,now());
+        }catch(error){console.error('Trial notification failed for company '+c.id+': '+error.message);}
+      }
+    }finally{reminding=false;}
+  }
   async function handle(update){
     const callback=update.callback_query,message=callback?.message||update.message;
     const user=callback?.from||message?.from;
@@ -242,12 +278,24 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         }
         const payload=text.split(/\s+/)[1];
         if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
+        else if(command==='/start'&&payload==='prices')await prices(actor);
         else if(command==='/myid')await send(actor,profileText(user));
         else await home(actor);
         return true;
       }
       const [action,a,b]=callback.data.slice(4).split(':');
       if(action==='home')await home(actor);
+      else if(action==='prices')await prices(actor);
+      else if(action==='bill')await billingCard(actor,a);
+      else if(action==='grant'){
+        const c=access(actor,a,true);ensureCompanyBilling(db,c,now());
+        const token=paymentConfirmation(db,c,actor,b,now()),p=PLANS[b];
+        await send(actor,'Подтверждение оплаты\n\nКомпания: '+c.name+'\nТариф: '+p.name+'\nСумма: '+rub(p.price)+
+          '\n\nПлатёж на эту сумму действительно получен? Подтверждение откроет доступ на выбранный срок.',
+          [[button('Да, оплата получена','paid:'+a+':'+token)],[button('Отмена','bill:'+a)]]);
+      }else if(action==='paid'){
+        const c=access(actor,a,true);confirmReceivedPayment(db,c,actor,b,now());await billingCard(actor,a,'Оплата подтверждена.\n\n');
+      }
       else if(action==='clear'){
         const token=cleanup.confirm(actor);
         await send(actor,'Очистить сообщения в этом чате?\n\nПриветствие и меню останутся. Данные и настройки компании сохранятся. Telegram позволяет боту удалять сообщения только за последние 48 часов.',
@@ -304,5 +352,5 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     }catch(error){await send(actor,error.message||'Не удалось выполнить действие. Откройте меню заново.');}
     return true;
   }
-  return {handle,notificationHour,notifications,rememberMessage:cleanup.remember,close:()=>db.close()};
+  return {handle,notificationHour,notifications,trialReminderTick,rememberMessage:cleanup.remember,close:()=>db.close()};
 }
