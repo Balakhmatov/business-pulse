@@ -5,7 +5,7 @@ import { companyAdmin } from '../api/company-admin.mjs';
 import { INDUSTRIES } from '../api/finance-summary.mjs';
 import { validNotificationHour } from './notification-schedule.mjs';
 import { createChatCleanup } from './chat-cleanup.mjs';
-import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,pricesText,PLANS,rub,mskDate,paymentConfirmation,confirmReceivedPayment,reminderFor } from '../api/billing.mjs';
+import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,pricesText,PLANS,rub,mskDate,paymentConfirmation,confirmReceivedPayment,reminderFor,trialReminderText } from '../api/billing.mjs';
 
 const button=(text,data)=>({text,callback_data:'bpu:'+data});
 const idOK=value=>/^[1-9]\d{0,15}$/.test(String(value||''));
@@ -111,7 +111,10 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       [{text:'Моя сводка',callback_data:'bp:report'},button('Уведомления','notify')]];
     if(c.access_role==='owner')rows.push([button('Сотрудники','m:'+c.owner_id)]);
     rows.push([button('Цены','prices'),button('Мой профиль и ID','id')]);
-    if(adminIds.has(actor))rows.push([button('Управление компаниями','list:0')]);
+    if(adminIds.has(actor)){
+      rows.push([button('Управление компаниями','list:0')]);
+      rows.push([button('Проверить уведомления','testnotices')]);
+    }
     rows.push([button('Очистить чат','clear')]);
     const subscription=subscriptionFor(db,c,now());
     const accessNote=subscription.state==='trial'?'\n\n48 часов бесплатно — до '+mskDate(subscription.trial_ends_ms)+'.\nПервый месяц за 1 990 ₽ при оплате в тестовый период (скидка 20%).':subscription.state==='paid'?'\n\nПодписка до '+mskDate(subscription.paid_until_ms)+'.':subscription.state==='expired'?'\n\nТестовый период или подписка завершились. Данные сохранены. Тарифы — в разделе «Цены».':'';
@@ -223,6 +226,14 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       (s.paid_until_ms?'Оплачено до '+mskDate(s.paid_until_ms):'Оплата пока не подтверждена.')+
       '\n\nПодтверждайте тариф только после проверки фактически полученной оплаты.',rows);
   }
+  function sendTrialNotice(actor,text){
+    return api('sendMessage',{chat_id:actor,text,reply_markup:{inline_keyboard:[[{text:'Загрузить отчёт',web_app:{url:appUrl}}],[button('Цены','prices')]]}});
+  }
+  function testNotices(actor){
+    if(!adminIds.has(actor))throw Error('Доступно только администратору.');
+    return send(actor,'Проверка уведомлений\n\nВыберите сообщение — бот отправит его вам отдельным сообщением. Сроки подписок и рассылка клиентам не изменятся.',
+      [[button('Через 24 часа: нет данных','testnotice:trial_unused')],[button('Через 46 часов: осталось 2 часа','testnotice:trial_ending')],[button('Через 48 часов: тест завершён','testnotice:trial_ended')],[button('В меню','home')]]);
+  }
   let reminding=false;
   async function trialReminderTick(){
     if(reminding)return;reminding=true;
@@ -232,7 +243,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         if(adminIds.has(String(c.owner_id)))continue;
         const notice=reminderFor(db,c,now());if(!notice)continue;
         try{
-          await api('sendMessage',{chat_id:c.owner_id,text:notice.text,reply_markup:{inline_keyboard:[[{text:'Загрузить отчёт',web_app:{url:appUrl}}],[button('Цены','prices')]]}});
+          await sendTrialNotice(c.owner_id,notice.text);
           db.prepare('INSERT OR IGNORE INTO billing_reminders VALUES(?,?,?)').run(c.id,notice.kind,now());
         }catch(error){console.error('Trial notification failed for company '+c.id+': '+error.message);}
       }
@@ -286,6 +297,13 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       const [action,a,b]=callback.data.slice(4).split(':');
       if(action==='home')await home(actor);
       else if(action==='prices')await prices(actor);
+      else if(action==='testnotices')await testNotices(actor);
+      else if(action==='testnotice'){
+        if(!adminIds.has(actor))throw Error('Доступно только администратору.');
+        const ends=now()+(a==='trial_unused'?24:a==='trial_ending'?2:0)*3600000;
+        await sendTrialNotice(actor,trialReminderText(a,ends));
+        await testNotices(actor);
+      }
       else if(action==='bill')await billingCard(actor,a);
       else if(action==='grant'){
         const c=access(actor,a,true);ensureCompanyBilling(db,c,now());

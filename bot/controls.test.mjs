@@ -263,3 +263,27 @@ test('Trial reminder delivery is owner-only, persistent and suppresses unused no
   f.advance(2*3600000);await f.tick();
   assert.equal(f.messages.filter(x=>x.method==='sendMessage'&&x.text?.includes('Тестовый период завершился')).length,2);
 });
+
+
+test('Admin can receive all real reminder templates without changing billing or notifying clients',async t=>{
+  const f=fixture(t);await f.msg('999','/start');
+  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='bpu:testnotices'));
+  const before=f.db.prepare('SELECT * FROM company_billing ORDER BY company_id').all();
+  await f.click('999','testnotices');
+  for(const [kind,title] of [['trial_unused','Первый день'],['trial_ending','скоро закончится'],['trial_ended','завершился']]){
+    const start=f.messages.length;
+    await f.click('999','testnotice:'+kind);
+    const notices=f.messages.slice(start).filter(m=>m.method==='sendMessage');
+    assert.equal(notices.length,1);assert.equal(notices[0].chat_id,'999');
+    assert.ok(notices[0].text.includes(title));
+    assert.equal(notices[0].reply_markup.inline_keyboard[1][0].callback_data,'bpu:prices');
+  }
+  assert.deepEqual(f.db.prepare('SELECT * FROM company_billing ORDER BY company_id').all(),before);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM billing_reminders').get().n,0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM billing_grants').get().n,0);
+  for(const action of ['testnotices','testnotice:trial_unused','testnotice:trial_ending','testnotice:trial_ended']){
+    const start=f.messages.length;await f.click('101',action);
+    assert.match(f.last().text,/администратору/);
+    assert.equal(f.messages.slice(start).filter(m=>m.method==='sendMessage'&&m.reply_markup?.inline_keyboard?.[1]?.[0]?.callback_data==='bpu:prices').length,0);
+  }
+});

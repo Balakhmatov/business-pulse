@@ -83,9 +83,13 @@ export function reminderFor(db,c,at=Date.now()){
   else if(at>=s.trial_ends_ms-2*3600000)kind='trial_ending';
   else if(elapsed>=24*3600000&&!db.prepare('SELECT 1 FROM operations WHERE company_id=? LIMIT 1').get(c.id))kind='trial_unused';
   if(!kind||db.prepare('SELECT 1 FROM billing_reminders WHERE company_id=? AND kind=?').get(c.id,kind))return null;
+  return {kind,text:trialReminderText(kind,s.trial_ends_ms)};
+}
+export function trialReminderText(kind,trialEndsMs){
+  if(!['trial_unused','trial_ending','trial_ended'].includes(kind))throw Error('Неизвестное уведомление.');
   let text;
-  if(kind==='trial_unused')text='Вашему бизнесу нужен контроль.\n\nПервый день тестового периода уже прошёл, а данные пока не загружены. Загрузите CSV или Excel и получите аналитику вашего бизнеса.\n\nДо '+mskDate(s.trial_ends_ms)+' можно оформить первый месяц за 1 990 ₽ вместо 2 490 ₽ — скидка 20%.';
-  else if(kind==='trial_ending')text='Тестовый период скоро закончится\n\nБесплатный доступ действует до '+mskDate(s.trial_ends_ms)+'. Успейте оформить первый месяц за 1 990 ₽ вместо 2 490 ₽ — скидка 20%.\n\nМожно выбрать год за 17 990 ₽ — скидка 40% от обычной помесячной цены, или полгода за 9 990 ₽ — скидка 33%.';
+  if(kind==='trial_unused')text='Вашему бизнесу нужен контроль.\n\nПервый день тестового периода уже прошёл, а данные пока не загружены. Загрузите CSV или Excel и получите аналитику вашего бизнеса.\n\nДо '+mskDate(trialEndsMs)+' можно оформить первый месяц за 1 990 ₽ вместо 2 490 ₽ — скидка 20%.';
+  else if(kind==='trial_ending')text='Тестовый период скоро закончится\n\nБесплатный доступ действует до '+mskDate(trialEndsMs)+'. Успейте оформить первый месяц за 1 990 ₽ вместо 2 490 ₽ — скидка 20%.\n\nМожно выбрать год за 17 990 ₽ — скидка 40% от обычной помесячной цены, или полгода за 9 990 ₽ — скидка 33%.';
   else text='Тестовый период завершился\n\nДанные вашей компании сохранены. Для продолжения работы оформите подписку: 2 490 ₽ на месяц, 9 990 ₽ на полгода (скидка 33%) или 17 990 ₽ на год (скидка 40%).';
-  return {kind,text};
+  return text;
 }
