@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { dailyDigestFor } from './digest.mjs';
+import { adminCommand } from '../api/company-admin.mjs';
+const ADMIN_IDS=new Set((process.env.BP_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(x=>/^[1-9]\d{0,15}$/.test(x)));
 
 // Independent, dependency-free Telegram bridge for the Business Pulse prototype.
 // Requires Node.js 20.6+, a separate BotFather bot and a running server process.
@@ -114,7 +116,15 @@ async function handle(update) {
   const chatId = String(message.chat.id);
   const cmd = message.text.trim().split(/\s+/)[0].split('@')[0].toLowerCase();
 
+  if(['/companies','/industry'].includes(cmd)){
+    try{const result=adminCommand(message,ADMIN_IDS);if(result)await send(chatId,result);}
+    catch(error){await send(chatId,error.message);}
+    return;
+  }
   switch (cmd) {
+    case '/myid':
+      await send(chatId,'Ваш Telegram ID: '+chatId);
+      break;
     case '/start':
       await send(chatId, 'Добро пожаловать в Бизнес Пульс.\n\n' +
         'Откройте «Моя компания» на кнопке ниже. Чтобы ежедневно получать сводку по загруженному отчёту, отправьте /subscribe.\n\n' +
@@ -238,3 +248,4 @@ run().catch(error => {
   console.error('Bot startup failed: ' + error.message);
   process.exitCode = 1;
 });
+

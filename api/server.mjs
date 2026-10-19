@@ -5,7 +5,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
-import { calculateFinancialSummary,INDUSTRIES } from './finance-summary.mjs';
+import { calculateFinancialSummary } from './finance-summary.mjs';
 import { createCorrectionService } from './corrections.mjs';
 import { resetTestData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
@@ -36,7 +36,6 @@ const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   first:db.prepare('SELECT id,name,industry FROM companies WHERE owner_id=? ORDER BY created_at LIMIT 1'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),
-  setIndustry:db.prepare('UPDATE companies SET industry=? WHERE id=? AND owner_id=?'),
   rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status,financial_basis,quantity_milli FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
   countBasis:db.prepare('SELECT financial_basis,COUNT(*) AS n FROM operations WHERE company_id=? GROUP BY financial_basis'),
   latest:db.prepare('SELECT imported_at,source,row_count,last_change_at FROM imports WHERE company_id=?'),
@@ -179,14 +178,6 @@ const server=http.createServer(async(req,res)=>{
   try{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c},origin);
-    if(req.method==='POST'&&url.pathname==='/api/company/industry'){
-      const body=await readJSON(req);
-      if(!body||typeof body.industry!=='string'||!Object.hasOwn(INDUSTRIES,body.industry))
-        return reply(res,400,{error:'Выберите тип бизнеса из списка.'},origin);
-      st.setIndustry.run(body.industry,c.id,id);
-      c.industry=body.industry;
-      return reply(res,200,{company:c,report:report(c)},origin);
-    }
     if(req.method==='GET'&&url.pathname==='/api/report')
       return reply(res,200,report(c,url.searchParams.get('basis')),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
@@ -235,3 +226,4 @@ const server=http.createServer(async(req,res)=>{
   }catch(e){console.error('API request rejected:',e.message);return reply(res,e.status||400,{error:e.status===413?'File too large':e.message},origin);}
 });
 server.listen(port,'127.0.0.1',()=>console.log('Business Pulse API started on 127.0.0.1:'+port));
+

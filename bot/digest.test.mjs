@@ -7,6 +7,20 @@ import { DatabaseSync } from 'node:sqlite';
 import { dailyDigestFor } from './digest.mjs';
 
 const NOW = new Date('2026-10-17T06:00:00.000Z');
+
+test('Clinic digest counts explicit quantities from earned ledger and does not count payments as services',t=>{
+  const f=fixture();t.after(f.cleanup);f.addImport('c101');
+  f.db.exec("ALTER TABLE companies ADD COLUMN industry TEXT DEFAULT 'other'; UPDATE companies SET industry='clinic' WHERE id='c101';"+
+    "ALTER TABLE operations ADD COLUMN financial_basis TEXT DEFAULT 'cash_receipts'; ALTER TABLE operations ADD COLUMN quantity_milli INTEGER;");
+  const add=f.db.prepare('INSERT INTO operations(company_id,sold_on,source_id,amount_kopecks,status,financial_basis,quantity_milli) VALUES(?,?,?,?,?,?,?)');
+  add.run('c101','2026-10-16','paid',100000,'sale','cash_receipts',99000);
+  add.run('c101','2026-10-16','services',80000,'sale','recognized_revenue',5000);
+  add.run('c101','2026-10-16','return',-10000,'refund','recognized_revenue',1000);
+  assert.match(f.read('101'),/Оказано услуг за 30 дней: <b>4 шт\.<\/b>/);
+  add.run('c101','2026-10-16','unknown',10000,'sale','recognized_revenue',null);
+  assert.match(f.read('101'),/Оказано услуг за 30 дней: <b>нет данных<\/b>/);
+  assert.match(f.read('101'),/не у всех строк есть количество/);
+});
 function shift(date,n) { const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10); }
 function fixture() {
   const folder = mkdtempSync(path.join(tmpdir(),'bp-digest-test-'));
@@ -137,3 +151,4 @@ test('Telegram HTML safely escapes untrusted company names and cached AI fields'
   assert.equal((result.match(/📊/g)||[]).length,1);
   assert.equal((result.match(/📌/g)||[]).length,1);
 });
+

@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
+import { calculateFinancialSummary } from '../api/finance-summary.mjs';
 
 // Read-only reader for the subscriber's OWN Telegram-linked company.
-// The API owns imports and all financial calculations; the bot never writes to SQLite.
+// The API owns imports and all financial calculations; ordinary digest delivery never writes to SQLite.
 const DEFAULT_DB = '/var/lib/business-pulse/pulse.db';
 const money = kopecks => Math.round(kopecks / 100).toLocaleString('ru-RU') + ' ₽';
 const signedPercent = percent => (percent > 0 ? '+' : '') + percent.toFixed(1).replace('.', ',') + '%';
@@ -79,6 +80,8 @@ export function dailyDigestFor(telegramId, {
       'LEFT JOIN imports i ON i.company_id=c.id ' +
       'WHERE u.telegram_id=? ORDER BY c.created_at,c.id LIMIT 1'
     ).get(String(telegramId));
+    const hasIndustry=database.prepare('PRAGMA table_info(companies)').all().some(x=>x.name==='industry');
+    const industry=hasIndustry?database.prepare('SELECT industry FROM companies WHERE id=?').get(company?.id||'')?.industry:'other';
     const prelude = '📊 <b>Бизнес Пульс · утренний обзор</b>';
     if (!company || !company.imported_at) {
       return prelude + '\n\n<b>Нет загруженного отчёта</b>\n\n' +
@@ -110,6 +113,14 @@ export function dailyDigestFor(telegramId, {
       database.prepare(
         'SELECT MAX(sold_on) AS last_date FROM operations WHERE company_id=? AND sold_on<=?'
       ).get(company.id,end)?.last_date;
+    // Use the same quantity/unique-order calculation as the personal dashboard.
+    const columns=new Set(database.prepare('PRAGMA table_info(operations)').all().map(x=>x.name));
+    const summaryRows=database.prepare('SELECT sold_on,source_id,amount_kopecks,status,'+
+      (hasBasis?'financial_basis':"'unverified' AS financial_basis")+','+
+      (columns.has('quantity_milli')?'quantity_milli':'NULL AS quantity_milli')+
+      " ,'' AS item FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?"
+    ).all(company.id,start,end);
+    const summary=calculateFinancialSummary(summaryRows,Object.fromEntries(basisCounts.map(x=>[x.financial_basis,x.n])),end,null,industry);
     const current = ops.filter(x => x.sold_on >= cut);
     const previous = ops.filter(x => x.sold_on < cut);
     const sum = rows => rows.reduce((value, row) => value + row.amount_kopecks, 0);
@@ -128,8 +139,10 @@ export function dailyDigestFor(telegramId, {
       '',
       '<b>Основные показатели</b>',
       '1. '+metric+' за 30 дней: <b>' + money(currentRevenue) + '</b>',
-      '2. Операций за 30 дней: <b>' + salesCount + '</b>'
+      '2. '+(industry&&industry!=='other'?summary.volume.label:'Операций')+' за 30 дней: <b>' +
+        (!industry||industry==='other'?String(salesCount):Number.isFinite(summary.volume.value)?summary.volume.value.toLocaleString('ru-RU')+(summary.volume.unit?' '+summary.volume.unit:''):'нет данных')+'</b>'
     ];
+    if(summary.volume.value===null&&industry&&industry!=='other')lines.push('<i>'+escapeHTML(summary.volume.caption)+'</i>');
     if (yesterday.length) {
       lines.push('3. '+metric+' за ' + displayDate(end) + ': <b>' + money(sum(yesterday)) + '</b>');
     } else {
@@ -177,3 +190,4 @@ export function dailyDigestFor(telegramId, {
     database.close();
   }
 }
+

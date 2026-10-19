@@ -296,7 +296,6 @@
     cafe:{paid:'Оплачено гостями',done:'Продано на сумму'},
     other:{paid:'Получено от клиентов',done:'Выполнено на сумму'}
   };
-  const industryLabels={clinic:'Клиника',store:'Магазин',auto:'Автосервис',cafe:'Кафе',other:'Универсальный'};
   const industryFor=report=>industryMoneyLabels[report?.company?.industry]||industryMoneyLabels.other;
   const financialTitles={
     cash_receipts:'Поступления',
@@ -306,16 +305,12 @@
   function renderFinanceBooks(report){
     const holder=$('financeBooks');
     const review=$('unverifiedReview');
-    const picker=$('industryPicker');
     if(state.business!=='mine'||!report?.financial_books){
-      holder.hidden=true;review.hidden=true;picker.hidden=true;
+      holder.hidden=true;review.hidden=true;
       $('debtInfo').hidden=true;
       return;
     }
     holder.hidden=false;
-    picker.hidden=false;
-    const industry=report.company?.industry||'other';
-    $('industrySelect').value=Object.hasOwn(industryLabels,industry)?industry:'other';
     const copy=industryFor(report);
     const labels=[
       ['cash_receipts',copy.paid,'Фактически полученные деньги, включая авансы'],
@@ -341,12 +336,12 @@
     const unknown=report.financial_books.unverified;
     review.hidden=!unknown?.available;
     if(unknown?.available){
-      review.innerHTML='<strong>Нужно уточнить данные · '+fmtK(unknown.amount30_kopecks)+'</strong>'+
+      review.innerHTML='<details><summary>Нужно уточнить данные · '+fmtK(unknown.amount30_kopecks)+'</summary>'+
         '<div>По старым отчётам пока неизвестно, что означают суммы. '+
-        'Они не добавляются ни к оплатам, ни к выполненным продажам.</div>';
+        'Они не добавляются ни к оплатам, ни к выполненным продажам.</div></details>';
     }
     const debt=$('debtInfo');
-    debt.hidden=false;
+    debt.hidden=!report.unpaid_customer_debt_available;
     if(report.unpaid_customer_debt_available&&Number.isFinite(report.unpaid_customer_debt_kopecks)){
       debt.innerHTML='<strong>Не оплачено клиентами: '+fmtK(report.unpaid_customer_debt_kopecks)+'</strong>'+
         '<div>По подтверждённым данным о конкретных заказах и их оплате.</div>';
@@ -470,32 +465,12 @@
     renderMine();
     if(!state.mineReport)loadMine();
   };
-  $('industrySelect').onchange=async()=>{
-    if(state.business!=='mine'||!state.mineReport)return;
-    const previous=state.mineReport.company?.industry||'other';
-    const selected=$('industrySelect').value;
-    if(selected===previous)return;
-    const status=$('industryStatus');
-    const select=$('industrySelect');
-    select.disabled=true;status.textContent='Сохраняем…';
-    try{
-      const result=await request('/company/industry',{industry:selected});
-      state.mineReport=result.report;
-      if(state.mineViewBasis)state.mineReport=await request('/report?basis='+state.mineViewBasis);
-      status.textContent='Направление сохранено';
-      renderMine();
-    }catch(error){
-      status.textContent=error.message||'Не удалось сохранить направление.';
-      select.value=previous;
-    }finally{select.disabled=false;}
-  };
   // Existing demo tab handlers are installed by index.html before this module.
   document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(btn=>{
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
       document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
       $('financeBooks').hidden=true;
-      $('industryPicker').hidden=true;
       $('unverifiedReview').hidden=true;
       $('debtInfo').hidden=true;
       document.querySelector('.revenue-panel .kpi-name').textContent='Продажи за 30 дней';

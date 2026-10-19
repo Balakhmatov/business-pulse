@@ -31,6 +31,14 @@ export function createAI({ db, report, listOperations }) {
       db.exec('COMMIT');
     }catch(error){db.exec('ROLLBACK');throw error;}
   }
+  if(!db.prepare("SELECT 1 AS ok FROM analysis_schema_migrations WHERE id='industry_volume_v4'").get()){
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      db.exec('DELETE FROM ai_analyses');
+      db.prepare('INSERT OR IGNORE INTO analysis_schema_migrations(id) VALUES(?)').run('industry_volume_v4');
+      db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error;}
+  }
   const read = db.prepare('SELECT version,status,payload,updated_ms FROM ai_analyses WHERE company_id=?');
   const upsert = db.prepare('INSERT INTO ai_analyses(company_id,version,status,payload,updated_ms) VALUES(?,?,?,?,?) ON CONFLICT(company_id) DO UPDATE SET version=excluded.version,status=excluded.status,payload=excluded.payload,updated_ms=excluded.updated_ms');
   const finish = db.prepare('UPDATE ai_analyses SET status=?,payload=?,updated_ms=? WHERE company_id=? AND version=?');
@@ -49,7 +57,7 @@ export function createAI({ db, report, listOperations }) {
     const dayCount = rows => new Set(rows.map(x => x.sold_on)).size;
     const curDays = dayCount(cur);
     const prevDays = dayCount(prev);
-    const prevReceipts = new Set(prev.filter(x => x.status === 'sale').map(x => x.source_id)).size;
+    const prevReceipts = new Set(prev.filter(x => x.status === 'sale').map(x => x.sold_on+'\u0000'+x.source_id)).size;
     const currentReceipts = r.receipt_count;
     const refunds = cur.filter(x => x.status === 'refund').length;
     const comparable = curDays >= 25 && prevDays >= 25 && r.previous30_kopecks > 0;
@@ -60,6 +68,8 @@ export function createAI({ db, report, listOperations }) {
     const add = (id, value) => { facts[id] = value; };
     add('revenue', title+' за последние 30 завершённых дней: '+money(r.revenue30_kopecks)+'.');
     add('receipts', 'За тот же период было ' + currentReceipts + ' операций с уникальными номерами.');
+    if(Number.isFinite(r.volume?.value))add('industry_volume',r.volume.label+': '+r.volume.value+' '+r.volume.unit+'. '+r.volume.caption);
+    else if(r.volume)add('industry_volume_missing',r.volume.label+': нет данных. '+r.volume.caption);
     if (r.average_receipt_kopecks !== null) add('average', 'Средний чек: ' + money(r.average_receipt_kopecks) + '.');
     add('data_coverage', 'Операции присутствуют за ' + curDays + ' из последних 30 дней; отсутствие операций не доказывает нулевые продажи.');
     if (comparable) {
@@ -233,3 +243,4 @@ export function createAI({ db, report, listOperations }) {
   }
   return { get, onImport };
 }
+
