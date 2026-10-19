@@ -250,7 +250,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     return send(actor,'Оплата по СБП\n\nСоздайте в ЮKassa платёжную ссылку на точную сумму каждого тарифа с описанием «Подписка Бизнес Пульс» и нужным сроком. Убедитесь, что на странице доступна СБП. Затем выберите тариф и пришлите ссылку.\n\nЭто внешние платёжные страницы. Подписка включается после вашей проверки поступления денег. Секретные ключи отправлять не нужно.',rows);
   }
   function paymentUrl(){
-    const url=new URL(appUrl);url.searchParams.set('view','payment');return url.href;
+    const url=new URL('./payment.html',appUrl);return url.href;
   }
   function prices(actor){
     const c=workspace(actor),s=subscriptionFor(db,c,now());

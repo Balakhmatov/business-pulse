@@ -5,7 +5,6 @@
   const isTelegram=Boolean(tg?.initData);
   const plans=[
     {id:'month',name:'1 месяц',price:2490,detail:'Стандартная подписка'},
-    {id:'welcome',name:'Первый месяц',price:1990,detail:'Вместо 2 490 ₽ · −20% · экономия 500 ₽',note:'Только при первой оплате в течение тестовых 48 часов'},
     {id:'halfyear',name:'6 месяцев',price:9990,detail:'−33% · экономия 4 950 ₽'},
     {id:'year',name:'12 месяцев',price:17990,detail:'−40% · экономия 11 890 ₽'}
   ];
@@ -61,7 +60,6 @@
         const r=await fetch(root+'/payments/refresh',{method:'POST',headers:{'X-Telegram-Init-Data':tg.initData},signal:AbortSignal.timeout(25000)});
         if(!r.ok)throw Error('subscription');subscription=(await r.json()).subscription;
       }
-      controls.get('welcome').card.hidden=!subscription?.promo_available;
       available=data.payments_available===true&&Boolean(subscription);
       status.textContent=!isTelegram?'Для оплаты откройте приложение через Telegram-бота.':available?'Поставьте галочку принятия условий — кнопки оплаты станут доступны.':'Оплата пока недоступна. Напишите в поддержку.';
       chosen=null;
@@ -81,5 +79,5 @@
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
   document.addEventListener('click',e=>{const trigger=e.target.closest('[data-bp-pay]');if(trigger){e.preventDefault();open(trigger.dataset.bpPay);}});
   window.BP_Payments={open};
-  if(new URLSearchParams(window.location.search).get('view')==='payment'||tg?.initDataUnsafe?.start_param==='payment')open();
+  if(document.body.dataset.bpPaymentPage==='true'||new URLSearchParams(window.location.search).get('view')==='payment'||tg?.initDataUnsafe?.start_param==='payment')open();
 })();
