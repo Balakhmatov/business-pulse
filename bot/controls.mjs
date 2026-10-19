@@ -250,7 +250,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   }
   function prices(actor){
     const c=workspace(actor),s=subscriptionFor(db,c,now());
-    return send(actor,pricesText(s),[[{text:'Открыть панель',web_app:{url:appUrl}}],[button('В меню','home')]],{parse_mode:'HTML'});
+    return send(actor,pricesText(s),[[{text:'Перейти к оплате',web_app:{url:appUrl}}],[button('В меню','home')]],{parse_mode:'HTML'});
   }
   function billingCard(actor,owner,prefix=''){
     const c=access(actor,owner,true),s=subscriptionFor(db,c,now());
