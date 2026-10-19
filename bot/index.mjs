@@ -3,6 +3,7 @@ import path from 'node:path';
 import { dailyDigestFor } from './digest.mjs';
 import { adminCommand } from '../api/company-admin.mjs';
 import { createBotControls } from './controls.mjs';
+import { isDigestDue } from './notification-schedule.mjs';
 // Project owner; an explicit BP_ADMIN_IDS overrides this list (empty disables access).
 const ADMIN_IDS=new Set((process.env.BP_ADMIN_IDS??'1296951270').split(',').map(x=>x.trim()).filter(x=>/^[1-9]\d{0,15}$/.test(x)));
 
@@ -45,7 +46,7 @@ async function loadSubscribers() {
     const content = JSON.parse(await fs.readFile(STORAGE_PATH, 'utf8'));
     for (const [id, record] of Object.entries(content)) {
       if (/^\d+$/.test(id) && record && typeof record === 'object') {
-        subscribers.set(id, {since: record.since || '', lastSent: record.lastSent || ''});
+        subscribers.set(id, {since: record.since || '', lastSent: record.lastSent || '',enabled:record.enabled!==false});
       }
     }
   } catch (error) {
@@ -97,7 +98,8 @@ async function sendReport(chatId, test = false) {
   return send(chatId, test ? '<b>Проверка уведомлений</b>\n\n' + body : body, {html: true});
 }
 
-const controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,botUsername:EXPECTED_USERNAME});
+const controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,botUsername:EXPECTED_USERNAME,
+  defaultHour:SEND_HOUR,timeZone:TIMEZONE,isSubscribed:id=>subscribers.has(id)&&subscribers.get(id).enabled!==false});
 
 async function handle(update) {
   if(await controls.handle(update))return;
@@ -148,24 +150,19 @@ async function handle(update) {
       await sendReport(chatId, true);
       break;
     case '/subscribe':
-      if (!subscribers.has(chatId)) {
-        subscribers.set(chatId, {since: new Date().toISOString(), lastSent: ''});
-        await saveSubscribers();
-      }
-      await send(chatId, 'Утренняя рассылка подключена: ежедневно в ' +
-        String(SEND_HOUR).padStart(2, '0') + ':00 (' + TIMEZONE + ').\n' +
-        'Отключение — /unsubscribe. Сообщения строятся по последней загрузке вашей компании; если данных за вчера нет, это будет отмечено.');
+      if (!subscribers.has(chatId))subscribers.set(chatId, {since: new Date().toISOString(), lastSent: '',enabled:true});
+      else subscribers.get(chatId).enabled=true;
+      await saveSubscribers();
+      await controls.notifications(chatId,'Уведомления включены.\n\n');
       break;
     case '/unsubscribe':
     case '/stop':
-      subscribers.delete(chatId);
+      if(subscribers.has(chatId))subscribers.get(chatId).enabled=false;
       await saveSubscribers();
-      await send(chatId, 'Ежедневные уведомления отключены. Возобновить — /subscribe.');
+      await controls.notifications(chatId,'Уведомления отключены.\n\n');
       break;
     case '/status':
-      await send(chatId, subscribers.has(chatId) ?
-        'Ежедневные сводки включены. Отключение — /unsubscribe.' :
-        'Ежедневные уведомления выключены. Подключить — /subscribe.');
+      await controls.notifications(chatId);
       break;
     case '/help':
       await send(chatId, 'Команды:\n/start — открыть приложение\n/report — открыть обзор\n' +
@@ -194,11 +191,10 @@ function localClock() {
 async function morningTick() {
   if (sending || subscribers.size === 0) return;
   const now = localClock();
-  if (now.hour !== SEND_HOUR) return;
   sending = true;
   try {
     for (const [chatId, record] of subscribers) {
-      if (record.lastSent === now.date) continue;
+      if (record.enabled===false||!isDigestDue(record,now,controls.notificationHour(chatId))) continue;
       try {
         await sendReport(chatId);
         record.lastSent = now.date;
@@ -230,7 +226,7 @@ async function run() {
     {command: 'start', description: 'Открыть Бизнес Пульс'},
     {command: 'menu', description: 'Управление кнопками'},
     {command: 'report', description: 'Сводка по моей компании'},
-    {command: 'subscribe', description: 'Включить утренние уведомления'},
+    {command: 'subscribe', description: 'Включить ежедневные уведомления'},
     {command: 'unsubscribe', description: 'Отключить уведомления'},
     {command: 'status', description: 'Статус уведомлений'},
     {command: 'test', description: 'Проверить сводку'}

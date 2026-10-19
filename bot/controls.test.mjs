@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createBotControls } from './controls.mjs';
 import { companyForUser } from '../api/company-members.mjs';
 import { companyAdmin } from '../api/company-admin.mjs';
+import { isDigestDue } from './notification-schedule.mjs';
 
 function fixture(t){
   const folder=mkdtempSync(path.join(tmpdir(),'bp-buttons-')),dbPath=path.join(folder,'test.db');
@@ -133,4 +134,30 @@ test('Failed acceptance preserves an invitation and existing finances; cancellat
   await f.msg('101','Отмена');
   assert.ok(f.messages.some(x=>x.reply_markup?.remove_keyboard));
   await f.shared('101',request,'505');assert.match(f.last().text,/устарел/);
+});
+
+test('Notification menu offers 24 hours and persists personal time across restart without enabling notifications',async t=>{
+  const f=fixture(t);
+  await f.click('101','notify');assert.match(f.last().text,/09:00.*МСК/);assert.match(f.last().text,/Отключены/);
+  await f.click('101','hours');
+  const hours=f.last().reply_markup.inline_keyboard.flat().filter(x=>x.callback_data.startsWith('bpu:hour:'));
+  assert.equal(hours.length,24);assert.match(hours[0].text,/00:00/);assert.match(hours.at(-1).text,/23:00/);
+  await f.click('101','hour:23');assert.match(f.last().text,/23:00/);assert.match(f.last().text,/Отключены/);
+  f.restart();await f.click('101','notify');assert.match(f.last().text,/23:00/);
+  await f.click('202','notify');assert.match(f.last().text,/09:00/);
+  await f.click('101','hour:0');assert.match(f.last().text,/00:00/);
+  await f.click('101','hour:24');assert.match(f.last().text,/Выберите час/);
+  await f.click('101','notify');assert.match(f.last().text,/00:00/);
+});
+
+test('Personal digest hour handles midnight and never duplicates a sent day after time changes or disable/enable',()=>{
+  const record={lastSent:'',enabled:true},clock={date:'2026-10-19',hour:0};
+  assert.equal(isDigestDue(record,clock,0),true);
+  assert.equal(isDigestDue(record,clock,9),false);
+  record.lastSent=clock.date;
+  assert.equal(isDigestDue(record,clock,0),false);
+  assert.equal(isDigestDue(record,{...clock,hour:23},23),false);
+  record.enabled=false;assert.equal(isDigestDue(record,{date:'2026-10-20',hour:23},23),false);
+  record.enabled=true;assert.equal(isDigestDue(record,{...clock,hour:23},23),false);
+  assert.equal(isDigestDue(record,{date:'2026-10-20',hour:23},23),true);
 });

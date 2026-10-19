@@ -3,6 +3,7 @@ import { randomBytes,randomInt,randomUUID,createHash } from 'node:crypto';
 import { ensureCompanyMembers,companyForUser,addCompanyMember } from '../api/company-members.mjs';
 import { companyAdmin } from '../api/company-admin.mjs';
 import { INDUSTRIES } from '../api/finance-summary.mjs';
+import { validNotificationHour } from './notification-schedule.mjs';
 
 const button=(text,data)=>({text,callback_data:'bpu:'+data});
 const idOK=value=>/^[1-9]\d{0,15}$/.test(String(value||''));
@@ -10,10 +11,12 @@ const profileText=user=>[clean([user.last_name,user.first_name].filter(Boolean).
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const clean=value=>String(value||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,100);
 
-export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now}){
+export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now,defaultHour=9,timeZone='Europe/Moscow',isSubscribed=()=>false}){
+  if(!validNotificationHour(defaultHour))throw Error('Некорректное время уведомлений.');
   const db=new DatabaseSync(dbPath);
   db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
   ensureCompanyMembers(db);
+  db.exec('CREATE TABLE IF NOT EXISTS notification_preferences (telegram_id TEXT PRIMARY KEY REFERENCES users(telegram_id),hour INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23));');
   db.exec('CREATE TABLE IF NOT EXISTS bot_profiles (telegram_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,username TEXT NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_contact_requests (actor_id TEXT PRIMARY KEY,request_id INTEGER NOT NULL,owner_id TEXT,kind TEXT NOT NULL,expires_ms INTEGER NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_invites (token_hash TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,owner_id TEXT NOT NULL,issued_by TEXT NOT NULL,target_id TEXT,expires_ms INTEGER NOT NULL,used_by TEXT);');
@@ -53,6 +56,16 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
   function send(actor,text,rows){
     return api('sendMessage',{chat_id:actor,text,disable_web_page_preview:true,
       reply_markup:{inline_keyboard:rows||[[button('В меню','home')]]}});
+  }
+  const zoneLabel=timeZone==='Europe/Moscow'?'МСК':timeZone;
+  const hourLabel=hour=>String(hour).padStart(2,'0')+':00';
+  function notificationHour(actor){
+    return db.prepare('SELECT hour FROM notification_preferences WHERE telegram_id=?').get(String(actor))?.hour??defaultHour;
+  }
+  function notifications(actor,prefix=''){
+    return send(actor,prefix+'Уведомления\n\n'+(isSubscribed(actor)?'Включены':'Отключены')+'\nВремя отправки: '+hourLabel(notificationHour(actor))+' ('+zoneLabel+').\nЕжедневная сводка по вашей компании.',
+      [[{text:'Включить уведомление',callback_data:'bp:subscribe'},{text:'Отключить уведомление',callback_data:'bp:unsubscribe'}],
+        [button('Установить время','hours')],[button('В меню','home')]]);
   }
   function card(actor,c,prefix=''){
     const rows=[];
@@ -196,7 +209,19 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
         db.prepare('DELETE FROM bot_contact_requests WHERE actor_id=?').run(actor);
         await api('sendMessage',{chat_id:actor,text:'Выбор отменён.',reply_markup:{remove_keyboard:true}});await home(actor);
       }else if(action==='id')await send(actor,profileText(user));
-      else if(action==='notify')await send(actor,'Ежедневные уведомления со сводкой по вашей компании.',[[{text:'Включить уведомление',callback_data:'bp:subscribe'},{text:'Отключить уведомление',callback_data:'bp:unsubscribe'}],[button('В меню','home')]]);
+      else if(action==='notify')await notifications(actor);
+      else if(action==='hours'){
+        const selected=notificationHour(actor),rows=[];
+        for(let start=0;start<24;start+=4)rows.push(Array.from({length:4},(_,i)=>{
+          const hour=start+i;return button((hour===selected?'• ':'')+hourLabel(hour),'hour:'+hour);
+        }));
+        rows.push([button('Назад','notify')]);
+        await send(actor,'Выберите час отправки ('+zoneLabel+').\nСводка приходит один раз в день.',rows);
+      }else if(action==='hour'){
+        if(!/^(?:[0-9]|1[0-9]|2[0-3])$/.test(a||''))throw Error('Выберите час от 00:00 до 23:00.');
+        db.prepare('INSERT INTO notification_preferences VALUES(?,?) ON CONFLICT(telegram_id) DO UPDATE SET hour=excluded.hour').run(actor,Number(a));
+        await notifications(actor,'Время сохранено.\n\n');
+      }
       else if(action==='list'){
         if(!adminIds.has(actor))throw Error('Доступно только администратору.');
         const offset=Number(a);if(!Number.isSafeInteger(offset)||offset<0)throw Error('Откройте список заново.');
@@ -228,5 +253,5 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
     }catch(error){await send(actor,error.message||'Не удалось выполнить действие. Откройте меню заново.');}
     return true;
   }
-  return {handle,close:()=>db.close()};
+  return {handle,notificationHour,notifications,close:()=>db.close()};
 }
