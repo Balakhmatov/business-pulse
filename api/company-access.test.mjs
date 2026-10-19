@@ -18,7 +18,7 @@ async function apiFixture(t){
   const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
   const token='local-test-token-for-company-access-only';
   const child=spawn(process.execPath,[new URL('./server.mjs',import.meta.url).pathname],{
-    env:{...process.env,BP_API_PORT:String(port),BP_BOT_TOKEN:token,BP_DB_FILE:dbPath,BP_OPENAI_API_KEY:''},stdio:['ignore','pipe','pipe']
+    env:{...process.env,BP_API_PORT:String(port),BP_BOT_TOKEN:token,BP_DB_FILE:dbPath,BP_OPENAI_API_KEY:'',YOOKASSA_SHOP_ID:'',YOOKASSA_SECRET_KEY:''},stdio:['ignore','pipe','pipe']
   });
   t.after(async()=>{if(child.exitCode===null){const ended=once(child,'exit');child.kill();await ended;}rmSync(folder,{recursive:true,force:true});});
   let logs='';child.stdout.on('data',x=>logs+=x);child.stderr.on('data',x=>logs+=x);
@@ -131,7 +131,17 @@ test('Payment catalog is public for website checkout but cannot modify links or 
   assert.equal(response.status,200);assert.equal(response.headers.get('Access-Control-Allow-Origin'),'https://balakhmatov.github.io');
   const body=await response.json();assert.equal(body.plans.length,4);
   assert.equal(body.plans.find(p=>p.id==='welcome').price,1990);
-  assert.ok(body.plans.every(p=>p.payment_url===null));
+  assert.ok(body.plans.every(p=>!Object.hasOwn(p,'payment_url')));
   assert.equal((await fetch(f.base+'/api/prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://evil.example'})})).status,401);
   assert.equal((await fetch(f.base+'/api/report')).status,401);
 });
+
+ test('Payment creation requires signed login and terms, remains available after trial expiry',async t=>{
+  const f=await apiFixture(t);
+  assert.equal((await fetch(f.base+'/api/payments',{method:'POST'})).status,401);
+  await f.call('101','/me');
+  const db=new DatabaseSync(f.dbPath);db.prepare('UPDATE company_billing SET trial_ends_ms=?').run(Date.now()-1000);db.close();
+  assert.equal((await f.call('101','/payments',{plan:'month'})).status,400);
+  assert.equal((await f.call('101','/payments',{plan:'month',accepted_terms:true,company_id:'forged',price:1})).status,503);
+  assert.equal((await f.call('101','/payments/refresh',{})).status,200);
+ });

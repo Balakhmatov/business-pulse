@@ -1,5 +1,6 @@
 import http from 'node:http';
-import { ensurePaymentLinks,paymentCatalog } from './payment-links.mjs';
+import { createPayments } from './yookassa.mjs';
+import { ensurePaymentLinks } from './payment-links.mjs';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -35,6 +36,10 @@ db.exec(
 ensureCompanyMembers(db);
 ensureBillingSchema(db);
 ensurePaymentLinks(db);
+const payments=createPayments({db});
+const paymentTimer=setInterval(()=>void payments.reconcile(),60000);
+paymentTimer.unref();
+void payments.reconcile();
 const accumulator=createAccumulator(db);
 const correctionService=createCorrectionService({db,secret:token});
 const importMapper=createImportMapper({db});
@@ -188,12 +193,19 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':origin||'https://balakhmatov.github.io','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'X-Telegram-Init-Data, Content-Type','Access-Control-Max-Age':'600','Vary':'Origin'});res.end();return;}
   if(req.method==='GET'&&url.pathname==='/api/health')return reply(res,200,{status:'ok',service:'business-pulse-api',db:db.prepare('SELECT 1 AS ok').get().ok===1},origin);
   if(!url.pathname.startsWith('/api/'))return reply(res,404,{error:'Not found'},origin);
-  if(req.method==='GET'&&url.pathname==='/api/prices')return reply(res,200,{plans:paymentCatalog(db)},origin);
+  if(req.method==='GET'&&url.pathname==='/api/prices')return reply(res,200,{plans:Object.entries(PLANS).map(([id,p])=>({id,...p})),payments_available:payments.ready},origin);
   let id;try{id=telegramID(req.headers['x-telegram-init-data']);}catch{return reply(res,401,{error:'Open the app in Telegram again'},origin);}
   try{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
     if(req.method==='GET'&&url.pathname==='/api/subscription')return reply(res,200,{company:c,subscription:subscriptionFor(db,c),plans:PLANS},origin);
+    if(req.method==='POST'&&url.pathname==='/api/payments'){
+      const input=await readJSON(req);
+      if(companyForUser(db,id)?.id!==c.id)return reply(res,403,{error:'Доступ к компании изменился.'},origin);
+      if(input?.accepted_terms!==true)return reply(res,400,{error:'Примите условия оплаты.'},origin);
+      return reply(res,200,{payment:await payments.create(c,id,input.plan)},origin);
+    }
+    if(req.method==='POST'&&url.pathname==='/api/payments/refresh')return reply(res,200,{subscription:await payments.refresh(c)},origin);
     assertSubscription(db,c);
     if(req.method==='GET'&&url.pathname==='/api/report')
       return reply(res,200,report(c,url.searchParams.get('basis')),origin);
