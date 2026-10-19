@@ -13,9 +13,9 @@
   const dialog=document.createElement('dialog');dialog.className='bp-pay-dialog';dialog.setAttribute('aria-labelledby','bp-pay-title');
   // All interpolated strings below are fixed product copy, never server HTML.
   dialog.innerHTML='<div class="bp-pay-head"><div><span class="bp-pay-kicker">Подписка на компанию</span><h2 id="bp-pay-title">Выберите тариф</h2></div><button type="button" class="bp-pay-close" aria-label="Закрыть">×</button></div>'+
-    '<p class="bp-pay-intro">Руководитель и сотрудник работают с общими данными. Автосписаний нет.</p><div class="bp-pay-cards"></div>'+
-    '<p class="bp-pay-status" role="status">Загружаем способы оплаты…</p>'+
+    '<p class="bp-pay-intro">Руководитель и сотрудник работают с общими данными. Автосписаний нет.</p>'+
     '<label class="bp-pay-accept"><input type="checkbox"><span>Принимаю <a href="./legal/offer.html" target="_blank" rel="noopener">оферту и пользовательское соглашение</a>, ознакомлен с <a href="./legal/tariffs.html" target="_blank" rel="noopener">тарифами</a> и <a href="./legal/refunds.html" target="_blank" rel="noopener">порядком возвратов</a>.</span></label>'+
+    '<p class="bp-pay-status" role="status">Загружаем способы оплаты…</p><div class="bp-pay-cards"></div>'+
     '<p class="bp-pay-note">Для вашей компании будет создан отдельный СБП-платёж ЮKassa. После оплаты подписка подключится автоматически.</p>'+
     '<a class="bp-pay-support" href="https://t.me/business_pulse_app_bot?start=support">Поддержка</a>'+
     '<p class="bp-pay-trial">48 часов бесплатно с момента подключения компании.</p>';
@@ -46,7 +46,7 @@
   }
   function update(){for(const c of controls.values())c.pay.disabled=paying||!accept.checked||!available||!isTelegram||c.card.hidden;}
 
-  accept.addEventListener('change',update);
+  accept.addEventListener('change',()=>{update();if(available)status.textContent=accept.checked?'Выберите тариф для оплаты.':'Поставьте галочку принятия условий — кнопки оплаты станут доступны.';});
   const validURL=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&!u.hash&&['yookassa.ru','yoomoney.ru'].some(h=>u.hostname===h||u.hostname.endsWith('.'+h))?u.href:null;}catch{return null;}};
   async function load(){
     if(loading)return;loading=true;status.textContent='Загружаем способы оплаты…';
@@ -61,8 +61,8 @@
       }
       controls.get('welcome').card.hidden=!subscription?.promo_available;
       available=data.payments_available===true&&Boolean(subscription);
-      status.textContent=!isTelegram?'Для оплаты откройте приложение через Telegram-бота.':available?'Выберите тариф и примите условия перед оплатой.':'Оплата пока недоступна. Напишите в поддержку.';
-      if(chosen){controls.get(chosen)?.card.scrollIntoView({block:'nearest'});chosen=null;}
+      status.textContent=!isTelegram?'Для оплаты откройте приложение через Telegram-бота.':available?'Поставьте галочку принятия условий — кнопки оплаты станут доступны.':'Оплата пока недоступна. Напишите в поддержку.';
+      chosen=null;
       update();
     }catch{status.textContent='Не удалось загрузить оплату. Закройте окно и попробуйте ещё раз или напишите в поддержку.';}
     finally{loading=false;}
