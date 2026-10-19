@@ -465,7 +465,6 @@
     }
     $('clearImport').hidden=true;
     document.querySelector('.side-foot').textContent='Прототип · Личные данные компании';
-    document.querySelector('.foot').textContent='Бизнес Пульс · Личная панель · Проверяйте полноту и корректность выгрузки';
     activeTab();
     updateQuickButton();
   }
@@ -491,7 +490,6 @@
   document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(btn=>{
     btn.addEventListener('click',()=>{
       document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
-      document.querySelector('.foot').textContent='Бизнес Пульс · Демонстрационный прототип · Не использовать синтетические показатели для бизнес-решений';
       $('subscriptionInfo').hidden=true;
       $('financeBooks').hidden=true;
       $('unverifiedReview').hidden=true;
