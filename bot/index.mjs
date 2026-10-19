@@ -26,6 +26,7 @@ let sending = false;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+let controls;
 async function api(method, payload = {}) {
   const timeout = method === 'getUpdates' ? 40000 : 15000;
   const response = await fetch(API + '/' + method, {
@@ -38,6 +39,7 @@ async function api(method, payload = {}) {
   if (!response.ok || !result.ok) {
     throw new Error('Telegram ' + method + ': ' + (result.description || response.status));
   }
+  if(method==='sendMessage')controls?.rememberMessage(payload.chat_id,result.result?.message_id,result.result?.date);
   return result.result;
 }
 
@@ -98,10 +100,14 @@ async function sendReport(chatId, test = false) {
   return send(chatId, test ? '<b>Проверка уведомлений</b>\n\n' + body : body, {html: true});
 }
 
-const controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,botUsername:EXPECTED_USERNAME,
+controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,botUsername:EXPECTED_USERNAME,
   defaultHour:SEND_HOUR,timeZone:TIMEZONE,isSubscribed:id=>subscribers.has(id)&&subscribers.get(id).enabled!==false});
 
 async function handle(update) {
+  const observedMessage=update.callback_query?.message||update.message;
+  const sender=update.callback_query?.from||observedMessage?.from;
+  if(observedMessage?.chat?.type==='private'&&String(sender?.id)===String(observedMessage.chat.id))
+    controls.rememberMessage(String(observedMessage.chat.id),observedMessage.message_id,observedMessage.date);
   if(await controls.handle(update))return;
   const callback = update.callback_query;
   if (callback) {

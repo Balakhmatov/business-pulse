@@ -4,6 +4,7 @@ import { ensureCompanyMembers,companyForUser,addCompanyMember } from '../api/com
 import { companyAdmin } from '../api/company-admin.mjs';
 import { INDUSTRIES } from '../api/finance-summary.mjs';
 import { validNotificationHour } from './notification-schedule.mjs';
+import { createChatCleanup } from './chat-cleanup.mjs';
 
 const button=(text,data)=>({text,callback_data:'bpu:'+data});
 const idOK=value=>/^[1-9]\d{0,15}$/.test(String(value||''));
@@ -11,7 +12,7 @@ const profileText=user=>[clean([user.last_name,user.first_name].filter(Boolean).
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const clean=value=>String(value||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,100);
 
-export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now,defaultHour=9,timeZone='Europe/Moscow',isSubscribed=()=>false}){
+export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now,defaultHour=9,timeZone='Europe/Moscow',isSubscribed=()=>false}){
   if(!validNotificationHour(defaultHour))throw Error('Некорректное время уведомлений.');
   const db=new DatabaseSync(dbPath);
   db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
@@ -20,6 +21,12 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
   db.exec('CREATE TABLE IF NOT EXISTS bot_profiles (telegram_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,username TEXT NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_contact_requests (actor_id TEXT PRIMARY KEY,request_id INTEGER NOT NULL,owner_id TEXT,kind TEXT NOT NULL,expires_ms INTEGER NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_invites (token_hash TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,owner_id TEXT NOT NULL,issued_by TEXT NOT NULL,target_id TEXT,expires_ms INTEGER NOT NULL,used_by TEXT);');
+  const cleanup=createChatCleanup({db,api:transport,now});
+  const api=async(method,payload)=>{
+    const result=await transport(method,payload);
+    if(method==='sendMessage')cleanup.remember(payload.chat_id,result?.message_id,result?.date);
+    return result;
+  };
   function profile(user){
     if(!idOK(user?.id))return;
     const id=String(user.id);
@@ -74,15 +81,28 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
     rows.push([button('В меню','home')]);
     return send(actor,prefix+c.name+'\nРуководитель: '+name(c.owner_id)+'\nОтрасль: '+(INDUSTRIES[c.industry]?.name||'Универсальный'),rows);
   }
-  async function home(actor){
+  async function home(actor,refresh=false,suffix=''){
     const c=workspace(actor);
     const rows=[[{text:'Открыть Бизнес Пульс',web_app:{url:appUrl}}],
       [{text:'Моя сводка',callback_data:'bp:report'},button('Уведомления','notify')]];
     if(c.access_role==='owner')rows.push([button('Сотрудники','m:'+c.owner_id)]);
     rows.push([button('Мой профиль и ID','id')]);
     if(adminIds.has(actor))rows.push([button('Управление компаниями','list:0')]);
-    return send(actor,'Бизнес Пульс\n\n'+c.name+'\n'+(c.access_role==='member'?'Вы подключены как сотрудник.':'Управление компанией и отчётами.'),rows);
+    rows.push([button('Очистить чат','clear')]);
+    const text='Бизнес Пульс\n\n'+c.name+'\n'+(c.access_role==='member'?'Вы подключены как сотрудник.':'Управление компанией и отчётами.')+suffix;
+    if(refresh&&cleanup.welcome(actor)){
+      try{return await api('editMessageText',{chat_id:actor,message_id:cleanup.welcome(actor),text,reply_markup:{inline_keyboard:rows}});}
+      catch(error){
+        if(/message is not modified/i.test(error.message))return;
+        if(!/message to edit not found|can't be edited|cannot be edited/i.test(error.message))throw error;
+        cleanup.forgetWelcome(actor);
+      }
+    }
+    const sent=await send(actor,text,rows);
+    cleanup.keepWelcome(actor,sent?.message_id);
+    return sent;
   }
+
   function members(actor,owner,offset=0){
     if(!Number.isSafeInteger(offset)||offset<0)throw Error('Откройте список сотрудников заново.');
     const c=access(actor,owner);
@@ -166,6 +186,7 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
     const user=callback?.from||message?.from;
     if(!message||message.chat?.type!=='private'||String(user?.id)!==String(message.chat.id))return false;
     const actor=String(user.id),text=String(message.text||'').trim();
+    cleanup.remember(actor,message.message_id,message.date);
     const isOurCallback=callback?.data?.startsWith('bpu:');
     if(callback&&!isOurCallback)return false;
     const command=text.split(/\s+/)[0].split('@')[0].toLowerCase();
@@ -205,6 +226,14 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
       }
       const [action,a,b]=callback.data.slice(4).split(':');
       if(action==='home')await home(actor);
+      else if(action==='clear'){
+        const token=cleanup.confirm(actor);
+        await send(actor,'Очистить сообщения в этом чате?\n\nПриветствие и меню останутся. Данные и настройки компании сохранятся. Telegram позволяет боту удалять сообщения только за последние 48 часов.',
+          [[button('Да, очистить','clearok:'+token)],[button('Отмена','clearcancel')]]);
+      }else if(action==='clearok'){
+        const result=await cleanup.clear(actor,a);
+        await home(actor,true,result.retained?'\n\nНекоторые сообщения Telegram не разрешил удалить.':'');
+      }else if(action==='clearcancel'){cleanup.cancel(actor);await home(actor);}
       else if(action==='cancel'){
         db.prepare('DELETE FROM bot_contact_requests WHERE actor_id=?').run(actor);
         await api('sendMessage',{chat_id:actor,text:'Выбор отменён.',reply_markup:{remove_keyboard:true}});await home(actor);
@@ -253,5 +282,5 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
     }catch(error){await send(actor,error.message||'Не удалось выполнить действие. Откройте меню заново.');}
     return true;
   }
-  return {handle,notificationHour,notifications,close:()=>db.close()};
+  return {handle,notificationHour,notifications,rememberMessage:cleanup.remember,close:()=>db.close()};
 }

@@ -8,6 +8,7 @@ import { createBotControls } from './controls.mjs';
 import { companyForUser } from '../api/company-members.mjs';
 import { companyAdmin } from '../api/company-admin.mjs';
 import { isDigestDue } from './notification-schedule.mjs';
+import { createChatCleanup } from './chat-cleanup.mjs';
 
 function fixture(t){
   const folder=mkdtempSync(path.join(tmpdir(),'bp-buttons-')),dbPath=path.join(folder,'test.db');
@@ -160,4 +161,62 @@ test('Personal digest hour handles midnight and never duplicates a sent day afte
   record.enabled=false;assert.equal(isDigestDue(record,{date:'2026-10-20',hour:23},23),false);
   record.enabled=true;assert.equal(isDigestDue(record,{...clock,hour:23},23),false);
   assert.equal(isDigestDue(record,{date:'2026-10-20',hour:23},23),true);
+});
+
+test('Clear-chat button requires confirmation, preserves welcome/other chats/finances, and survives restart',async t=>{
+  const f=fixture(t);
+  f.db.prepare("INSERT INTO operations VALUES('a',12345)").run();
+  await f.msg('101','/start');
+  // Mock sendMessage returns the call number as its message ID.
+  const kept=f.db.prepare("SELECT message_id FROM bot_chat_messages WHERE chat_id='101' AND keep=1").get().message_id;
+  await f.click('101','id');await f.click('101','hour:23');await f.msg('202','/start');
+  await f.click('101','clear');
+  assert.match(f.last().text,/Очистить сообщения/);
+  assert.equal(f.messages.filter(x=>x.method==='deleteMessages').length,0);
+  const action=f.last().reply_markup.inline_keyboard[0][0].callback_data.slice(4);
+  f.restart();await f.click('101',action);
+  const deletions=f.messages.filter(x=>x.method==='deleteMessages');
+  assert.ok(deletions.length>0);
+  assert.ok(deletions.every(x=>x.chat_id==='101'&&!x.message_ids.includes(kept)));
+  assert.equal(f.messages.at(-1).method,'editMessageText');
+  assert.equal(f.messages.at(-1).message_id,kept);
+  assert.equal(f.db.prepare('SELECT amount_kopecks FROM operations').get().amount_kopecks,12345);
+  assert.equal(f.db.prepare("SELECT hour FROM notification_preferences WHERE telegram_id='101'").get().hour,23);
+  assert.ok(f.db.prepare("SELECT 1 FROM bot_chat_messages WHERE chat_id='202'").get());
+  await f.click('101',action);assert.match(f.last().text,/Подтверждение устарело/);
+  assert.equal(f.messages.filter(x=>x.method==='deleteMessages').length,deletions.length);
+});
+
+test('Chat cleanup batches only recent known messages, skips non-deletable items and isolates confirmation tokens',async t=>{
+  const f=fixture(t),calls=[];
+  const now=Date.parse('2026-10-19T08:00:00Z');
+  const cleaner=createChatCleanup({db:f.db,now:()=>now,api:async(method,payload)=>{
+    calls.push({method,...payload});
+    if(method==='deleteMessages'&&payload.message_ids.includes(50))throw Error("message can't be deleted");
+    if(method==='deleteMessage'&&payload.message_id===50)throw Error("message can't be deleted");
+    return true;
+  }});
+  cleaner.remember('101',1,now/1000);cleaner.keepWelcome('101',1);
+  cleaner.remember('101',2,now/1000-48*3600);
+  for(let id=3;id<=207;id++)cleaner.remember('101',id,now/1000);
+  cleaner.remember('202',300,now/1000);
+  const token=cleaner.confirm('101');
+  await assert.rejects(cleaner.clear('202',token),/Подтверждение устарело/);
+  const result=await cleaner.clear('101',token);
+  assert.equal(result.retained,1);
+  assert.ok(calls.filter(x=>x.method==='deleteMessages').every(x=>x.message_ids.length<=100&&!x.message_ids.includes(1)&&!x.message_ids.includes(2)&&x.chat_id==='101'));
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM bot_chat_messages WHERE chat_id='101'").get().n,2);
+  assert.ok(f.db.prepare("SELECT 1 FROM bot_chat_messages WHERE chat_id='202'").get());
+});
+
+test('Canceling or expiring a cleanup confirmation never deletes chat messages',async t=>{
+  const f=fixture(t);
+  await f.msg('101','/start');await f.click('101','clear');
+  const action=f.last().reply_markup.inline_keyboard[0][0].callback_data.slice(4);
+  await f.click('101','clearcancel');await f.click('101',action);
+  assert.match(f.last().text,/Подтверждение устарело/);
+  await f.click('101','clear');const expired=f.last().reply_markup.inline_keyboard[0][0].callback_data.slice(4);
+  f.advance(5*60000+1);await f.click('101',expired);
+  assert.match(f.last().text,/Подтверждение устарело/);
+  assert.equal(f.messages.filter(x=>x.method==='deleteMessages').length,0);
 });
