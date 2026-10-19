@@ -14,34 +14,47 @@ export function ensureBillingSchema(db,at=Date.now()){
     'CREATE TABLE IF NOT EXISTS billing_reminders (company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,kind TEXT NOT NULL,sent_ms INTEGER NOT NULL,PRIMARY KEY(company_id,kind));'+
     'CREATE TABLE IF NOT EXISTS billing_confirmations (token TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,actor_id TEXT NOT NULL,plan TEXT NOT NULL,expires_ms INTEGER NOT NULL,used INTEGER NOT NULL DEFAULT 0);'+
     'CREATE TABLE IF NOT EXISTS billing_grants (token TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,actor_id TEXT NOT NULL,plan TEXT NOT NULL,amount_rubles INTEGER NOT NULL,confirmed_ms INTEGER NOT NULL,paid_until_ms INTEGER NOT NULL);');
-  // Existing companies receive a fresh 48 hours when this feature is deployed.
-  db.prepare('INSERT OR IGNORE INTO company_billing(company_id,trial_started_ms,trial_ends_ms) SELECT id,?,? FROM companies').run(at,at+TRIAL_MS);
+  // Old automatic trials are not authorizations. Paid subscriptions are preserved.
+  if(!db.prepare('PRAGMA table_info(company_billing)').all().some(x=>x.name==='trial_granted_by'))
+    db.exec('ALTER TABLE company_billing ADD COLUMN trial_granted_by TEXT');
+  db.prepare('INSERT OR IGNORE INTO company_billing(company_id,trial_started_ms,trial_ends_ms) SELECT id,0,0 FROM companies').run();
 }
 export function ensureCompanyBilling(db,c,at=Date.now()){
-  db.prepare('INSERT OR IGNORE INTO company_billing(company_id,trial_started_ms,trial_ends_ms) VALUES(?,?,?)').run(c.id,at,at+TRIAL_MS);
+  db.prepare('INSERT OR IGNORE INTO company_billing(company_id,trial_started_ms,trial_ends_ms) VALUES(?,0,0)').run(c.id);
+}
+export function startCompanyTrial(db,c,actor,at=Date.now(),adminIds){
+  const allowed=adminIds?adminIds.has(String(actor)):isAdminCompany({owner_id:actor});
+  if(!allowed)throw Error('Тестовый доступ включает только администратор.');
+  ensureCompanyBilling(db,c,at);
+  const s=subscriptionFor(db,c,at);
+  if(s.state==='paid'||s.state==='admin')throw Error('У компании уже есть доступ.');
+  const result=db.prepare('UPDATE company_billing SET trial_started_ms=?,trial_ends_ms=?,trial_granted_by=? WHERE company_id=? AND trial_granted_by IS NULL AND plan IS NULL').run(at,at+TRIAL_MS,String(actor),c.id);
+  if(result.changes!==1)throw Error('Пробный период уже выдавался. Повторное включение недоступно.');
+  return subscriptionFor(db,c,at);
 }
 export function subscriptionFor(db,c,at=Date.now()){
   if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='company_billing'").get())return null;
   const row=db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(c.id);
   if(!row)return null;
-  const paid=Number(row.paid_until_ms)>at,trial=row.trial_ends_ms>at,admin=isAdminCompany(c);
-  return {...row,state:admin?'admin':paid?'paid':trial?'trial':'expired',access:admin||paid||trial,
-    promo_available:trial&&row.plan===null,remaining_trial_ms:Math.max(0,row.trial_ends_ms-at),
+  const granted=Boolean(row.trial_granted_by),paid=Number(row.paid_until_ms)>at,trial=granted&&row.trial_started_ms<=at&&row.trial_ends_ms>at,admin=isAdminCompany(c);
+  return {...row,trial_started_ms:granted?row.trial_started_ms:0,trial_ends_ms:granted?row.trial_ends_ms:0,
+    state:admin?'admin':paid?'paid':trial?'trial':!granted&&row.plan===null?'pending':'expired',access:admin||paid||trial,
+    promo_available:trial&&row.plan===null,remaining_trial_ms:granted?Math.max(0,row.trial_ends_ms-at):0,
     monthly_price:trial&&row.plan===null?1990:2490};
 }
 export function assertSubscription(db,c,at=Date.now()){
   const s=subscriptionFor(db,c,at);
-  if(s&&!s.access){const e=Error('Тестовый период или подписка завершились. Откройте раздел «Цены» в боте. Данные компании сохранены.');e.status=402;e.code='SUBSCRIPTION_REQUIRED';throw e;}
+  if(!s?.access){const e=Error('Доступ к компании закрыт. Оплатите подписку или обратитесь в поддержку для включения пробного периода. Данные компании сохранены.');e.status=402;e.code='SUBSCRIPTION_REQUIRED';throw e;}
 }
 export function pricesText(s){
-  const status=s?.state==='paid'?'Подписка оплачена до '+mskDate(s.paid_until_ms)+'.':s?.state==='expired'?'Бесплатный период завершён. Данные компании сохранены.':s?.state==='trial'?'Ваш тестовый период — до '+mskDate(s.trial_ends_ms)+'.':'';
+  const status=s?.state==='paid'?'Подписка оплачена до '+mskDate(s.paid_until_ms)+'.':s?.state==='pending'?'Доступ пока не активирован. Для начала работы оплатите подписку.':s?.state==='expired'?'Доступ завершён. Данные компании сохранены.':s?.state==='trial'?'Ваш тестовый период — до '+mskDate(s.trial_ends_ms)+'.':'';
   return '<b>Цены «Бизнес Пульс»</b>\n\n'+
     '— 1 месяц — <b>2 490 ₽</b>\n\n'+
     'Первый месяц — <b>1 990 ₽ вместо 2 490 ₽</b> (−20%) при оплате в течение тестовых 48 часов.\n\n'+
     '— 6 месяцев — <b>9 990 ₽</b> (−33%, экономия 4 950 ₽)\n\n'+
     '— 12 месяцев — <b>17 990 ₽</b> (−40%, экономия 11 890 ₽)\n\n'+
     (status?status+'\n\n':'')+
-    '48 часов бесплатно с момента подключения.';
+    'Пробные 48 часов включаются администратором по согласованию.';
 }
 export function mskDate(ms){return new Date(ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК';}
 export function addCalendarMonths(ms,months){
@@ -76,7 +89,7 @@ export function confirmReceivedPayment(db,c,actor,token,at=Date.now()){
 }
 export function reminderFor(db,c,at=Date.now()){
   const s=subscriptionFor(db,c,at);
-  if(!s||s.state==='admin'||s.plan!==null)return null;
+  if(!s||!s.trial_granted_by||s.state==='admin'||s.plan!==null)return null;
   const elapsed=at-s.trial_started_ms;
   let kind;
   if(at>=s.trial_ends_ms)kind='trial_ended';

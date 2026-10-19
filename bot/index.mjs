@@ -63,12 +63,12 @@ async function saveSubscribers() {
   await fs.rename(temporary, STORAGE_PATH);
 }
 
-function launchButton() {
+function launchButton(chatId) {
   return {
     inline_keyboard: [
       [{text: 'Открыть Бизнес Пульс', web_app: {url: APP_URL}}],
       [{text: 'Управление', callback_data: 'bpu:home'}],
-      [{text: 'Проверить уведомление', callback_data: 'bp:test'}]
+      ...(ADMIN_IDS.has(String(chatId))?[[{text: 'Проверить уведомление', callback_data: 'bp:test'}]]:[])
     ]
   };
 }
@@ -78,7 +78,7 @@ async function send(chatId, text, options = {}) {
     chat_id: chatId,
     text,
     ...(options.html ? {parse_mode: 'HTML'} : {}),
-    reply_markup: launchButton(),
+    reply_markup: launchButton(chatId),
     disable_web_page_preview: true
   });
 }
@@ -123,6 +123,7 @@ async function handle(update) {
         callback_query_id: callback.id,
         text: 'Отправляю тестовое уведомление'
       });
+      if(!ADMIN_IDS.has(String(chat.id)))return send(String(chat.id),'Проверка уведомлений доступна только администратору.');
       await sendReport(String(chat.id), true);
     } else {
       await api('answerCallbackQuery', {callback_query_id: callback.id});
@@ -153,6 +154,7 @@ async function handle(update) {
       await sendReport(chatId);
       break;
     case '/test':
+      if(!ADMIN_IDS.has(chatId)){await send(chatId,'Проверка уведомлений доступна только администратору.');break;}
       await sendReport(chatId, true);
       break;
     case '/subscribe':
@@ -200,7 +202,7 @@ async function morningTick() {
   sending = true;
   try {
     for (const [chatId, record] of subscribers) {
-      if (record.enabled===false||!isDigestDue(record,now,controls.notificationHour(chatId))) continue;
+      if (record.enabled===false||!controls.hasAccess(chatId)||!isDigestDue(record,now,controls.notificationHour(chatId))) continue;
       try {
         await sendReport(chatId);
         record.lastSent = now.date;
@@ -265,4 +267,3 @@ run().catch(error => {
   console.error('Bot startup failed: ' + error.message);
   process.exitCode = 1;
 });
-

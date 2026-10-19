@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { ensureBillingSchema,subscriptionFor,TRIAL_MS } from './billing.mjs';
+import { ensureBillingSchema,startCompanyTrial,subscriptionFor,TRIAL_MS } from './billing.mjs';
 import { createPayments } from './yookassa.mjs';
-function fixture(t){
+function fixture(t,trial=true){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec("CREATE TABLE companies(id TEXT PRIMARY KEY,owner_id TEXT);INSERT INTO companies VALUES('a','1'),('b','2');");
  let at=Date.now();ensureBillingSchema(db,at);const start=at,c={id:'a',owner_id:'1'},calls=[];let payment,status='pending',tamper={},lost=false;
+ if(trial)startCompanyTrial(db,c,'1296951270',at);
  const service=createPayments({db,shopId:'shop',secretKey:'secret',now:()=>at,fetcher:async(url,options)=>{
   calls.push({url,options});
   if(options.method==='POST'){
@@ -24,6 +25,16 @@ test('Server prices, SBP, company metadata, separate order and retry idempotence
  const body=JSON.parse(first.options.body);assert.deepEqual(body.amount,{value:'2490.00',currency:'RUB'});assert.equal(body.payment_method_data.type,'sbp');assert.equal(body.metadata.company_id,'a');assert.equal(body.capture,true);
  assert.equal(result.status,'pending');await f.service.create(f.c,'1','month');assert.equal(f.calls.filter(c=>c.options.method==='POST').length,2);
  await assert.rejects(f.service.create(f.c,'1','year'),/незавершённый/);
+});
+
+test('Company without a trial gets access only after a verified successful payment',async t=>{
+ const f=fixture(t,false);assert.equal(subscriptionFor(f.db,f.c).access,false);
+ await assert.rejects(f.service.create(f.c,'1','welcome'),/48 часов/);
+ await f.service.create(f.c,'1','month');assert.equal(subscriptionFor(f.db,f.c).access,false);
+ await f.service.refresh(f.c);assert.equal(subscriptionFor(f.db,f.c).access,false);
+ f.setStatus('succeeded');await f.service.refresh(f.c);
+ assert.equal(subscriptionFor(f.db,f.c).state,'paid');
+ assert.equal(subscriptionFor(f.db,f.c).access,true);
 });
 test('Only verified successful payment grants once; other company and pending grant nothing',async t=>{
  const f=fixture(t);await f.service.create(f.c,'1','halfyear');await f.service.refresh({id:'b'});

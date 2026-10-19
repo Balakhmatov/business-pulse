@@ -10,7 +10,7 @@ import { companyAdmin } from '../api/company-admin.mjs';
 import { isDigestDue } from './notification-schedule.mjs';
 import { createChatCleanup } from './chat-cleanup.mjs';
 
-function fixture(t,appUrl='https://example.org/'){
+function fixture(t,appUrl='https://example.org/',trial=true){
   const folder=mkdtempSync(path.join(tmpdir(),'bp-buttons-')),dbPath=path.join(folder,'test.db');
   const db=new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys=ON;CREATE TABLE users(telegram_id TEXT PRIMARY KEY);"+
@@ -29,6 +29,7 @@ function fixture(t,appUrl='https://example.org/'){
   };
   const make=()=>createBotControls({dbPath,api,adminIds:admins,supportId:'999',appUrl,botUsername:'business_pulse_app_bot',now:()=>clock});
   let controls=make();
+  if(trial)db.prepare('UPDATE company_billing SET trial_granted_by=?,trial_started_ms=?,trial_ends_ms=?').run('999',clock,clock+48*3600000);
   t.after(()=>{controls.close();db.close();rmSync(folder,{recursive:true,force:true});});
   const user=id=>({id:Number(id),first_name:id==='101'?'Иван':id==='303'?'Анна':'Пользователь',username:'user'+id});
   const msg=(id,text)=>controls.handle({message:{from:user(id),chat:{id:Number(id),type:'private'},text}});
@@ -45,11 +46,29 @@ function fixture(t,appUrl='https://example.org/'){
     restart:()=>{controls.close();controls=make();}};
 }
 
+test('Trial activation is admin only, lasts 48 hours, survives restart and cannot be reset',async t=>{
+  const f=fixture(t,'https://example.org/',false);
+  await f.msg('101','/start');assert.match(f.last().text,/не активирован/);
+  assert.ok(!f.last().reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='bp:report'));
+  await f.click('101','trial:101');assert.match(f.last().text,/нет доступа/);
+  await f.click('101','m:101');assert.match(f.last().text,/Доступ к компании закрыт/);
+  assert.equal(f.db.prepare("SELECT trial_granted_by FROM company_billing WHERE company_id='a'").get().trial_granted_by,null);
+  await f.click('999','bill:101');assert.ok(f.last().reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='bpu:trial:101'));
+  await f.click('999','trial:101');assert.match(f.last().text,/48 часов включены/);
+  const first=f.db.prepare("SELECT * FROM company_billing WHERE company_id='a'").get();
+  assert.equal(first.trial_ends_ms-first.trial_started_ms,48*3600000);
+  f.restart();await f.msg('101','/start');assert.match(f.last().text,/Пробный доступ включён/);
+  f.advance(49*3600000);await f.click('999','trial:101');assert.match(f.last().text,/уже выдавался/);
+  assert.equal(f.db.prepare("SELECT trial_ends_ms FROM company_billing WHERE company_id='a'").get().trial_ends_ms,first.trial_ends_ms);
+  await f.msg('101','/start');assert.match(f.last().text,/Доступ завершён/);
+});
+
 test('Start creates a company and button menu; profile ID and admin directory need no commands',async t=>{
   const f=fixture(t);
   await f.msg('303','/start');
   assert.ok(companyForUser(f.db,'303'));
-  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(x=>x.text==='Сотрудники'));
+  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(x=>x.text==='Перейти к оплате'));
+  assert.ok(!f.last().reply_markup.inline_keyboard.flat().some(x=>x.text==='Сотрудники'));
   assert.ok(!f.last().reply_markup.inline_keyboard.flat().some(x=>x.text==='Управление компаниями'));
   await f.click('303','id');assert.match(f.last().text,/303/);
   await f.msg('101','/start');await f.msg('999','/start');await f.click('999','list:0');

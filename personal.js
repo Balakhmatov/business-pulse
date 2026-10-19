@@ -7,6 +7,9 @@
   if(!demo||!tg||!tg.initData)return;
   const {state,parseImported,mapping,showModal,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday}=demo;
   const $=id=>document.getElementById(id);
+  const accessStyle=document.createElement('style');
+  accessStyle.textContent='.bp-access-locked .main > :not(.topbar):not(#subscriptionInfo):not(nav){display:none!important} .bp-access-locked #openImport,.bp-access-locked #importUtilities{display:none!important}';
+  document.head.appendChild(accessStyle);
   const URL_ROOT='https://pulse.cityai.site/api';
 
   const style=document.createElement('style');
@@ -146,7 +149,8 @@
   };
   function updateQuickButton(){
     const busy=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving||state.mineClearing);
-    quick.hidden=state.business!=='mine'||!!state.mineReport?.source||!!state.mineError;
+    const operator=state.mineReport?.subscription?.state==='admin'&&state.mineReport?.company?.access_role==='owner';
+    quick.hidden=!operator||state.business!=='mine'||!!state.mineReport?.source||!!state.mineError;
     quick.disabled=busy;
     importHistoryButton.hidden=state.business!=='mine';
     if(state.business!=='mine'){importHistoryPanel.hidden=true;importHistoryButton.textContent='История загрузок';}
@@ -354,13 +358,18 @@
   function renderMine(){
     const r=state.mineReport||null;
     const subscription=r?.subscription||state.mineSubscription;
+    const locked=!subscription?.access;
+    document.body.classList.toggle('bp-access-locked',locked);
+    $('openImport').disabled=locked;
+    const operator=subscription?.state==='admin'&&r?.company?.access_role==='owner';
+    document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(el=>{el.hidden=!operator;});
     const subscriptionBox=$('subscriptionInfo');
     subscriptionBox.hidden=!subscription||subscription.state==='admin';
     if(!subscriptionBox.hidden){
       const until=subscription.state==='paid'?subscription.paid_until_ms:subscription.trial_ends_ms;
-      const label=subscription.state==='paid'?'Подписка до ':subscription.state==='expired'?'Тестовый период или подписка завершились. Данные сохранены.':'48 часов бесплатно — до ';
-      const date=subscription.state==='expired'?'':new Date(until).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК.';
-      subscriptionBox.innerHTML=escapeHTML(label+date)+' <a href="#" data-bp-pay="month">Оплата</a>';
+      const label=subscription.state==='paid'?'Подписка до ':subscription.state==='pending'?'Доступ пока не активирован. Оплатите подписку или обратитесь в поддержку для включения пробных 48 часов.':subscription.state==='expired'?'Доступ завершён. Данные сохранены.':'Пробный доступ — до ';
+      const date=subscription.state==='expired'||subscription.state==='pending'?'':new Date(until).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК.';
+      subscriptionBox.innerHTML=escapeHTML(label+date)+' <a href="#" data-bp-pay="month">Перейти к оплате</a>'+(!subscription.access?' · <a href="https://t.me/business_pulse_app_bot?start=support">Поддержка</a>':'');
     }
 
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
@@ -923,11 +932,9 @@
     }
   };
 
-  // Preserve explicitly requested demo launch parameters.
-  const start=tg.initDataUnsafe&&tg.initDataUnsafe.start_param;
-  if(!['clinic','store','cafe'].includes(start)){
-    state.business='mine';
-    renderMine();
-  }
+  window.addEventListener('bp:payment-confirmed',()=>void loadMine());
+  // Signed users enter their workspace; demo tabs are shown only to its administrator.
+  state.business='mine';
+  renderMine();
   loadMine();
 })();

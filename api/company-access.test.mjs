@@ -10,9 +10,9 @@ import { once } from 'node:events';
 import { companyAdmin } from './company-admin.mjs';
 import { dailyDigestFor } from '../bot/digest.mjs';
 import { DatabaseSync } from 'node:sqlite';
-import { paymentConfirmation,confirmReceivedPayment } from './billing.mjs';
+import { startCompanyTrial,paymentConfirmation,confirmReceivedPayment } from './billing.mjs';
 
-async function apiFixture(t){
+async function apiFixture(t,trial=true){
   const folder=mkdtempSync(path.join(tmpdir(),'bp-access-')),dbPath=path.join(folder,'test.db');
   const reservation=net.createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');
   const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
@@ -38,16 +38,43 @@ async function apiFixture(t){
   };
   const call=async(id,route,body)=>{
     const response=await fetch(base+'/api'+route,{headers:headersFor(id),...(body===undefined?{}:{method:'POST',body:JSON.stringify(body)})});
-    return {status:response.status,data:await response.json()};
+    const data=await response.json();
+    if(trial&&route==='/me'&&data.company){const d=new DatabaseSync(dbPath);try{if(!d.prepare('SELECT trial_granted_by FROM company_billing WHERE company_id=?').get(data.company.id).trial_granted_by)startCompanyTrial(d,data.company,'1296951270');}finally{d.close();}}
+    return {status:response.status,data};
   };
   return {base,dbPath,headersFor,call};
 }
+
+test('Unpaid owner and employee are blocked on all business endpoints; admin trial and payment activate same company',async t=>{
+  const f=await apiFixture(t,false),{call,dbPath}=f;
+  const c=(await call('101','/me')).data.company;
+  assert.equal((await call('101','/subscription')).data.subscription.state,'pending');
+  companyAdmin({dbPath,action:'addmember',ownerId:'101',memberId:'303'});
+  for(const actor of ['101','303']){
+    for(const route of ['/report','/analysis','/import/history'])assert.equal((await call(actor,route)).status,402);
+    for(const route of ['/import','/import/undo','/import/corrections/preview','/import/corrections/apply','/import/mapping/resolve','/import/mapping/save','/reset-test-data'])assert.equal((await call(actor,route,{})).status,402);
+    assert.equal((await call(actor,'/payments/refresh',{})).status,200);
+    assert.equal((await call(actor,'/trial',{})).status,402);
+  }
+  const db=new DatabaseSync(dbPath);t.after(()=>db.close());
+  startCompanyTrial(db,c,'1296951270');
+  assert.equal((await call('303','/report')).status,200);
+  db.prepare('UPDATE company_billing SET trial_ends_ms=? WHERE company_id=?').run(Date.now()-1,c.id);
+  assert.equal((await call('303','/report')).status,402);
+  const token=paymentConfirmation(db,c,'1296951270','month');confirmReceivedPayment(db,c,'1296951270',token);
+  assert.equal((await call('101','/report')).status,200);
+  assert.equal((await call('303','/report')).status,200);
+  db.prepare('UPDATE company_billing SET paid_until_ms=? WHERE company_id=?').run(Date.now()-1,c.id);
+  assert.equal((await call('101','/report')).status,402);
+  assert.equal((await call('303','/report')).status,402);
+});
 
 test('Signed owner cannot change industry through API; operator assignment appears in next report',async t=>{
   const {base,dbPath,headersFor}=await apiFixture(t);
   const headers=headersFor('101');
   const me=await fetch(base+'/api/me',{headers});assert.equal(me.status,200);
-  assert.equal((await me.json()).company.industry,'other');
+  const company=(await me.json()).company;assert.equal(company.industry,'other');
+  const d=new DatabaseSync(dbPath);try{startCompanyTrial(d,company,'1296951270');}finally{d.close();}
   const denied=await fetch(base+'/api/company/industry',{method:'POST',headers,body:JSON.stringify({industry:'clinic'})});
   assert.equal(denied.status,404);
   companyAdmin({dbPath,action:'set',ownerId:'101',industry:'clinic'});
@@ -118,7 +145,7 @@ test('Expired company is blocked on API for owner and staff, retains data, and v
   assert.equal((await call('303','/report')).status,402);
   assert.equal((await call('303','/import',input)).status,402);
   assert.equal((await call('101','/subscription')).data.subscription.state,'expired');
-  assert.match(dailyDigestFor('101',{dbPath}),/завершились/);
+  assert.match(dailyDigestFor('101',{dbPath}),/Доступ к компании закрыт/);
   const token=paymentConfirmation(db,c,'999','month');confirmReceivedPayment(db,c,'999',token);
   assert.equal((await call('101','/report')).data.revenue30_kopecks,10000);
   assert.equal((await call('303','/report')).data.revenue30_kopecks,10000);

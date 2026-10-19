@@ -85,7 +85,7 @@ export function dailyDigestFor(telegramId, {
     ).get(workspace?.id||'');
     if(workspace){
       const subscription=subscriptionFor(database,workspace,now.getTime());
-      if(subscription&&!subscription.access)return '<b>Бизнес Пульс</b>\n\nТестовый период или подписка завершились. Данные компании сохранены. Откройте раздел «Цены» в меню бота.';
+      if(subscription&&!subscription.access)return '<b>Бизнес Пульс</b>\n\nДоступ к компании закрыт. Данные сохранены. Оплатите подписку или обратитесь в поддержку для включения пробного периода.';
     }
     const hasIndustry=database.prepare('PRAGMA table_info(companies)').all().some(x=>x.name==='industry');
     const industry=hasIndustry?database.prepare('SELECT industry FROM companies WHERE id=?').get(company?.id||'')?.industry:'other';
@@ -197,4 +197,3 @@ export function dailyDigestFor(telegramId, {
     database.close();
   }
 }
-

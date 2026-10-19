@@ -17,7 +17,7 @@
     '<p class="bp-pay-status" role="status">Загружаем способы оплаты…</p><div class="bp-pay-cards"></div>'+
     '<p class="bp-pay-note">Для вашей компании будет создан отдельный СБП-платёж ЮKassa. После оплаты подписка подключится автоматически.</p>'+
     '<a class="bp-pay-support" href="https://t.me/business_pulse_app_bot?start=support">Поддержка</a>'+
-    '<p class="bp-pay-trial">48 часов бесплатно с момента подключения компании.</p>';
+    '<p class="bp-pay-trial">Пробные 48 часов включаются администратором по согласованию.</p>';
   const footer=document.getElementById('bpPaymentFooter')||document.createElement('footer');
   if(!footer.id){footer.id='bpPaymentFooter';footer.className='bp-payment-footer';(document.querySelector('main')||document.body).append(footer);}
   footer.prepend(button);document.body.append(dialog);
@@ -37,7 +37,7 @@
       try{
         const r=await fetch(root+'/payments',{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':tg.initData},body:JSON.stringify({plan:p.id,accepted_terms:true}),signal:AbortSignal.timeout(25000)});
         const data=await r.json();if(!r.ok)throw Error(data.error||'Не удалось создать платёж.');
-        if(data.payment.status==='succeeded'){status.textContent='Оплата подтверждена. Подписка активна.';return;}
+        if(data.payment.status==='succeeded'){status.textContent='Оплата подтверждена. Подписка активна.';window.dispatchEvent(new Event('bp:payment-confirmed'));return;}
         const url=validURL(data.payment.payment_url);if(!url)throw Error('Платёж проверяется. Обратитесь в поддержку.');
         status.textContent='Завершите оплату в ЮKassa. Подписка подключится автоматически.';
         if(typeof tg.openLink==='function')tg.openLink(url);else window.location.assign(url);
@@ -67,9 +67,16 @@
     }catch{status.textContent='Не удалось загрузить оплату. Закройте окно и попробуйте ещё раз или напишите в поддержку.';}
     finally{loading=false;}
   }
+  let notifiedPaidUntil=0;
   async function refreshPayment(){
     if(!dialog.open||!isTelegram||paying||loading)return;
-    try{const r=await fetch(root+'/payments/refresh',{method:'POST',headers:{'X-Telegram-Init-Data':tg.initData},signal:AbortSignal.timeout(20000)});if(r.ok&&(await r.json()).subscription?.state==='paid')status.textContent='Оплата подтверждена. Подписка активна.';}catch{}
+    try{
+      const r=await fetch(root+'/payments/refresh',{method:'POST',headers:{'X-Telegram-Init-Data':tg.initData},signal:AbortSignal.timeout(20000)});
+      if(r.ok){const s=(await r.json()).subscription;if(s?.state==='paid'){
+        status.textContent='Оплата подтверждена. Подписка активна.';
+        if(s.paid_until_ms!==notifiedPaidUntil){notifiedPaidUntil=s.paid_until_ms;window.dispatchEvent(new Event('bp:payment-confirmed'));}
+      }}
+    }catch{}
   }
   window.addEventListener('focus',()=>void refreshPayment());
   setInterval(()=>void refreshPayment(),30000);
