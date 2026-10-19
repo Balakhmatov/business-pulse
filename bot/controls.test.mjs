@@ -342,3 +342,15 @@ test('Only admin can configure payment links; editing survives restart and rejec
   assert.equal(await f.inbound('999',{text:'https://yoomoney.ru/pay'}),false);
   await f.msg('101','/start support');assert.match(f.last().text,/следующим сообщением/);
 });
+
+test('Explicit start and menu reply at the bottom while inline navigation keeps editing one panel',async t=>{
+  const f=fixture(t);await f.msg('101','/start');
+  const first=f.last().message_id;
+  await f.click('101','id');assert.equal(f.last().method,'editMessageText');
+  const before=f.messages.length;await f.msg('101','/start');
+  assert.equal(f.last().method,'sendMessage');
+  assert.equal(f.messages.slice(before).filter(m=>m.method==='sendMessage').length,1);
+  assert.match(f.last().text,/Бизнес Пульс/);
+  await f.click('101','notify');assert.equal(f.last().method,'editMessageText');
+  f.restart();await f.msg('101','/menu');assert.equal(f.last().method,'sendMessage');
+});

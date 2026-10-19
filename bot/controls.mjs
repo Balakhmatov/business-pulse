@@ -344,6 +344,9 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
           db.prepare('DELETE FROM bot_contact_requests WHERE actor_id=?').run(actor);
           await api('sendMessage',{chat_id:actor,text:'Выбор отменён.',reply_markup:{remove_keyboard:true}});
         }
+        // Explicit commands must answer at the bottom of the conversation.
+        // Button navigation continues to edit the current panel in place.
+        if(command==='/start'||command==='/menu')db.prepare('DELETE FROM bot_menu_panels WHERE chat_id=?').run(actor);
         const payload=text.split(/\s+/)[1];
         if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
         else if(command==='/start'&&payload==='prices')await prices(actor);
