@@ -65,7 +65,7 @@ test('Own-company data isolation, full-period comparison, cached AI',t=>{
   );
   const result=f.read('101');
   assert.match(result,/<b>Моя клиника<\/b> \(тестовые данные\)/);
-  assert.match(result,/1\. Сумма операций \(тип не подтверждён\) за 30 дней: <b>60.?000 ₽<\/b>/u);
+  assert.match(result,/1\. Суммы без уточнения за 30 дней: <b>60.?000 ₽<\/b>/u);
   assert.match(result,/2\. Операций за 30 дней: <b>30<\/b>/);
   assert.match(result,/4\. Изменение к предыдущим 30 дням: <b>\+100,0%<\/b>/);
   assert.match(result,/📌 <b>Ключевой аналитический вывод<\/b>/);
