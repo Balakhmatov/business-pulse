@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { dailyDigestFor } from './digest.mjs';
 import { adminCommand } from '../api/company-admin.mjs';
-const ADMIN_IDS=new Set((process.env.BP_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(x=>/^[1-9]\d{0,15}$/.test(x)));
+// Project owner; an explicit BP_ADMIN_IDS overrides this list (empty disables access).
+const ADMIN_IDS=new Set((process.env.BP_ADMIN_IDS??'1296951270').split(',').map(x=>x.trim()).filter(x=>/^[1-9]\d{0,15}$/.test(x)));
 
 // Independent, dependency-free Telegram bridge for the Business Pulse prototype.
 // Requires Node.js 20.6+, a separate BotFather bot and a running server process.
