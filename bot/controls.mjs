@@ -68,12 +68,12 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     if(Number.isSafeInteger(messageId)&&messageId>0)
       db.prepare('INSERT INTO bot_menu_panels VALUES(?,?) ON CONFLICT(chat_id) DO UPDATE SET message_id=excluded.message_id').run(String(actor),messageId);
   }
-  async function send(actor,text,rows){
+  async function send(actor,text,rows,options={}){
     const reply_markup={inline_keyboard:rows||[[button('В меню','home')]]};
     const panel=db.prepare('SELECT message_id FROM bot_menu_panels WHERE chat_id=?').get(String(actor));
     if(panel){
       try{
-        const result=await api('editMessageText',{chat_id:actor,message_id:panel.message_id,text,disable_web_page_preview:true,reply_markup});
+        const result=await api('editMessageText',{chat_id:actor,message_id:panel.message_id,text,...options,disable_web_page_preview:true,reply_markup});
         return result&&typeof result==='object'?result:{message_id:panel.message_id};
       }catch(error){
         if(/message is not modified/i.test(error.message))return {message_id:panel.message_id};
@@ -81,7 +81,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         db.prepare('DELETE FROM bot_menu_panels WHERE chat_id=?').run(String(actor));
       }
     }
-    const result=await api('sendMessage',{chat_id:actor,text,disable_web_page_preview:true,reply_markup});
+    const result=await api('sendMessage',{chat_id:actor,text,...options,disable_web_page_preview:true,reply_markup});
     setPanel(actor,result?.message_id);
     return result;
   }
@@ -212,7 +212,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   }
   function prices(actor){
     const c=workspace(actor),s=subscriptionFor(db,c,now());
-    return send(actor,pricesText(s)+'\n\nДля оформления подписки свяжитесь со специалистом, который подключал вашу компанию.',[[{text:'Открыть панель',web_app:{url:appUrl}}],[button('В меню','home')]]);
+    return send(actor,pricesText(s),[[{text:'Открыть панель',web_app:{url:appUrl}}],[button('В меню','home')]],{parse_mode:'HTML'});
   }
   function billingCard(actor,owner,prefix=''){
     const c=access(actor,owner,true),s=subscriptionFor(db,c,now());
