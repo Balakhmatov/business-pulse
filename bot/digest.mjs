@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { calculateFinancialSummary } from '../api/finance-summary.mjs';
+import { companyForUser } from '../api/company-members.mjs';
 
-// Read-only reader for the subscriber's OWN Telegram-linked company.
+// Read-only reader for the subscriber's owned or explicitly assigned company.
 // The API owns imports and all financial calculations; ordinary digest delivery never writes to SQLite.
 const DEFAULT_DB = '/var/lib/business-pulse/pulse.db';
 const money = kopecks => Math.round(kopecks / 100).toLocaleString('ru-RU') + ' ₽';
@@ -74,12 +75,13 @@ export function dailyDigestFor(telegramId, {
   const cut = shift(end, -29), start = shift(end, -59);
   const database = new DatabaseSync(dbPath, { readOnly: true });
   try {
+    const workspace=companyForUser(database,telegramId);
     const company = database.prepare(
       'SELECT c.id,c.name,i.source,i.imported_at,i.last_change_at,i.row_count FROM companies c ' +
       'INNER JOIN users u ON u.telegram_id=c.owner_id ' +
       'LEFT JOIN imports i ON i.company_id=c.id ' +
-      'WHERE u.telegram_id=? ORDER BY c.created_at,c.id LIMIT 1'
-    ).get(String(telegramId));
+      'WHERE c.id=? LIMIT 1'
+    ).get(workspace?.id||'');
     const hasIndustry=database.prepare('PRAGMA table_info(companies)').all().some(x=>x.name==='industry');
     const industry=hasIndustry?database.prepare('SELECT industry FROM companies WHERE id=?').get(company?.id||'')?.industry:'other';
     const prelude = '📊 <b>Бизнес Пульс · утренний обзор</b>';

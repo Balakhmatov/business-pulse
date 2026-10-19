@@ -65,7 +65,7 @@
   clearTests.hidden=true;
   $('importUtilities').appendChild(clearTests);
 
-  // Owner-only import journal. Filenames are always rendered via textContent.
+  // Shared company import journal. Filenames are always rendered via textContent.
   const importHistoryButton=document.createElement('button');
   importHistoryButton.type='button';
   importHistoryButton.className='ghost-btn';

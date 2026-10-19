@@ -9,6 +9,7 @@ import { calculateFinancialSummary } from './finance-summary.mjs';
 import { createCorrectionService } from './corrections.mjs';
 import { resetTestData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
+import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
 
 // Localhost-only service. Nginx provides HTTPS. Telegram initData is ALWAYS signed and verified.
 const port = Number(process.env.BP_API_PORT || 3117);
@@ -29,12 +30,12 @@ db.exec(
   'CREATE TABLE IF NOT EXISTS imports (company_id TEXT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,source TEXT NOT NULL,row_count INTEGER NOT NULL);'
 );
 // Upgrade existing SQLite schema before preparing statements that use the new columns.
+ensureCompanyMembers(db);
 const accumulator=createAccumulator(db);
 const correctionService=createCorrectionService({db,secret:token});
 const importMapper=createImportMapper({db});
 const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
-  first:db.prepare('SELECT id,name,industry FROM companies WHERE owner_id=? ORDER BY created_at LIMIT 1'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),
   rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status,financial_basis,quantity_milli FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
   countBasis:db.prepare('SELECT financial_basis,COUNT(*) AS n FROM operations WHERE company_id=? GROUP BY financial_basis'),
@@ -67,9 +68,16 @@ function telegramID(raw){
 }
 function companyFor(id){
   st.user.run(id);
-  let c=st.first.get(id);
-  if(!c){st.newCompany.run(randomUUID(),id,'Моя компания','other');c=st.first.get(id);}
+  let c=companyForUser(db,id);
+  if(!c){st.newCompany.run(randomUUID(),id,'Моя компания','other');c=companyForUser(db,id);}
   return c;
+}
+
+async function readCompanyJSON(req,c,id){
+  const input=await readJSON(req);
+  // Access may have been revoked while the request body was still uploading.
+  if(companyForUser(db,id)?.id!==c.id){const e=Error('Доступ к компании изменился. Откройте приложение заново.');e.status=403;throw e;}
+  return input;
 }
 const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'});
 function mskToday(){const p=Object.fromEntries(fmt.formatToParts(new Date()).map(x=>[x.type,x.value]));return [p.year,p.month,p.day].join('-');}
@@ -182,19 +190,19 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,report(c,url.searchParams.get('basis')),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
     if(req.method==='POST'&&url.pathname==='/api/import/mapping/resolve'){
-      const input=await readJSON(req);
+      const input=await readCompanyJSON(req,c,id);
       return reply(res,200,await importMapper.resolve(c,input),origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/import/mapping/save'){
-      const input=await readJSON(req);
+      const input=await readCompanyJSON(req,c,id);
       return reply(res,200,importMapper.confirm(c,input),origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/import/corrections/preview'){
-      const input=await readJSON(req);
+      const input=await readCompanyJSON(req,c,id);
       return reply(res,200,correctionService.preview(c,input),origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/import/corrections/apply'){
-      const input=await readJSON(req);
+      const input=await readCompanyJSON(req,c,id);
       const result=correctionService.apply(c,input);
       if(result.changed)ai.onImport(c);
       return reply(res,200,{...result,report:report(c),history:accumulator.history(c)},origin);
@@ -203,20 +211,21 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,{history:accumulator.history(c)},origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/import/undo'){
-      const input=await readJSON(req);
+      const input=await readCompanyJSON(req,c,id);
       const result=accumulator.undoLatest(c,input?.batch_id);
       // An undo changes the underlying financial evidence just like an import.
       ai.onImport(c);
       return reply(res,200,{...result,report:report(c),history:accumulator.history(c)},origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/reset-test-data'){
-      const input=await readJSON(req);
+      if(c.access_role!=='owner')return reply(res,403,{error:'Очистка тестовых данных доступна только владельцу компании.'},origin);
+      const input=await readCompanyJSON(req,c,id);
       if(input?.confirm!=='DELETE_TEST_DATA')return reply(res,400,{error:'Подтвердите удаление тестовых операций.'},origin);
       const result=resetTestData(db,c.id);
       return reply(res,200,{...result,report:report(c)},origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/import'){
-      const input=await readJSON(req);
+      const input=await readCompanyJSON(req,c,id);
       const stats=ingest(c,input);
       const updated=report(c);
       if(stats.added || stats.updated) ai.onImport(c); // no redundant paid analysis

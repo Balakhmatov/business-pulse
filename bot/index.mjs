@@ -79,7 +79,7 @@ async function send(chatId, text, options = {}) {
 }
 
 function dailyText(chatId) {
-  // Each recipient sees only the company owned by their verified Telegram ID.
+  // Each recipient sees only their owned company or assigned shared workspace.
   return dailyDigestFor(chatId);
 }
 
@@ -117,7 +117,7 @@ async function handle(update) {
   const chatId = String(message.chat.id);
   const cmd = message.text.trim().split(/\s+/)[0].split('@')[0].toLowerCase();
 
-  if(['/companies','/industry'].includes(cmd)){
+  if(['/companies','/industry','/members','/addmember','/removemember'].includes(cmd)){
     try{const result=adminCommand(message,ADMIN_IDS);if(result)await send(chatId,result);}
     catch(error){await send(chatId,error.message);}
     return;
@@ -160,7 +160,8 @@ async function handle(update) {
     case '/help':
       await send(chatId, 'Команды:\n/start — открыть приложение\n/report — открыть обзор\n' +
         '/subscribe — включить утренние уведомления\n/unsubscribe — отключить\n' +
-        '/status — проверить подписку\n/test — тестовое сообщение');
+        '/status — проверить подписку\n/test — тестовое сообщение\n/myid — узнать свой Telegram ID'+
+        (ADMIN_IDS.has(chatId)?'\n\nАдминистратор:\n/companies — компании\n/industry ID_руководителя cafe — отрасль\n/addmember ID_руководителя ID_сотрудника — подключить сотрудника\n/members ID_руководителя — участники\n/removemember ID_руководителя ID_сотрудника — отозвать доступ':''));
       break;
     default:
       // Do not respond to free-form user messages until conversational features exist.

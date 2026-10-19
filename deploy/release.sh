@@ -114,7 +114,7 @@ runuser -u business-pulse -- test -r "$REPO/bot/index.mjs"
 cd "$REPO"
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check api/server.mjs
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check bot/index.mjs
-runuser -u business-pulse -- /usr/local/bin/node-business-pulse --experimental-sqlite --test api/accumulate.test.mjs api/test-reset.test.mjs api/company-admin.test.mjs api/company-access.test.mjs bot/digest.test.mjs
+runuser -u business-pulse -- /usr/local/bin/node-business-pulse --experimental-sqlite --test api/accumulate.test.mjs api/test-reset.test.mjs api/company-admin.test.mjs api/company-members.test.mjs api/company-access.test.mjs bot/digest.test.mjs
 
 systemctl start "$API_SERVICE"
 ready=0
