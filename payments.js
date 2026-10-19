@@ -19,7 +19,9 @@
     '<p class="bp-pay-note">Для вашей компании будет создан отдельный СБП-платёж ЮKassa. После оплаты подписка подключится автоматически.</p>'+
     '<a class="bp-pay-support" href="https://t.me/business_pulse_app_bot?start=support">Поддержка</a>'+
     '<p class="bp-pay-trial">48 часов бесплатно с момента подключения компании.</p>';
-  document.body.append(button,dialog);document.body.classList.add('bp-has-payment');
+  const footer=document.getElementById('bpPaymentFooter')||document.createElement('footer');
+  if(!footer.id){footer.id='bpPaymentFooter';footer.className='bp-payment-footer';(document.querySelector('main')||document.body).append(footer);}
+  footer.prepend(button);document.body.append(dialog);
   const cards=dialog.querySelector('.bp-pay-cards'),status=dialog.querySelector('[role="status"]'),accept=dialog.querySelector('input');
   const controls=new Map();let chosen=null,loading=false,paying=false,available=false;
   for(const p of plans){
@@ -79,4 +81,5 @@
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
   document.addEventListener('click',e=>{const trigger=e.target.closest('[data-bp-pay]');if(trigger){e.preventDefault();open(trigger.dataset.bpPay);}});
   window.BP_Payments={open};
+  if(new URLSearchParams(window.location.search).get('view')==='payment'||tg?.initDataUnsafe?.start_param==='payment')open();
 })();

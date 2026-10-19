@@ -116,13 +116,14 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     const rows=[[{text:'Открыть Бизнес Пульс',web_app:{url:appUrl}}],
       [{text:'Моя сводка',callback_data:'bp:report'},button('Уведомления','notify')]];
     if(c.access_role==='owner')rows.push([button('Сотрудники','m:'+c.owner_id)]);
-    rows.push([button('Цены','prices'),button('Мой профиль и ID','id')]);
+    rows.push([button('Мой профиль и ID','id')]);
     if(adminIds.has(actor)){
       rows.push([button('Управление компаниями','list:0')]);
       rows.push([button('Проверить уведомления','testnotices')]);
       rows.push([button('Настроить оплату СБП','paylinks')]);
     }
     rows.push([button('Поддержка','support'),button('Очистить чат','clear')]);
+    rows.push([button('Цены','prices')]);
     const subscription=subscriptionFor(db,c,now());
     const accessNote=subscription.state==='trial'?'\n\n48 часов бесплатно — до '+mskDate(subscription.trial_ends_ms)+'.\nПервый месяц за 1 990 ₽ при оплате в тестовый период (скидка 20%).':subscription.state==='paid'?'\n\nПодписка до '+mskDate(subscription.paid_until_ms)+'.':subscription.state==='expired'?'\n\nТестовый период или подписка завершились. Данные сохранены. Тарифы — в разделе «Цены».':'';
     const text='Бизнес Пульс\n\n'+c.name+'\n'+(c.access_role==='member'?'Вы подключены как сотрудник.':'Управление компанией и отчётами.')+accessNote+suffix;
@@ -248,9 +249,12 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     rows.push([button('В меню','home')]);
     return send(actor,'Оплата по СБП\n\nСоздайте в ЮKassa платёжную ссылку на точную сумму каждого тарифа с описанием «Подписка Бизнес Пульс» и нужным сроком. Убедитесь, что на странице доступна СБП. Затем выберите тариф и пришлите ссылку.\n\nЭто внешние платёжные страницы. Подписка включается после вашей проверки поступления денег. Секретные ключи отправлять не нужно.',rows);
   }
+  function paymentUrl(){
+    const url=new URL(appUrl);url.searchParams.set('view','payment');return url.href;
+  }
   function prices(actor){
     const c=workspace(actor),s=subscriptionFor(db,c,now());
-    return send(actor,pricesText(s),[[{text:'Перейти к оплате',web_app:{url:appUrl}}],[button('В меню','home')]],{parse_mode:'HTML'});
+    return send(actor,pricesText(s),[[{text:'Перейти к оплате',web_app:{url:paymentUrl()}}],[button('В меню','home')]],{parse_mode:'HTML'});
   }
   function billingCard(actor,owner,prefix=''){
     const c=access(actor,owner,true),s=subscriptionFor(db,c,now());
