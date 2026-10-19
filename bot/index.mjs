@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { dailyDigestFor } from './digest.mjs';
 import { adminCommand } from '../api/company-admin.mjs';
+import { createBotControls } from './controls.mjs';
 // Project owner; an explicit BP_ADMIN_IDS overrides this list (empty disables access).
 const ADMIN_IDS=new Set((process.env.BP_ADMIN_IDS??'1296951270').split(',').map(x=>x.trim()).filter(x=>/^[1-9]\d{0,15}$/.test(x)));
 
@@ -63,6 +64,7 @@ function launchButton() {
   return {
     inline_keyboard: [
       [{text: 'Открыть Бизнес Пульс', web_app: {url: APP_URL}}],
+      [{text: 'Управление', callback_data: 'bpu:home'}],
       [{text: 'Проверить уведомление', callback_data: 'bp:test'}]
     ]
   };
@@ -95,11 +97,19 @@ async function sendReport(chatId, test = false) {
   return send(chatId, test ? '<b>Проверка уведомлений</b>\n\n' + body : body, {html: true});
 }
 
+const controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,botUsername:EXPECTED_USERNAME});
+
 async function handle(update) {
+  if(await controls.handle(update))return;
   const callback = update.callback_query;
   if (callback) {
     const chat = callback.message?.chat;
     if (chat?.type !== 'private' || String(callback.from?.id) !== String(chat.id)) return;
+    if(['bp:report','bp:subscribe','bp:unsubscribe'].includes(callback.data)){
+      await api('answerCallbackQuery',{callback_query_id:callback.id});
+      await handle({message:{chat,from:callback.from,text:'/'+callback.data.slice(3)}});
+      return;
+    }
     if (callback.data === 'bp:test') {
       await api('answerCallbackQuery', {
         callback_query_id: callback.id,
@@ -218,6 +228,7 @@ async function run() {
   if (hook.url) throw new Error('This bot already uses a webhook. Use a dedicated bot, do not replace its webhook.');
   await api('setMyCommands', {commands: [
     {command: 'start', description: 'Открыть Бизнес Пульс'},
+    {command: 'menu', description: 'Управление кнопками'},
     {command: 'report', description: 'Сводка по моей компании'},
     {command: 'subscribe', description: 'Включить утренние уведомления'},
     {command: 'unsubscribe', description: 'Отключить уведомления'},

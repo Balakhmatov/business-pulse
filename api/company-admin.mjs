@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { INDUSTRIES } from './finance-summary.mjs';
-import { ensureCompanyMembers } from './company-members.mjs';
+import { ensureCompanyMembers,addCompanyMember } from './company-members.mjs';
 
 // Used only by the server operator and allowlisted private Telegram commands.
 export function companyAdmin({dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',action,ownerId,industry,memberId,offset=0}) {
@@ -32,18 +32,12 @@ export function companyAdmin({dbPath=process.env.BP_DB_FILE||'/var/lib/business-
         if(memberId===String(c.owner_id))throw Error('Это владелец компании. Его доступ нельзя изменить как доступ сотрудника.');
         if(action==='removemember'){
           const result=db.prepare('DELETE FROM company_members WHERE telegram_id=? AND company_id=?').run(memberId,c.id);
+          if(result.changes>0&&db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bot_invites'").get())
+            db.prepare('UPDATE bot_invites SET expires_ms=0 WHERE company_id=? AND used_by IS NULL').run(c.id);
           db.exec('COMMIT');
           return {company:c,memberId,removed:result.changes>0};
         }
-        const existing=db.prepare('SELECT company_id FROM company_members WHERE telegram_id=?').get(memberId);
-        if(existing&&existing.company_id!==c.id)throw Error('Сотрудник уже привязан к другой компании. Сначала отзовите прежний доступ.');
-        // Never silently hide another business or merge its transactions.
-        const ownsData=db.prepare('SELECT 1 FROM companies own WHERE own.owner_id=? AND ('+
-          'EXISTS(SELECT 1 FROM operations o WHERE o.company_id=own.id) OR '+
-          'EXISTS(SELECT 1 FROM company_members m WHERE m.company_id=own.id)) LIMIT 1').get(memberId);
-        if(ownsData)throw Error('У этого ID уже есть собственная компания с данными или сотрудниками. Автоматическое объединение компаний не поддерживается.');
-        db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)').run(memberId);
-        db.prepare('INSERT OR IGNORE INTO company_members(telegram_id,company_id) VALUES(?,?)').run(memberId,c.id);
+        addCompanyMember(db,c,memberId);
         db.exec('COMMIT');
         return {company:c,memberId};
       }

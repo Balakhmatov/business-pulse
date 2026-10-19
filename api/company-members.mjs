@@ -16,3 +16,18 @@ export function companyForUser(db,telegramId){
   row=db.prepare('SELECT * FROM companies WHERE owner_id=? ORDER BY created_at,id LIMIT 1').get(String(telegramId));
   return row?{...row,access_role:'owner'}:null;
 }
+
+// Caller owns the write transaction; shared by operator commands and invitations.
+export function addCompanyMember(db,company,memberId){
+  memberId=String(memberId);
+  if(!/^[1-9]\d{0,15}$/.test(memberId))throw Error('Некорректный аккаунт сотрудника.');
+  if(memberId===String(company.owner_id))throw Error('Руководитель уже имеет доступ к компании.');
+  const existing=db.prepare('SELECT company_id FROM company_members WHERE telegram_id=?').get(memberId);
+  if(existing&&existing.company_id!==company.id)throw Error('Этот сотрудник уже подключён к другой компании.');
+  if(db.prepare('SELECT 1 FROM companies c WHERE c.owner_id=? AND ('+
+    'EXISTS(SELECT 1 FROM operations o WHERE o.company_id=c.id) OR '+
+    'EXISTS(SELECT 1 FROM company_members m WHERE m.company_id=c.id)) LIMIT 1').get(memberId))
+    throw Error('У этого аккаунта уже есть собственная компания с данными или сотрудниками. Автоматическое объединение компаний не поддерживается.');
+  db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)').run(memberId);
+  db.prepare('INSERT OR IGNORE INTO company_members(telegram_id,company_id) VALUES(?,?)').run(memberId,company.id);
+}
