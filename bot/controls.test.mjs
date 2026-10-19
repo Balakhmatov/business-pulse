@@ -10,7 +10,7 @@ import { companyAdmin } from '../api/company-admin.mjs';
 import { isDigestDue } from './notification-schedule.mjs';
 import { createChatCleanup } from './chat-cleanup.mjs';
 
-function fixture(t){
+function fixture(t,appUrl='https://example.org/'){
   const folder=mkdtempSync(path.join(tmpdir(),'bp-buttons-')),dbPath=path.join(folder,'test.db');
   const db=new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys=ON;CREATE TABLE users(telegram_id TEXT PRIMARY KEY);"+
@@ -27,7 +27,7 @@ function fixture(t){
       if(button.callback_data)assert.ok(Buffer.byteLength(button.callback_data)<=64,'Telegram callback size limit');
     return {message_id:payload.message_id??messages.length};
   };
-  const make=()=>createBotControls({dbPath,api,adminIds:admins,supportId:'999',appUrl:'https://example.org/',botUsername:'business_pulse_app_bot',now:()=>clock});
+  const make=()=>createBotControls({dbPath,api,adminIds:admins,supportId:'999',appUrl,botUsername:'business_pulse_app_bot',now:()=>clock});
   let controls=make();
   t.after(()=>{controls.close();db.close();rmSync(folder,{recursive:true,force:true});});
   const user=id=>({id:Number(id),first_name:id==='101'?'Иван':id==='303'?'Анна':'Пользователь',username:'user'+id});
@@ -356,14 +356,23 @@ test('Explicit start and menu reply at the bottom while inline navigation keeps 
 });
 
 
-test('Payment launch uses Telegram startapp routing from both prices entry points',async t=>{
+test('Payment button launches authenticated Mini App directly into tariffs from both prices entry points',async t=>{
   const f=fixture(t);
   for(const entry of ['command','callback']){
     if(entry==='command')await f.msg('101','/start prices');
     else await f.click('101','prices');
     const pay=f.last().reply_markup.inline_keyboard[0][0];
     assert.equal(pay.text,'Перейти к оплате');
-    assert.equal(pay.url,'https://t.me/business_pulse_app_bot?startapp=payment');
-    assert.equal(pay.web_app,undefined);
+    assert.equal(pay.web_app.url,'https://example.org/?view=payment');
+    assert.equal(pay.url,undefined);
   }
+});
+
+test('Payment URL preserves configured application path, query and hash',async t=>{
+  const f=fixture(t,'https://example.org/business-pulse/?lang=ru&view=home#account');
+  await f.msg('101','/start prices');
+  const pay=f.last().reply_markup.inline_keyboard[0][0];
+  const u=new URL(pay.web_app.url);
+  assert.equal(u.pathname,'/business-pulse/');assert.equal(u.searchParams.get('lang'),'ru');
+  assert.deepEqual(u.searchParams.getAll('view'),['payment']);assert.equal(u.hash,'#account');
 });
