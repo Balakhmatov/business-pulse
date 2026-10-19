@@ -6,6 +6,7 @@ import { INDUSTRIES } from '../api/finance-summary.mjs';
 
 const button=(text,data)=>({text,callback_data:'bpu:'+data});
 const idOK=value=>/^[1-9]\d{0,15}$/.test(String(value||''));
+const profileText=user=>[clean([user.last_name,user.first_name].filter(Boolean).join(' ')),user.username?'@'+clean(user.username):'Ник: не указан','Telegram ID: '+user.id].filter(Boolean).join('\n');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const clean=value=>String(value||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,100);
 
@@ -87,7 +88,7 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
     const requestId=randomInt(1,2147483647);
     db.prepare('INSERT INTO bot_contact_requests VALUES(?,?,?,?,?) ON CONFLICT(actor_id) DO UPDATE SET request_id=excluded.request_id,owner_id=excluded.owner_id,kind=excluded.kind,expires_ms=excluded.expires_ms')
       .run(actor,requestId,owner||null,kind,now()+15*60000);
-    await api('sendMessage',{chat_id:actor,text:kind==='client'?'Выберите клиента в Telegram. Вручную вводить ID не нужно.':'Выберите сотрудника в Telegram. После выбора появится приглашение для него.',
+    await api('sendMessage',{chat_id:actor,text:kind==='client'?'Выберите руководителя компании в Telegram.':'Выберите сотрудника в Telegram. После выбора появится приглашение для него.',
       reply_markup:{keyboard:[[{text:kind==='client'?'Выбрать клиента':'Выбрать сотрудника',request_users:{request_id:requestId,user_is_bot:false,max_quantity:1,request_name:true,request_username:true}}],[{text:'Отмена'}]],resize_keyboard:true,one_time_keyboard:true}});
     return send(actor,'Если выбор человека недоступен в вашей версии Telegram, используйте ссылку.',kind==='client'?[[{text:'Открыть бота',url:'https://t.me/'+botUsername}],[button('В меню','home')]]:[[button('Приглашение по ссылке','invite:'+owner)],[button('Отмена','cancel')]]);
   }
@@ -185,7 +186,7 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
         }
         const payload=text.split(/\s+/)[1];
         if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
-        else if(command==='/myid')await send(actor,name(actor)+'\nВаш Telegram ID: '+actor+'\n\nДля подключения сотрудника ID вводить не нужно — используйте кнопку «Сотрудники».');
+        else if(command==='/myid')await send(actor,profileText(user));
         else await home(actor);
         return true;
       }
@@ -194,16 +195,16 @@ export function createBotControls({api,adminIds,appUrl,botUsername,dbPath=proces
       else if(action==='cancel'){
         db.prepare('DELETE FROM bot_contact_requests WHERE actor_id=?').run(actor);
         await api('sendMessage',{chat_id:actor,text:'Выбор отменён.',reply_markup:{remove_keyboard:true}});await home(actor);
-      }else if(action==='id')await send(actor,name(actor)+'\nВаш Telegram ID: '+actor+'\n\nПодключение сотрудников работает без ввода ID.');
-      else if(action==='notify')await send(actor,'Ежедневная сводка по последним загруженным данным.',[[{text:'Включить сводку',callback_data:'bp:subscribe'},{text:'Отключить',callback_data:'bp:unsubscribe'}],[button('В меню','home')]]);
+      }else if(action==='id')await send(actor,profileText(user));
+      else if(action==='notify')await send(actor,'Ежедневные уведомления со сводкой по вашей компании.',[[{text:'Включить уведомление',callback_data:'bp:subscribe'},{text:'Отключить уведомление',callback_data:'bp:unsubscribe'}],[button('В меню','home')]]);
       else if(action==='list'){
         if(!adminIds.has(actor))throw Error('Доступно только администратору.');
         const offset=Number(a);if(!Number.isSafeInteger(offset)||offset<0)throw Error('Откройте список заново.');
         const list=db.prepare('SELECT c.* FROM companies c WHERE NOT EXISTS(SELECT 1 FROM company_members m WHERE m.telegram_id=c.owner_id) ORDER BY c.created_at DESC,c.id LIMIT 9 OFFSET ?').all(offset);
         const rows=list.slice(0,8).map(c=>[button((name(c.owner_id)+' · '+(INDUSTRIES[c.industry]?.name||'Универсальный')).slice(0,90),'c:'+c.owner_id)]);
         const nav=[];if(offset>0)nav.push(button('Назад','list:'+Math.max(0,offset-8)));if(list.length>8)nav.push(button('Далее','list:'+(offset+8)));if(nav.length)rows.push(nav);
-        rows.push([button('Выбрать клиента в Telegram','client')],[button('В меню','home')]);
-        await send(actor,'Компании\n\nВыберите клиента. Отрасль и сотрудники настраиваются в его карточке.',rows);
+        rows.push([button('Найти компанию через Telegram','client')],[button('В меню','home')]);
+        await send(actor,'Компании клиентов\n\nВыберите компанию для настройки.',rows);
       }else if(action==='client')await pick(actor,null,'client');
       else if(action==='c'){const c=access(actor,a);await card(actor,c);}
       else if(action==='i'){
