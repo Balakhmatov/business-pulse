@@ -354,3 +354,16 @@ test('Explicit start and menu reply at the bottom while inline navigation keeps 
   await f.click('101','notify');assert.equal(f.last().method,'editMessageText');
   f.restart();await f.msg('101','/menu');assert.equal(f.last().method,'sendMessage');
 });
+
+
+test('Payment launch uses Telegram startapp routing from both prices entry points',async t=>{
+  const f=fixture(t);
+  for(const entry of ['command','callback']){
+    if(entry==='command')await f.msg('101','/start prices');
+    else await f.click('101','prices');
+    const pay=f.last().reply_markup.inline_keyboard[0][0];
+    assert.equal(pay.text,'Перейти к оплате');
+    assert.equal(pay.url,'https://t.me/business_pulse_app_bot?startapp=payment');
+    assert.equal(pay.web_app,undefined);
+  }
+});

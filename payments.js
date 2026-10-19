@@ -79,5 +79,10 @@
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
   document.addEventListener('click',e=>{const trigger=e.target.closest('[data-bp-pay]');if(trigger){e.preventDefault();open(trigger.dataset.bpPay);}});
   window.BP_Payments={open};
-  if(document.body.dataset.bpPaymentPage==='true'||new URLSearchParams(window.location.search).get('view')==='payment'||tg?.initDataUnsafe?.start_param==='payment')open();
+  const launchParams=new URLSearchParams(window.location.search);
+  const hashParams=new URLSearchParams(window.location.hash.slice(1));
+  const paymentRequested=document.body.dataset.bpPaymentPage==='true'||launchParams.get('view')==='payment'||
+    launchParams.get('tgWebAppStartParam')==='payment'||hashParams.get('tgWebAppStartParam')==='payment'||
+    tg?.initDataUnsafe?.start_param==='payment';
+  if(paymentRequested)open();
 })();
