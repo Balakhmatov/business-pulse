@@ -323,3 +323,22 @@ test('Support keeps an undelivered request pending and never claims successful d
   assert.match(f.last().text,/Сообщение отправлено/);
   assert.equal(f.db.prepare("SELECT 1 FROM bot_support_sessions WHERE actor_id='101'").get(),undefined);
 });
+
+test('Only admin can configure payment links; editing survives restart and rejects untrusted URLs',async t=>{
+  const f=fixture(t);await f.msg('999','/start');
+  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='bpu:paylinks'));
+  await f.click('101','paylinks');assert.match(f.last().text,/администратору/);
+  await f.click('101','paylink:year');assert.match(f.last().text,/администратору/);
+  await f.click('999','paylink:year');f.restart();
+  await f.inbound('999',{text:'https://evil.example/pay'});assert.match(f.last().text,/HTTPS-ссылка/);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM billing_payment_links').get().n,0);
+  await f.inbound('999',{text:'https://yoomoney.ru/checkout/payments/year'});
+  assert.equal(f.db.prepare("SELECT url FROM billing_payment_links WHERE plan='year'").get().url,'https://yoomoney.ru/checkout/payments/year');
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM billing_grants').get().n,0);
+  await f.click('101','payunlink:year');assert.match(f.last().text,/администратору/);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM billing_payment_links').get().n,1);
+  await f.click('999','payunlink:year');assert.equal(f.db.prepare('SELECT COUNT(*) n FROM billing_payment_links').get().n,0);
+  await f.click('999','paylink:month');await f.click('999','home');
+  assert.equal(await f.inbound('999',{text:'https://yoomoney.ru/pay'}),false);
+  await f.msg('101','/start support');assert.match(f.last().text,/следующим сообщением/);
+});

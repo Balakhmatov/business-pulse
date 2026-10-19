@@ -360,7 +360,7 @@
       const until=subscription.state==='paid'?subscription.paid_until_ms:subscription.trial_ends_ms;
       const label=subscription.state==='paid'?'Подписка до ':subscription.state==='expired'?'Тестовый период или подписка завершились. Данные сохранены.':'48 часов бесплатно — до ';
       const date=subscription.state==='expired'?'':new Date(until).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК.';
-      subscriptionBox.innerHTML=escapeHTML(label+date)+' <a href="./landing.html#pricing">Цены</a>';
+      subscriptionBox.innerHTML=escapeHTML(label+date)+' <a href="#" data-bp-pay="month">Оплата</a>';
     }
 
     const imported=!!(r&&r.source), loading=!!state.mineLoading;

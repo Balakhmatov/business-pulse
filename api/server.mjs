@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { ensurePaymentLinks,paymentCatalog } from './payment-links.mjs';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +34,7 @@ db.exec(
 // Upgrade existing SQLite schema before preparing statements that use the new columns.
 ensureCompanyMembers(db);
 ensureBillingSchema(db);
+ensurePaymentLinks(db);
 const accumulator=createAccumulator(db);
 const correctionService=createCorrectionService({db,secret:token});
 const importMapper=createImportMapper({db});
@@ -186,6 +188,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':origin||'https://balakhmatov.github.io','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'X-Telegram-Init-Data, Content-Type','Access-Control-Max-Age':'600','Vary':'Origin'});res.end();return;}
   if(req.method==='GET'&&url.pathname==='/api/health')return reply(res,200,{status:'ok',service:'business-pulse-api',db:db.prepare('SELECT 1 AS ok').get().ok===1},origin);
   if(!url.pathname.startsWith('/api/'))return reply(res,404,{error:'Not found'},origin);
+  if(req.method==='GET'&&url.pathname==='/api/prices')return reply(res,200,{plans:paymentCatalog(db)},origin);
   let id;try{id=telegramID(req.headers['x-telegram-init-data']);}catch{return reply(res,401,{error:'Open the app in Telegram again'},origin);}
   try{
     const c=companyFor(id);

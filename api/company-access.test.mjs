@@ -124,3 +124,14 @@ test('Expired company is blocked on API for owner and staff, retains data, and v
   assert.equal((await call('303','/report')).data.revenue30_kopecks,10000);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?').get(c.id).n,1);
 });
+
+test('Payment catalog is public for website checkout but cannot modify links or access company reports',async t=>{
+  const f=await apiFixture(t);
+  const response=await fetch(f.base+'/api/prices',{headers:{Origin:'https://balakhmatov.github.io'}});
+  assert.equal(response.status,200);assert.equal(response.headers.get('Access-Control-Allow-Origin'),'https://balakhmatov.github.io');
+  const body=await response.json();assert.equal(body.plans.length,4);
+  assert.equal(body.plans.find(p=>p.id==='welcome').price,1990);
+  assert.ok(body.plans.every(p=>p.payment_url===null));
+  assert.equal((await fetch(f.base+'/api/prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://evil.example'})})).status,401);
+  assert.equal((await fetch(f.base+'/api/report')).status,401);
+});

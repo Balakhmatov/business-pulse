@@ -1,3 +1,4 @@
+import { ensurePaymentLinks,paymentCatalog,savePaymentLink } from '../api/payment-links.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes,randomInt,randomUUID,createHash } from 'node:crypto';
 import { ensureCompanyMembers,companyForUser,addCompanyMember } from '../api/company-members.mjs';
@@ -21,6 +22,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
   ensureCompanyMembers(db);
   ensureBillingSchema(db,now());
+  ensurePaymentLinks(db);
   db.exec('CREATE TABLE IF NOT EXISTS notification_preferences (telegram_id TEXT PRIMARY KEY REFERENCES users(telegram_id),hour INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23));');
   db.exec('CREATE TABLE IF NOT EXISTS bot_profiles (telegram_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,username TEXT NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_contact_requests (actor_id TEXT PRIMARY KEY,request_id INTEGER NOT NULL,owner_id TEXT,kind TEXT NOT NULL,expires_ms INTEGER NOT NULL);'+
@@ -118,6 +120,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     if(adminIds.has(actor)){
       rows.push([button('Управление компаниями','list:0')]);
       rows.push([button('Проверить уведомления','testnotices')]);
+      rows.push([button('Настроить оплату СБП','paylinks')]);
     }
     rows.push([button('Поддержка','support'),button('Очистить чат','clear')]);
     const subscription=subscriptionFor(db,c,now());
@@ -239,6 +242,12 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     db.prepare('DELETE FROM bot_support_routes WHERE created_ms<?').run(now()-30*24*3600000);
     await send(actor,'Сообщение отправлено в поддержку. Ответ придёт сюда, в бота.',[[button('Написать ещё','support')],[button('В меню','home')]]);
   }
+  function paymentLinks(actor){
+    if(!adminIds.has(actor))throw Error('Доступно только администратору.');
+    const rows=paymentCatalog(db).map(p=>[button(p.name+' · '+rub(p.price)+(p.payment_url?' · подключено':' · нет ссылки'),'paylink:'+p.id)]);
+    rows.push([button('В меню','home')]);
+    return send(actor,'Оплата по СБП\n\nСоздайте в ЮKassa платёжную ссылку на точную сумму каждого тарифа с описанием «Подписка Бизнес Пульс» и нужным сроком. Убедитесь, что на странице доступна СБП. Затем выберите тариф и пришлите ссылку.\n\nЭто внешние платёжные страницы. Подписка включается после вашей проверки поступления денег. Секретные ключи отправлять не нужно.',rows);
+  }
   function prices(actor){
     const c=workspace(actor),s=subscriptionFor(db,c,now());
     return send(actor,pricesText(s),[[{text:'Открыть панель',web_app:{url:appUrl}}],[button('В меню','home')]],{parse_mode:'HTML'});
@@ -287,10 +296,22 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     const command=text.split(/\s+/)[0].split('@')[0].toLowerCase();
     const supportSession=!callback&&db.prepare('SELECT expires_ms FROM bot_support_sessions WHERE actor_id=?').get(actor);
     const supportRoute=!callback&&actor===supportId&&message.reply_to_message?.message_id?db.prepare('SELECT actor_id FROM bot_support_routes WHERE support_id=? AND message_id=?').get(actor,message.reply_to_message.message_id):null;
-    if(!supportSession&&!supportRoute&&!isOurCallback&&!message.users_shared&&!['/start','/menu','/help','/myid'].includes(command)&&text!=='Отмена')return false;
+    const paymentSession=!callback&&db.prepare('SELECT * FROM billing_link_sessions WHERE actor_id=?').get(actor);
+    if(!paymentSession&&!supportSession&&!supportRoute&&!isOurCallback&&!message.users_shared&&!['/start','/menu','/help','/myid'].includes(command)&&text!=='Отмена')return false;
     profile(user);
     if(isOurCallback)await api('answerCallbackQuery',{callback_query_id:callback.id});
     try{
+      if(!callback&&paymentSession&&!command.startsWith('/')&&text!=='Отмена'){
+        if(!adminIds.has(actor))throw Error('Доступно только администратору.');
+        if(paymentSession.expires_ms<=now()){
+          db.prepare('DELETE FROM billing_link_sessions WHERE actor_id=?').run(actor);
+          throw Error('Время ввода ссылки истекло. Выберите тариф заново.');
+        }
+        savePaymentLink(db,paymentSession.plan,text,actor,now());
+        db.prepare('DELETE FROM billing_link_sessions WHERE actor_id=?').run(actor);
+        await paymentLinks(actor);return true;
+      }
+      if(callback||command.startsWith('/')||text==='Отмена')db.prepare('DELETE FROM billing_link_sessions WHERE actor_id=?').run(actor);
       if(!callback&&!command.startsWith('/')&&text!=='Отмена'&&(supportRoute||supportSession)){
         if(!supportRoute&&supportSession.expires_ms<=now()){
           db.prepare('DELETE FROM bot_support_sessions WHERE actor_id=?').run(actor);
@@ -326,12 +347,25 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         const payload=text.split(/\s+/)[1];
         if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
         else if(command==='/start'&&payload==='prices')await prices(actor);
+        else if(command==='/start'&&payload==='support')await support(actor);
         else if(command==='/myid')await send(actor,profileText(user));
         else await home(actor);
         return true;
       }
       const [action,a,b]=callback.data.slice(4).split(':');
       if(action==='home')await home(actor);
+      else if(action==='paylinks')await paymentLinks(actor);
+      else if(action==='paylink'){
+        if(!adminIds.has(actor))throw Error('Доступно только администратору.');
+        if(!Object.hasOwn(PLANS,a))throw Error('Тариф не найден.');
+        db.prepare('INSERT INTO billing_link_sessions VALUES(?,?,?) ON CONFLICT(actor_id) DO UPDATE SET plan=excluded.plan,expires_ms=excluded.expires_ms').run(actor,a,now()+15*60000);
+        const current=paymentCatalog(db).find(p=>p.id===a);
+        await send(actor,PLANS[a].name+' — '+rub(PLANS[a].price)+'\n\nПришлите платёжную ссылку на эту сумму следующим сообщением.'+(current.payment_url?'\n\nТекущая ссылка: '+current.payment_url:''),[[button('Удалить ссылку','payunlink:'+a)],[button('Отмена','paylinks')]]);
+      }
+      else if(action==='payunlink'){
+        if(!adminIds.has(actor))throw Error('Доступно только администратору.');
+        db.prepare('DELETE FROM billing_payment_links WHERE plan=?').run(a);await paymentLinks(actor);
+      }
       else if(action==='support')await support(actor);
       else if(action==='supportcancel')await home(actor);
       else if(action==='prices')await prices(actor);
