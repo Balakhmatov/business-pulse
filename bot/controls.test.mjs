@@ -19,13 +19,15 @@ function fixture(t){
     "INSERT INTO users VALUES('101'),('202');INSERT INTO companies(id,owner_id,name,industry) VALUES('a','101','Клиника','clinic'),('b','202','Кафе','cafe');");
   let clock=Date.parse('2026-10-19T08:00:00Z');
   const messages=[],admins=new Set(['999']);
+  let failCopy=false;
   const api=async(method,payload)=>{
     messages.push({method,...payload});
+    if(method==='copyMessage'&&failCopy)throw Error('Не удалось отправить сообщение. Попробуйте ещё раз.');
     for(const row of payload.reply_markup?.inline_keyboard||[])for(const button of row)
       if(button.callback_data)assert.ok(Buffer.byteLength(button.callback_data)<=64,'Telegram callback size limit');
     return {message_id:payload.message_id??messages.length};
   };
-  const make=()=>createBotControls({dbPath,api,adminIds:admins,appUrl:'https://example.org/',botUsername:'business_pulse_app_bot',now:()=>clock});
+  const make=()=>createBotControls({dbPath,api,adminIds:admins,supportId:'999',appUrl:'https://example.org/',botUsername:'business_pulse_app_bot',now:()=>clock});
   let controls=make();
   t.after(()=>{controls.close();db.close();rmSync(folder,{recursive:true,force:true});});
   const user=id=>({id:Number(id),first_name:id==='101'?'Иван':id==='303'?'Анна':'Пользователь',username:'user'+id});
@@ -39,7 +41,7 @@ function fixture(t){
     const parsed=new URL(share.url);
     return parsed.searchParams.get('url')?new URL(parsed.searchParams.get('url')).searchParams.get('start').slice(5):parsed.searchParams.get('text').match(/join_([A-Za-z0-9_-]{32})/)[1];
   };
-  return {db,dbPath,messages,admins,msg,click,shared,last,request,invite,tick:()=>controls.trialReminderTick(),advance:ms=>clock+=ms,
+  return {db,dbPath,messages,admins,msg,click,shared,last,request,invite,failCopy:value=>failCopy=value,inbound:(id,extra)=>controls.handle({message:{from:user(id),chat:{id:Number(id),type:'private'},message_id:9000+messages.length,...extra}}),tick:()=>controls.trialReminderTick(),advance:ms=>clock+=ms,
     restart:()=>{controls.close();controls=make();}};
 }
 
@@ -286,4 +288,38 @@ test('Admin can receive all real reminder templates without changing billing or 
     assert.match(f.last().text,/администратору/);
     assert.equal(f.messages.slice(start).filter(m=>m.method==='sendMessage'&&m.reply_markup?.inline_keyboard?.[1]?.[0]?.callback_data==='bpu:prices').length,0);
   }
+});
+
+
+test('Support sends text and attachments only after button opt-in; owner can reply after restart with isolated routing',async t=>{
+  const f=fixture(t);await f.msg('101','/start');
+  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='bpu:support'));
+  assert.equal(await f.inbound('101',{text:'Обычное сообщение'}),false);
+  await f.click('101','support');f.restart();
+  await f.inbound('101',{text:'Помогите с отчётом'});
+  const copies=f.messages.filter(m=>m.method==='copyMessage');assert.equal(copies.length,1);
+  assert.equal(copies[0].chat_id,'999');assert.equal(copies[0].from_chat_id,'101');
+  assert.match(f.last().text,/Сообщение отправлено/);
+  const route=f.db.prepare("SELECT message_id FROM bot_support_routes WHERE actor_id='101' ORDER BY message_id DESC").get();
+  f.restart();await f.inbound('999',{text:'Вот решение',reply_to_message:{message_id:route.message_id}});
+  const reply=f.messages.filter(m=>m.method==='copyMessage').at(-1);
+  assert.equal(reply.chat_id,'101');assert.equal(reply.from_chat_id,'999');
+  assert.equal(await f.inbound('202',{text:'Поддельный ответ',reply_to_message:{message_id:route.message_id}}),false);
+  await f.click('202','support');await f.inbound('202',{photo:[{file_id:'test'}],caption:'Ошибка'});
+  assert.equal(f.messages.filter(m=>m.method==='copyMessage').at(-1).from_chat_id,'202');
+  const count=f.messages.filter(m=>m.method==='copyMessage').length;
+  await f.click('101','support');await f.click('101','supportcancel');
+  assert.equal(await f.inbound('101',{text:'Не отправлять'}),false);
+  await f.click('101','support');f.advance(31*60000);await f.inbound('101',{text:'Слишком поздно'});
+  assert.match(f.last().text,/истекло/);
+  assert.equal(f.messages.filter(m=>m.method==='copyMessage').length,count);
+});
+
+test('Support keeps an undelivered request pending and never claims successful delivery after Telegram failure',async t=>{
+  const f=fixture(t);await f.click('101','support');f.failCopy(true);
+  await f.inbound('101',{text:'Вопрос'});assert.match(f.last().text,/Не удалось отправить/);
+  assert.ok(f.db.prepare("SELECT 1 FROM bot_support_sessions WHERE actor_id='101'").get());
+  f.failCopy(false);await f.inbound('101',{text:'Вопрос повторно'});
+  assert.match(f.last().text,/Сообщение отправлено/);
+  assert.equal(f.db.prepare("SELECT 1 FROM bot_support_sessions WHERE actor_id='101'").get(),undefined);
 });

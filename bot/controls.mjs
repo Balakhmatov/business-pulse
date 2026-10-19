@@ -13,7 +13,9 @@ const profileText=user=>[clean([user.last_name,user.first_name].filter(Boolean).
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const clean=value=>String(value||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,100);
 
-export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now,defaultHour=9,timeZone='Europe/Moscow',isSubscribed=()=>false}){
+export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now,defaultHour=9,timeZone='Europe/Moscow',isSubscribed=()=>false,supportId=process.env.BP_SUPPORT_ID||'1296951270'}){
+  supportId=String(supportId);
+  if(!idOK(supportId))throw Error('Некорректный аккаунт поддержки.');
   if(!validNotificationHour(defaultHour))throw Error('Некорректное время уведомлений.');
   const db=new DatabaseSync(dbPath);
   db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
@@ -24,10 +26,12 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     'CREATE TABLE IF NOT EXISTS bot_contact_requests (actor_id TEXT PRIMARY KEY,request_id INTEGER NOT NULL,owner_id TEXT,kind TEXT NOT NULL,expires_ms INTEGER NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_invites (token_hash TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,owner_id TEXT NOT NULL,issued_by TEXT NOT NULL,target_id TEXT,expires_ms INTEGER NOT NULL,used_by TEXT);');
   db.exec('CREATE TABLE IF NOT EXISTS bot_menu_panels (chat_id TEXT PRIMARY KEY,message_id INTEGER NOT NULL);');
+  db.exec('CREATE TABLE IF NOT EXISTS bot_support_sessions (actor_id TEXT PRIMARY KEY,expires_ms INTEGER NOT NULL);'+
+    'CREATE TABLE IF NOT EXISTS bot_support_routes (support_id TEXT NOT NULL,message_id INTEGER NOT NULL,actor_id TEXT NOT NULL,created_ms INTEGER NOT NULL,PRIMARY KEY(support_id,message_id));');
   const cleanup=createChatCleanup({db,api:transport,now});
   const api=async(method,payload)=>{
     const result=await transport(method,payload);
-    if(method==='sendMessage')cleanup.remember(payload.chat_id,result?.message_id,result?.date);
+    if(method==='sendMessage'||method==='copyMessage')cleanup.remember(payload.chat_id,result?.message_id,result?.date);
     return result;
   };
   function profile(user){
@@ -115,7 +119,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       rows.push([button('Управление компаниями','list:0')]);
       rows.push([button('Проверить уведомления','testnotices')]);
     }
-    rows.push([button('Очистить чат','clear')]);
+    rows.push([button('Поддержка','support'),button('Очистить чат','clear')]);
     const subscription=subscriptionFor(db,c,now());
     const accessNote=subscription.state==='trial'?'\n\n48 часов бесплатно — до '+mskDate(subscription.trial_ends_ms)+'.\nПервый месяц за 1 990 ₽ при оплате в тестовый период (скидка 20%).':subscription.state==='paid'?'\n\nПодписка до '+mskDate(subscription.paid_until_ms)+'.':subscription.state==='expired'?'\n\nТестовый период или подписка завершились. Данные сохранены. Тарифы — в разделе «Цены».':'';
     const text='Бизнес Пульс\n\n'+c.name+'\n'+(c.access_role==='member'?'Вы подключены как сотрудник.':'Управление компанией и отчётами.')+accessNote+suffix;
@@ -213,6 +217,28 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     }catch(error){db.exec('ROLLBACK');throw error;}
     return home(actor);
   }
+  function support(actor){
+    db.prepare('INSERT INTO bot_support_sessions VALUES(?,?) ON CONFLICT(actor_id) DO UPDATE SET expires_ms=excluded.expires_ms').run(actor,now()+30*60000);
+    return send(actor,'Поддержка\n\nНапишите вопрос следующим сообщением. Можно приложить скриншот, документ или голосовое сообщение. Мы ответим здесь, в боте.\n\nНе отправляйте пароли, данные банковских карт и персональные сведения пациентов или покупателей.',[[button('Отмена','supportcancel')]]);
+  }
+  const copyable=m=>Boolean(m.text||m.photo||m.document||m.voice||m.audio||m.video||m.animation||m.sticker||m.video_note);
+  async function supportMessage(actor,message,route){
+    if(!copyable(message)||!Number.isSafeInteger(message.message_id))throw Error('Отправьте текст, фото, документ или голосовое сообщение.');
+    if(route){
+      await api('copyMessage',{chat_id:route.actor_id,from_chat_id:actor,message_id:message.message_id,
+        reply_markup:{inline_keyboard:[[button('Ответить в поддержку','support')]]}});
+      await api('sendMessage',{chat_id:actor,text:'Ответ отправлен клиенту.'});
+      return;
+    }
+    const c=companyForUser(db,actor);
+    const header=await api('sendMessage',{chat_id:supportId,text:'Обращение в поддержку «Бизнес Пульс»\n\n'+name(actor)+'\nTelegram ID: '+actor+(c?'\nКомпания: '+c.name:'')+'\n\nЧтобы ответить клиенту, используйте «Ответить» на этом сообщении или на сообщении ниже.'});
+    const save=id=>{if(Number.isSafeInteger(id))db.prepare('INSERT OR REPLACE INTO bot_support_routes VALUES(?,?,?,?)').run(supportId,id,actor,now());};
+    save(header?.message_id);
+    await api('copyMessage',{chat_id:supportId,from_chat_id:actor,message_id:message.message_id}).then(result=>save(result?.message_id));
+    db.prepare('DELETE FROM bot_support_sessions WHERE actor_id=?').run(actor);
+    db.prepare('DELETE FROM bot_support_routes WHERE created_ms<?').run(now()-30*24*3600000);
+    await send(actor,'Сообщение отправлено в поддержку. Ответ придёт сюда, в бота.',[[button('Написать ещё','support')],[button('В меню','home')]]);
+  }
   function prices(actor){
     const c=workspace(actor),s=subscriptionFor(db,c,now());
     return send(actor,pricesText(s),[[{text:'Открыть панель',web_app:{url:appUrl}}],[button('В меню','home')]],{parse_mode:'HTML'});
@@ -259,10 +285,20 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     if(callback&&!isOurCallback)return false;
     if(isOurCallback)setPanel(actor,message.message_id);
     const command=text.split(/\s+/)[0].split('@')[0].toLowerCase();
-    if(!isOurCallback&&!message.users_shared&&!['/start','/menu','/help','/myid'].includes(command)&&text!=='Отмена')return false;
+    const supportSession=!callback&&db.prepare('SELECT expires_ms FROM bot_support_sessions WHERE actor_id=?').get(actor);
+    const supportRoute=!callback&&actor===supportId&&message.reply_to_message?.message_id?db.prepare('SELECT actor_id FROM bot_support_routes WHERE support_id=? AND message_id=?').get(actor,message.reply_to_message.message_id):null;
+    if(!supportSession&&!supportRoute&&!isOurCallback&&!message.users_shared&&!['/start','/menu','/help','/myid'].includes(command)&&text!=='Отмена')return false;
     profile(user);
     if(isOurCallback)await api('answerCallbackQuery',{callback_query_id:callback.id});
     try{
+      if(!callback&&!command.startsWith('/')&&text!=='Отмена'&&(supportRoute||supportSession)){
+        if(!supportRoute&&supportSession.expires_ms<=now()){
+          db.prepare('DELETE FROM bot_support_sessions WHERE actor_id=?').run(actor);
+          await send(actor,'Время отправки обращения истекло. Нажмите «Поддержка» и отправьте сообщение ещё раз.',[[button('Поддержка','support')],[button('В меню','home')]]);
+        }else await supportMessage(actor,message,supportRoute);
+        return true;
+      }
+      if(callback||command.startsWith('/')||text==='Отмена')db.prepare('DELETE FROM bot_support_sessions WHERE actor_id=?').run(actor);
       if(message.users_shared){
         const pending=db.prepare('SELECT * FROM bot_contact_requests WHERE actor_id=?').get(actor);
         const selected=message.users_shared.users;
@@ -296,6 +332,8 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       }
       const [action,a,b]=callback.data.slice(4).split(':');
       if(action==='home')await home(actor);
+      else if(action==='support')await support(actor);
+      else if(action==='supportcancel')await home(actor);
       else if(action==='prices')await prices(actor);
       else if(action==='testnotices')await testNotices(actor);
       else if(action==='testnotice'){
