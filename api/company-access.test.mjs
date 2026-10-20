@@ -172,3 +172,20 @@ test('Payment catalog is public for website checkout but cannot modify links or 
   assert.equal((await f.call('101','/payments',{plan:'month',accepted_terms:true,company_id:'forged',price:1})).status,503);
   assert.equal((await f.call('101','/payments/refresh',{})).status,200);
  });
+
+test('Website login grants payment access only after bot confirmation and cannot read reports',async t=>{
+  const f=await apiFixture(t,false);
+  const start=await fetch(f.base+'/api/web-login',{method:'POST'}),a=await start.json();
+  assert.equal(start.status,200);
+  const poll=()=>fetch(f.base+'/api/web-login/poll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)});
+  assert.deepEqual(await (await poll()).json(),{pending:true});
+  const {createWebLogin}=await import('./web-login.mjs');const db=new DatabaseSync(f.dbPath);t.after(()=>db.close());
+  createWebLogin(db).approve(a.challenge,'101');
+  const {token}=await (await poll()).json();assert.ok(token);
+  const headers={'X-BP-Web-Session':token,'Content-Type':'application/json'};
+  const refreshed=await fetch(f.base+'/api/payments/refresh',{method:'POST',headers});assert.equal(refreshed.status,200);
+  assert.equal((await refreshed.json()).subscription.state,'pending');
+  assert.equal((await fetch(f.base+'/api/report',{headers})).status,401);
+  assert.equal((await fetch(f.base+'/api/payments',{method:'POST',headers,body:JSON.stringify({plan:'month'})})).status,400);
+  assert.equal((await poll()).status,400);
+});

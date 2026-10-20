@@ -1,4 +1,5 @@
 import { ensurePaymentLinks,paymentCatalog,savePaymentLink } from '../api/payment-links.mjs';
+import { createWebLogin } from '../api/web-login.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes,randomInt,randomUUID,createHash } from 'node:crypto';
 import { ensureCompanyMembers,companyForUser,addCompanyMember } from '../api/company-members.mjs';
@@ -22,6 +23,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
   ensureCompanyMembers(db);
   ensureBillingSchema(db,now());
+  const webLogin=createWebLogin(db,now);
   ensurePaymentLinks(db);
   db.exec('CREATE TABLE IF NOT EXISTS notification_preferences (telegram_id TEXT PRIMARY KEY REFERENCES users(telegram_id),hour INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23));');
   db.exec('CREATE TABLE IF NOT EXISTS bot_profiles (telegram_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,username TEXT NOT NULL);'+
@@ -357,7 +359,12 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         // Button navigation continues to edit the current panel in place.
         if(command==='/start'||command==='/menu')db.prepare('DELETE FROM bot_menu_panels WHERE chat_id=?').run(actor);
         const payload=text.split(/\s+/)[1];
-        if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
+        if(command==='/start'&&payload?.startsWith('web_')){
+          const challenge=payload.slice(4);
+          if(!/^[a-f0-9]{48}$/.test(challenge))throw Error('Ссылка входа недействительна.');
+          await send(actor,'Подтвердите вход для оплаты на сайте «Бизнес Пульс».\n\nПодтверждайте только если вы сами начали вход на сайте. После подтверждения вернитесь в браузер.',[[button('Подтвердить вход','web:'+challenge)],[button('Отмена','home')]]);
+        }
+        else if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
         else if(command==='/start'&&payload==='prices')await prices(actor);
         else if(command==='/start'&&payload==='support')await support(actor);
         else if(command==='/myid')await send(actor,profileText(user));
@@ -365,7 +372,11 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         return true;
       }
       const [action,a,b]=callback.data.slice(4).split(':');
-      if(action==='home')await home(actor);
+      if(action==='web'){
+        webLogin.approve(a,actor);
+        await send(actor,'Вход подтверждён. Вернитесь на сайт — теперь можно выбрать тариф и оплатить.',[[button('В меню','home')]]);
+      }
+      else if(action==='home')await home(actor);
       else if(action==='trial'){
         const c=access(actor,a,true);
         startCompanyTrial(db,c,actor,now(),adminIds);

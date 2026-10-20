@@ -395,3 +395,14 @@ test('Payment URL preserves configured application path, query and hash',async t
   assert.equal(u.pathname,'/business-pulse/');assert.equal(u.searchParams.get('lang'),'ru');
   assert.deepEqual(u.searchParams.getAll('view'),['payment']);assert.equal(u.hash,'#account');
 });
+
+test('Website payment login requires a separate explicit confirmation in the bot',async t=>{
+  const f=fixture(t);const {createWebLogin}=await import('../api/web-login.mjs');
+  const login=createWebLogin(f.db,()=>Date.parse('2026-10-19T08:00:00Z')),a=login.create();
+  await f.msg('101','/start web_'+a.challenge);
+  assert.match(f.last().text,/Подтвердите вход/);
+  assert.deepEqual(login.poll(a.challenge,a.secret),{pending:true});
+  await f.click('101','web:'+a.challenge);
+  assert.match(f.last().text,/Вход подтверждён/);
+  assert.equal(login.actor(login.poll(a.challenge,a.secret).token),'101');
+});

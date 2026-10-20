@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { createWebLogin } from './web-login.mjs';
 import { createPayments } from './yookassa.mjs';
 import { ensurePaymentLinks } from './payment-links.mjs';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
@@ -37,6 +38,7 @@ ensureCompanyMembers(db);
 ensureBillingSchema(db);
 ensurePaymentLinks(db);
 const payments=createPayments({db});
+const webLogin=createWebLogin(db);
 const paymentTimer=setInterval(()=>void payments.reconcile(),60000);
 paymentTimer.unref();
 void payments.reconcile();
@@ -190,11 +192,19 @@ const server=http.createServer(async(req,res)=>{
   }
   const origin=req.headers.origin;
   if(origin&&!allowedOrigins.has(origin))return reply(res,403,{error:'Origin not allowed'});
-  if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':origin||'https://balakhmatov.github.io','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'X-Telegram-Init-Data, Content-Type','Access-Control-Max-Age':'600','Vary':'Origin'});res.end();return;}
+  if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':origin||'https://balakhmatov.github.io','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'X-Telegram-Init-Data, X-BP-Web-Session, Content-Type','Access-Control-Max-Age':'600','Vary':'Origin'});res.end();return;}
   if(req.method==='GET'&&url.pathname==='/api/health')return reply(res,200,{status:'ok',service:'business-pulse-api',db:db.prepare('SELECT 1 AS ok').get().ok===1},origin);
   if(!url.pathname.startsWith('/api/'))return reply(res,404,{error:'Not found'},origin);
   if(req.method==='GET'&&url.pathname==='/api/prices')return reply(res,200,{plans:Object.entries(PLANS).map(([id,p])=>({id,...p})),payments_available:payments.ready},origin);
-  let id;try{id=telegramID(req.headers['x-telegram-init-data']);}catch{return reply(res,401,{error:'Open the app in Telegram again'},origin);}
+  if(req.method==='POST'&&url.pathname==='/api/web-login'){
+    try{return reply(res,200,webLogin.create(),origin);}catch(e){return reply(res,429,{error:e.message},origin);}
+  }
+  if(req.method==='POST'&&url.pathname==='/api/web-login/poll'){
+    try{const input=await readJSON(req);return reply(res,200,webLogin.poll(input.challenge,input.secret),origin);}catch(e){return reply(res,400,{error:e.message},origin);}
+  }
+  const webActor=webLogin.actor(req.headers['x-bp-web-session']);
+  const webPaymentRoute=['/api/payments','/api/payments/refresh'].includes(url.pathname)&&req.method==='POST';
+  let id;try{id=webActor&&webPaymentRoute?webActor:telegramID(req.headers['x-telegram-init-data']);}catch{return reply(res,401,{error:'Open the app in Telegram again'},origin);}
   try{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);

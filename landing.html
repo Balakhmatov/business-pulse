@@ -28,7 +28,7 @@ button,a{touch-action:manipulation}
 svg{display:block}
 .wrap{width:min(1180px,calc(100% - 40px));margin:0 auto}
 .header{position:sticky;top:0;z-index:20;background:rgba(247,248,252,.83);backdrop-filter:blur(18px);border-bottom:1px solid rgba(231,234,242,.78)}
-.header-inner{height:74px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.header-inner{min-height:74px;padding-top:10px;padding-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:24px}
 .brand{display:flex;align-items:center;gap:11px;font-size:20px;font-weight:850;letter-spacing:-.65px}
 .logo{width:37px;height:37px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,#9693ff,#635ee5);box-shadow:0 7px 18px rgba(99,94,229,.26)}
 .logo svg{width:25px;height:25px}
@@ -149,9 +149,9 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
 }
 @media(max-width:680px){
   .wrap{width:min(100% - 26px,1180px)}
-  .header-inner{height:66px}
+  .header-inner{height:auto}
   .brand{font-size:17px}.logo{width:33px;height:33px;border-radius:10px}
-  .header-cta .btn-secondary{display:none}
+  .header-cta .btn-secondary{display:inline-flex}
   .header-cta .btn-primary{min-height:40px;padding:0 13px;font-size:11px}
   .hero{padding:59px 0 70px}
   h1{font-size:43px;letter-spacing:-2.3px}
@@ -184,8 +184,9 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
 .pricing-note{font-size:12px;line-height:1.7;color:#8189a0;margin-top:22px;max-width:860px}
 @media(max-width:760px){.pricing-grid{grid-template-columns:1fr}.price-card{padding:23px}.price-amount{font-size:34px}}
 .footer nav a{color:#626c85;text-decoration:none}.footer nav a:hover{text-decoration:underline}
+.contact-links{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px}.header-cta{flex-wrap:wrap}@media(max-width:680px){.header-inner{gap:12px;flex-wrap:wrap}.header-cta{width:100%}.header-cta .btn{flex:1;font-size:12px}}
 </style>
-<link rel="stylesheet" href="payments.css?v=20261019-sbp-v1">
+<link rel="stylesheet" href="payments.css?v=20261020-web-payment-v1">
 </head>
 <body>
 <header class="header">
@@ -203,7 +204,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
       <a href="#pricing">Цены</a>
     </nav>
     <div class="header-cta">
-      <a class="btn btn-secondary" href="./index.html">Демо</a>
+      <a class="btn btn-secondary" href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener">Связаться для подключения</a>
       <a class="btn btn-primary" href="https://t.me/business_pulse_app_bot" target="_blank" rel="noopener">
         Открыть в Telegram
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -220,6 +221,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
       <h1>Вся компания. Одним взглядом.</h1>
       <p class="hero-copy">Бизнес Пульс превращает обычную выгрузку из учётной системы в короткую управленческую сводку: что происходит с выручкой, чеками и динамикой — и где действительно стоит обратить внимание.</p>
       <div class="hero-actions">
+        <a class="btn btn-primary" href="https://t.me/ImSoCrazyy?text=%D0%A5%D0%BE%D1%87%D1%83%20%D1%82%D0%B5%D1%81%D1%82%20%D0%BD%D0%B0%2048%20%D1%87%D0%B0%D1%81%D0%BE%D0%B2" target="_blank" rel="noopener">48 часов тестового режима бесплатно</a>
         <a class="btn btn-primary" href="https://t.me/business_pulse_app_bot" target="_blank" rel="noopener">
           Открыть Бизнес Пульс
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -406,7 +408,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
     <div class="section-head">
       <div class="section-kicker">Цены</div>
       <h2 id="pricing-title">48 часов, чтобы увидеть свой бизнес в цифрах</h2>
-      <p>Пробные 48 часов включаются администратором по согласованию. До оплаты или активации пробного периода доступ к рабочим данным закрыт. Руководитель получает сводку, сотрудник загружает отчёты — подписка общая для компании.</p>
+      <p>48 часов тестового режима бесплатно. Загрузите свой отчёт и оцените сервис перед оплатой.</p>
     </div>
     <div class="pricing-grid">
       <article class="price-card"><span class="price-badge">Помесячно</span><h3>1 месяц</h3><div class="price-amount">2 490 ₽</div><p>Оплата за один месяц.</p><a class="btn btn-primary" href="#pricing" data-bp-pay="month">Оплатить по СБП</a></article>
@@ -436,10 +438,10 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
 
 <footer class="footer">
   <div class="wrap footer-inner">
-    <span>© 2026 Бизнес Пульс</span>
+    <div><span>© 2026 Бизнес Пульс</span><div class="contact-links"><a href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener">Telegram: @ImSoCrazyy</a><a href="tel:+79517207789">+7 951 720-77-89</a><a href="mailto:ilya.balahmatov@gmail.com">ilya.balahmatov@gmail.com</a></div></div>
     <nav aria-label="Юридическая информация" style="display:flex;flex-wrap:wrap;gap:10px 18px;max-width:690px"><a href="./legal/offer.html">Оферта и соглашение</a><a href="./legal/privacy.html">Конфиденциальность</a><a href="./legal/tariffs.html">Тарифы</a><a href="./legal/refunds.html">Возвраты</a><a href="./legal/contacts.html">Контакты и реквизиты</a></nav>
   </div>
 </footer>
-<script src="payments.js?v=20261019-manual-trial-v1" defer></script>
+<script src="payments.js?v=20261020-web-payment-v1" defer></script>
 </body>
 </html>
