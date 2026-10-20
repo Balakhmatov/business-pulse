@@ -413,10 +413,6 @@
     $('averageLabel').textContent='Средний чек';
     $('averageTicket').textContent=imported&&verified&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
     $('averageCaption').textContent='Сумма за 30 дней / число операций';
-    $('specialLabel').textContent='Другие показатели';
-    $('specialIcon').innerHTML=svgIcon('alert');
-    $('specialValue').textContent='—';
-    $('specialCaption').textContent='Появятся, когда будут нужные данные';
     $('topTitle').textContent=r?.company?.industry==='clinic'?'Топ-3 услуги':
       r?.company?.industry==='store'?'Топ-3 товара':
       r?.company?.industry==='auto'?'Топ-3 работы':'Топ-3 позиции';
@@ -465,7 +461,7 @@
       $('bottomDataHint').textContent+=message;
     }
     $('clearImport').hidden=true;
-    document.querySelector('.side-foot').textContent='Прототип · Личные данные компании';
+    document.querySelector('.side-foot').textContent='Личные данные компании';
     activeTab();
     updateQuickButton();
   }
@@ -490,7 +486,7 @@
   // Existing demo tab handlers are installed by index.html before this module.
   document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(btn=>{
     btn.addEventListener('click',()=>{
-      document.querySelector('.side-foot').textContent='Прототип · Данные демонстрационные';
+      document.querySelector('.side-foot').textContent='Данные демонстрационные';
       $('subscriptionInfo').hidden=true;
       $('financeBooks').hidden=true;
       $('unverifiedReview').hidden=true;

@@ -2,3 +2,5 @@
 .bp-pay-trial{display:inline-block;padding:11px 16px;margin:16px 0;background:#efefff;border-radius:12px;font-weight:700}.bp-pay-login{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 20px}.bp-pay-login[hidden]{display:none}.bp-pay-card.selected{border-color:#625de5;box-shadow:0 0 0 2px #625de525}
 
 .bp-pay-trial{font-size:17px;line-height:1.6}
+
+.bp-payment-footer{flex-direction:column;gap:12px}
