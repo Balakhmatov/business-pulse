@@ -185,8 +185,10 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
 @media(max-width:760px){.pricing-grid{grid-template-columns:1fr}.price-card{padding:23px}.price-amount{font-size:34px}}
 .footer nav a{color:#626c85;text-decoration:none}.footer nav a:hover{text-decoration:underline}
 .contact-links{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px}.header-cta{flex-wrap:wrap}@media(max-width:680px){.header-inner{gap:12px;flex-wrap:wrap}.header-cta{width:100%}.header-cta .btn{flex:1;font-size:12px}}
+.hero-actions .trial-cta{font-size:19px;min-height:58px;padding:12px 22px}.header-inner{flex-wrap:wrap}.nav{gap:18px}.header-cta{gap:8px}
+.app-preview{display:block;position:relative;border:1px solid #e4e7f0;border-radius:22px;overflow:hidden;box-shadow:0 28px 80px rgba(27,34,75,.13)}.app-preview img{display:block;width:100%;height:auto}.preview-caption{position:relative;font-size:12px;line-height:1.6;color:#747d98;margin:14px 3px 0}.preview-caption a{color:#5953cc;text-decoration:underline}
 </style>
-<link rel="stylesheet" href="payments.css?v=20261020-web-payment-v1">
+<link rel="stylesheet" href="payments.css?v=20261020-demo-sync-v3">
 </head>
 <body>
 <header class="header">
@@ -204,6 +206,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
       <a href="#pricing">Цены</a>
     </nav>
     <div class="header-cta">
+      <a class="btn btn-secondary" href="./index.html">Демо</a>
       <a class="btn btn-secondary" href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener">Связаться для подключения</a>
       <a class="btn btn-primary" href="https://t.me/business_pulse_app_bot" target="_blank" rel="noopener">
         Открыть в Telegram
@@ -218,9 +221,9 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
   <div class="wrap hero-grid">
     <div>
       <h1>Вся компания. Одним взглядом.</h1>
-      <p class="hero-copy">Бизнес Пульс превращает обычную выгрузку из учётной системы в короткую управленческую сводку: что происходит с выручкой, чеками и динамикой — и где действительно стоит обратить внимание.</p>
+      <p class="hero-copy">Бизнес Пульс превращает обычную выгрузку из учётной системы в короткую управленческую сводку: что происходит с оплатами, выполненными продажами и динамикой — и где действительно стоит обратить внимание.</p>
       <div class="hero-actions">
-        <div><a class="btn btn-primary" href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener">48 часов тестового режима бесплатно</a><p style="margin:10px 0 0;font-size:14px;color:#69728e">Для подключения напишите <a href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">сюда</a>.</p></div>
+        <div><a class="btn btn-primary trial-cta" href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener">48 часов бесплатного теста</a><p style="margin:10px 0 0;font-size:14px;color:#69728e">Для подключения напишите <a href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">сюда</a>.</p></div>
         <a class="btn btn-primary" href="https://t.me/business_pulse_app_bot" target="_blank" rel="noopener">
           Открыть Бизнес Пульс
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -236,61 +239,12 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
       </div>
     </div>
 
-    <div class="product-stage" aria-label="Пример интерфейса Бизнес Пульс">
+    <div class="product-stage" aria-label="Актуальный интерфейс Бизнес Пульс">
       <div class="glow"></div>
-      <div class="dashboard">
-        <div class="dash-top">
-          <div class="dash-brand">
-            <span class="logo"><svg viewBox="0 0 30 30" fill="none"><path d="M3 16h5l3-7 6 14 4-10 2 3h4" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            Бизнес Пульс
-          </div>
-          <div class="live">Данные обновлены</div>
-        </div>
-        <div class="dash-intro">
-          <div><span>Сегодняшний обзор</span><strong>Доброе утро</strong></div>
-          <small>по 16 октября включительно</small>
-        </div>
-        <div class="kpis">
-          <div class="revenue">
-            <div>
-              <div class="metric-label">Выручка за 30 дней</div>
-              <div class="revenue-value">4 286 400 ₽</div>
-              <div class="delta">+8,4% к прошлому периоду</div>
-            </div>
-            <div class="revenue-foot">Рост подтверждается полной историей за оба периода</div>
-          </div>
-          <div class="mini-card">
-            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
-            <span>Визитов</span><strong>1 247</strong>
-          </div>
-          <div class="mini-card">
-            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
-            <span>Средний чек</span><strong>3 437 ₽</strong>
-          </div>
-          <div class="mini-card">
-            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/></svg></div>
-            <span>Вчера</span><strong>182 600 ₽</strong>
-          </div>
-          <div class="mini-card">
-            <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg></div>
-            <span>Сигналы</span><strong>2 важных</strong>
-          </div>
-        </div>
-        <div class="lower">
-          <div class="chart-card">
-            <div class="card-head"><strong>Выручка за 7 дней</strong><span>полные сутки</span></div>
-            <div class="chart">
-              <div class="bar" style="height:54%"></div><div class="bar" style="height:68%"></div><div class="bar" style="height:48%"></div>
-              <div class="bar" style="height:77%"></div><div class="bar" style="height:63%"></div><div class="bar" style="height:91%"></div><div class="bar" style="height:72%"></div>
-            </div>
-          </div>
-          <div class="signal-card">
-            <div class="card-head"><strong>Что важно</strong><span>автоанализ</span></div>
-            <div class="signal"><div class="signal-dot good"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 12 3 3 7-7"/></svg></div><div><strong>Выручка растёт</strong><p>+8,4% к предыдущим 30 дням.</p></div></div>
-            <div class="signal"><div class="signal-dot warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4 3 20h18L12 4Z"/><path d="M12 9v5m0 3h.01"/></svg></div><div><strong>Просадка по вторникам</strong><p>Стоит проверить загрузку в этот день.</p></div></div>
-          </div>
-        </div>
-      </div>
+      <a class="app-preview" href="./index.html" aria-label="Открыть демо приложения">
+        <img src="./public/assets/demo-dashboard.png?v=20261020" width="1194" height="1030" alt="Бизнес Пульс: полученные оплаты и оказанные услуги отдельно, количество услуг, средний чек, динамика и топ услуг" fetchpriority="high">
+      </a>
+      <p class="preview-caption">Актуальный интерфейс · пример на данных клиники. <a href="./index.html">Открыть демо →</a></p>
     </div>
   </div>
 </section>
@@ -306,7 +260,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
       <article class="feature">
         <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/></svg></div>
         <h3>Динамика бизнеса</h3>
-        <p>Выручка, чеки, средний чек и сравнение с предыдущим периодом без ручных формул.</p>
+        <p>Полученные оплаты, выполненные продажи, количество услуг или товаров, средний чек и сравнение периодов.</p>
       </article>
       <article class="feature">
         <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></svg></div>
@@ -365,7 +319,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
     <div class="checks">
       <div class="check">
         <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 12 3 3 7-7"/></svg></div>
-        <div><strong>Точные расчёты делает код</strong><p>Выручка, количество операций, средний чек и сравнения считаются программно, а не языковой моделью.</p></div>
+        <div><strong>Точные расчёты делает код</strong><p>Полученные оплаты, выполненные продажи, количество и средний чек рассчитываются программно. Оплаты и продажи учитываются отдельно.</p></div>
       </div>
       <div class="check">
         <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 12 3 3 7-7"/></svg></div>
@@ -407,7 +361,7 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
     <div class="section-head">
       <div class="section-kicker">Цены</div>
       <h2 id="pricing-title">48 часов, чтобы увидеть свой бизнес в цифрах</h2>
-      <p>48 часов тестового режима бесплатно. Для подключения напишите <a href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">сюда</a>.</p>
+      <p>48 часов бесплатного теста. Для подключения напишите <a href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">сюда</a>.</p>
     </div>
     <div class="pricing-grid">
       <article class="price-card"><span class="price-badge">Помесячно</span><h3>1 месяц</h3><div class="price-amount">2 490 ₽</div><p>Оплата за один месяц.</p><a class="btn btn-primary" href="#pricing" data-bp-pay="month">Оплатить по СБП</a></article>
@@ -441,6 +395,6 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
     <nav aria-label="Юридическая информация" style="display:flex;flex-wrap:wrap;gap:10px 18px;max-width:690px"><a href="./legal/offer.html">Оферта и соглашение</a><a href="./legal/privacy.html">Конфиденциальность</a><a href="./legal/tariffs.html">Тарифы</a><a href="./legal/refunds.html">Возвраты</a><a href="./legal/contacts.html">Контакты и реквизиты</a></nav>
   </div>
 </footer>
-<script src="payments.js?v=20261020-trial-contact-v2" defer></script>
+<script src="payments.js?v=20261020-demo-sync-v3" defer></script>
 </body>
 </html>

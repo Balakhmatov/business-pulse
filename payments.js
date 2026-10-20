@@ -15,7 +15,7 @@
   const dialog=document.createElement('dialog');dialog.className='bp-pay-dialog';dialog.setAttribute('aria-labelledby','bp-pay-title');
   // All interpolated strings below are fixed product copy, never server HTML.
   dialog.innerHTML='<div class="bp-pay-head"><div><h2 id="bp-pay-title">Выберите тариф</h2></div><button type="button" class="bp-pay-close" aria-label="Закрыть">×</button></div>'+
-    '<div class="bp-pay-trial">48 часов тестового режима бесплатно.<br>Для подключения напишите <a href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">сюда</a>.</div>'+
+    '<div class="bp-pay-trial">48 часов бесплатного теста.<br>Для подключения напишите <a href="https://t.me/ImSoCrazyy" target="_blank" rel="noopener" style="text-decoration:underline;text-underline-offset:3px">сюда</a>.</div>'+
     '<div class="bp-pay-login"><button type="button" class="bp-pay-submit">Войти через Telegram для оплаты</button><a hidden target="_blank" rel="noopener">Подтвердить вход в Telegram</a></div>'+
     '<label class="bp-pay-accept"><input type="checkbox"><span>Принимаю <a href="./legal/offer.html" target="_blank" rel="noopener">оферту и пользовательское соглашение</a>, ознакомлен с <a href="./legal/tariffs.html" target="_blank" rel="noopener">тарифами</a> и <a href="./legal/refunds.html" target="_blank" rel="noopener">порядком возвратов</a>.</span></label>'+
     '<p class="bp-pay-status" role="status">Загружаем способы оплаты…</p><div class="bp-pay-cards"></div>'+

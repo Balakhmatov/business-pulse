@@ -503,6 +503,7 @@
       if(concernsChip)concernsChip.textContent='Анализ';
       if(positivesChip)positivesChip.textContent='Позитив';
       updateQuickButton();
+      demo.render();
     });
   });
 
