@@ -82,10 +82,11 @@
 #unverifiedReview{padding:8px 12px;margin:8px 0 12px;font-size:12px;background:#f8f9fc}
 #unverifiedReview summary{cursor:pointer;font-weight:650}
 #unverifiedReview details>div{margin-top:7px;color:#7c8599}
+.demo-mode #sideImport,.demo-mode .right-top,.demo-mode #importUtilities,.demo-mode #modal{display:none!important}
 </style>
 <link rel="stylesheet" href="payments.css?v=20261020-demo-sync-v3">
 </head>
-<body>
+<body class="demo-mode">
 <svg class="icon-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
  <symbol id="i-clinic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M10 21v-5h4v5M9 9h6M12 6v6"/></symbol>
  <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 9h16l-1 12H5L4 9Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></symbol>
@@ -138,7 +139,7 @@
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">На что обратить внимание</h2><p class="section-muted">Сигналы, которые стоит проверить</p></div><span class="subtle-chip">Анализ</span></div><div id="concerns"></div></section>
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">Что идёт хорошо</h2><p class="section-muted">Положительные изменения</p></div><span class="subtle-chip">Позитив</span></div><div id="positives"></div></section>
  </div>
- <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Для проверки попробуйте загрузить свой CSV. Данные остаются только в браузере.</div></div></div>
+ <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Переключайте компании, оплаты и выполненные продажи. Для работы со своими отчётами подключите бесплатный тест на 48 часов через Telegram.</div></div></div>
 <footer id="bpPaymentFooter" class="bp-payment-footer" aria-label="Оплата и тарифы"><a class="bp-prices-link" href="?view=payment" data-bp-pay>Цены</a></footer>
 <nav aria-label="Юридическая информация" style="display:flex;flex-wrap:wrap;gap:10px 18px;font-size:12px;line-height:1.6;padding:8px 0 20px"><a href="./legal/offer.html">Оферта и соглашение</a><a href="./legal/privacy.html">Конфиденциальность</a><a href="./legal/tariffs.html">Тарифы</a><a href="./legal/refunds.html">Возвраты</a><a href="./legal/contacts.html">Контакты и реквизиты</a></nav>
 </main></div>
@@ -197,6 +198,7 @@ $('revenueChart').innerHTML=`<defs><linearGradient id="areaFill" x1="0" y1="0" x
 $('chartLabels').innerHTML=labels.map(d=>`<span>${escapeHTML(dateLabel(d))}</span>`).join('')}
 function insightHTML(items,warn){return items.map(i=>`<div class="insight-item"><div class="insight-icon ${warn?'warn':''}">${svgIcon(warn?'alert':'check')}</div><div><strong>${escapeHTML(i.title)}</strong><p>${escapeHTML(i.desc)}</p></div></div>`).join('')}
 function render(){
+ document.body.classList.add('demo-mode');
  const c=configs[state.business],d=state.datasets[state.business];
  const r=demoSummary(d,state.business,yesterday,d.viewBasis);
  const verified=r.primary_basis!=='unverified',copy=demoMoneyLabels[state.business];
@@ -248,18 +250,19 @@ function render(){
  $('warningBanner').classList.toggle('show',d.imported&&(!verified||!r.coverage.comparable));
  $('warningBanner').textContent=!verified?'Нужно уточнить смысл сумм. Они не включены в оплаты и выполненные продажи.':'Истории недостаточно для полного сравнения двух периодов по 30 дней.';
  $('bottomDataTitle').textContent=d.imported?'Показатели пересчитаны из загруженного файла.':'Демонстрационные данные · расчёты как в рабочем приложении.';
- $('bottomDataHint').textContent=d.imported?'Источник: '+d.meta.name+'. Хранится только в текущей вкладке.':'Переключайте оплаты и выполненные продажи или загрузите CSV / Excel. Файлы остаются в браузере.';
+ $('bottomDataHint').textContent=d.imported?'Источник: '+d.meta.name+'. Хранится только в текущей вкладке.':'Переключайте компании, оплаты и выполненные продажи. Для работы со своими отчётами подключите бесплатный тест на 48 часов через Telegram.';
  $('clearImport').hidden=!d.imported;
  document.querySelectorAll('.company-tab').forEach(button=>{const active=button.dataset.business===state.business;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
 }
 function csvCell(x){x=String(x??'');return /[;"\n\r]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x}
-function downloadSample(){const exampleBusiness=state.business==='mine'?'clinic':state.business;const d=state.datasets[exampleBusiness].imported?demo(configs[exampleBusiness]):state.datasets[exampleBusiness];const head=['Дата','Номер чека','Товар или услуга','Оплачено','Статус','Количество'];const csv=[head.join(';'),...d.rows.filter(r=>r.financial_basis==='cash_receipts').map(r=>[r.date,r.id,r.item,r.amount,r.status==='refund'?'возврат':'оплата',(r.quantity_milli||1000)/1000].map(csvCell).join(';'))].join('\r\n');const b=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='Бизнес_Пульс_пример_'+exampleBusiness+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1200)}
+function downloadSample(){if(state.business!=='mine')return;const exampleBusiness=state.business==='mine'?'clinic':state.business;const d=state.datasets[exampleBusiness].imported?demo(configs[exampleBusiness]):state.datasets[exampleBusiness];const head=['Дата','Номер чека','Товар или услуга','Оплачено','Статус','Количество'];const csv=[head.join(';'),...d.rows.filter(r=>r.financial_basis==='cash_receipts').map(r=>[r.date,r.id,r.item,r.amount,r.status==='refund'?'возврат':'оплата',(r.quantity_milli||1000)/1000].map(csvCell).join(';'))].join('\r\n');const b=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='Бизнес_Пульс_пример_'+exampleBusiness+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1200)}
 let importReadToken=0,excelBook=null;
 const sheetControl=document.createElement('div');
 sheetControl.id='sheetControl';sheetControl.hidden=true;sheetControl.style.marginTop='12px';
 sheetControl.innerHTML='<label for="excelSheet" style="font-size:13px;font-weight:700;display:block;margin-bottom:6px">Лист Excel</label><select id="excelSheet" style="width:100%;padding:11px;border:1px solid #d7d9e6;border-radius:10px;background:#fff"></select>';
 $('fileStatus').after(sheetControl);
 function showModal(open){
+ if(open&&state.business!=='mine')return;
   ++importReadToken;
   $('modal').classList.toggle('show',open);
   if(open){
@@ -602,7 +605,7 @@ window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insig
 render();
 })();
 </script>
-<script type="module" src="personal.js?v=20261020-demo-sync-v1"></script>
+<script type="module" src="personal.js?v=20261020-demo-view-only-v1"></script>
 <script src="payments.js?v=20261020-demo-sync-v3" defer></script>
 </body>
 </html>

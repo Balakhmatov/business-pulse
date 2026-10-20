@@ -356,6 +356,7 @@
     }
   }
   function renderMine(){
+    document.body.classList.remove('demo-mode');
     const r=state.mineReport||null;
     const subscription=r?.subscription||state.mineSubscription;
     const locked=!subscription?.access;
