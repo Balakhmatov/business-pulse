@@ -187,6 +187,8 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
 .contact-links{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px}.header-cta{flex-wrap:wrap}@media(max-width:680px){.header-inner{gap:12px;flex-wrap:wrap}.header-cta{width:100%}.header-cta .btn{flex:1;font-size:12px}}
 .hero-actions .trial-cta{font-size:19px;min-height:58px;padding:12px 22px}.header-inner{flex-wrap:wrap}.nav{gap:18px}.header-cta{gap:8px}
 .app-preview{display:block;position:relative;border:1px solid #e4e7f0;border-radius:22px;overflow:hidden;box-shadow:0 28px 80px rgba(27,34,75,.13)}.app-preview img{display:block;width:100%;height:auto}.preview-caption{position:relative;font-size:12px;line-height:1.6;color:#747d98;margin:14px 3px 0}.preview-caption a{color:#5953cc;text-decoration:underline}
+.insight-example{display:flex;align-items:center;justify-content:space-between;gap:32px;margin-top:28px;padding:30px;background:#f5f3ff;border:1px solid #e5e0fa;border-radius:22px}.insight-example h3{font-size:24px;letter-spacing:-.6px;margin:12px 0}.insight-example p{max-width:740px;font-size:15px;color:#56617b;line-height:1.75}.insight-example small{color:#868da4;font-size:12px;line-height:1.6}.insight-example .btn{flex-shrink:0}.landing-calculations{margin-top:24px;border:1px solid #e7eaf2;border-radius:16px;padding:20px 24px}.landing-calculations summary{cursor:pointer;font-size:15px;font-weight:750;color:#4b5372}.calculation-copy{color:#747d98;font-size:14px;line-height:1.8;max-width:980px}@media(max-width:980px){.insight-example{flex-direction:column;align-items:flex-start}}
+.analysis-preview{display:block;margin-top:24px;border-radius:20px;overflow:hidden;border:1px solid #e5e0fa;box-shadow:0 15px 45px #2921540a}.analysis-preview img{display:block;width:100%;height:auto}
 </style>
 <link rel="stylesheet" href="payments.css?v=20261020-demo-sync-v3">
 </head>
@@ -274,11 +276,27 @@ h2{font-size:clamp(33px,4vw,50px);line-height:1.06;letter-spacing:-2.1px;margin:
       </article>
       <article class="feature">
         <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 12h8M12 8v8"/><rect x="4" y="4" width="16" height="16" rx="4"/></svg></div>
-        <h3>AI-интерпретация</h3>
-        <p>OpenAI помогает сформулировать краткие выводы по агрегированным показателям — без доступа к строкам вашей выгрузки.</p>
+        <h3>ИИ-аналитик для собственника</h3>
+        <p>Искусственный интеллект сопоставляет финансовые показатели, оценивает изменения в контексте истории и помогает определить, на что направить внимание.</p>
       </article>
     </div>
   </div>
+</section>
+
+
+<section class="section alt" id="intelligence">
+ <div class="wrap">
+  <div class="section-head"><div class="section-kicker">От цифр — к решениям</div><h2>Ваш бизнес в цифрах.<br>Смысл — в связях между ними.</h2><p>Поступления выросли — но за счёт чего? Изменился поток клиентов или средний чек? Искусственный интеллект сопоставляет рассчитанные показатели, выделяет значимые сигналы и формулирует понятные приоритеты для собственника.</p></div>
+  <div class="steps">
+   <article class="step"><div class="step-num">01</div><h3>Сервис считает</h3><p>Полученные оплаты и выполненные продажи — отдельно. Количество услуг, товаров или заказов, средний чек, возвраты и динамика рассчитываются из операций вашего отчёта.</p></article>
+   <article class="step"><div class="step-num">02</div><h3>ИИ сопоставляет</h3><p>Анализирует изменения за два периода, соотносит сумму с числом операций и средним чеком, учитывает долю ведущих позиций и полноту истории.</p></article>
+   <article class="step"><div class="step-num">03</div><h3>Вы выбираете действие</h3><p>Получаете краткий разбор: что изменилось, какие цифры подтверждают вывод и что проверить — загрузку, структуру продаж, причины возвратов или устойчивость роста.</p></article>
+  </div>
+  <div class="insight-example"><div><span class="section-kicker">Разбор на цифрах демо</span><h3>Каждый вывод — с основанием и следующим шагом</h3><p>Изменение суммы, вклад среднего чека, концентрация на ведущих позициях и пиковые дни собраны в один обзор. Видно, на чём основан вывод и с чего начать проверку.</p></div><a class="btn btn-primary" href="./index.html#demoAiPanel">Посмотреть разбор в демо →</a></div>
+  <a class="analysis-preview" href="./index.html#demoAiPanel" aria-label="Открыть демонстрационный разбор показателей"><img src="./public/assets/demo-analysis.png?v=20261020-analysis-v1" width="1074" height="531" loading="lazy" alt="Пример разбора клиники: продажи выросли на 0,6%, число операций снизилось на 0,1%, средний чек вырос на 0,7%; три ведущие позиции дают 71,6% суммы"></a>
+  <p class="preview-caption">Демонстрационный пример по показателям клиники. В личной компании ИИ анализирует ваши рассчитанные показатели.</p>
+  <details class="landing-calculations"><summary>Что означает каждый показатель</summary><div class="calculation-copy"><p><strong>Оплаты:</strong> фактически полученные деньги, включая авансы, за вычетом возвратов. <strong>Выполненные продажи:</strong> стоимость оказанных услуг, работ или проданных товаров. Эти суммы не складываются.</p><p><strong>Количество:</strong> услуги и товары — по столбцу количества с учётом возвратов; кафе — по оплаченным чекам; автосервис — по уникальным выполненным заказам. <strong>Средний чек:</strong> выбранная сумма за период, делённая на число операций.</p><p><strong>Динамика:</strong> последние 30 завершённых дней по сравнению с предыдущими 30 при достаточной полноте данных. <strong>Топ-3:</strong> крупнейшие позиции по выбранной сумме. График показывает семь завершённых дней.</p><p><strong>ИИ-анализ:</strong> интерпретация рассчитанных показателей и рекомендации для проверки. Выводы о прибыли требуют данных о расходах; разница между оплатами и продажами сама по себе не определяет долг клиента.</p></div></details>
+ </div>
 </section>
 
 <section class="section" id="how">

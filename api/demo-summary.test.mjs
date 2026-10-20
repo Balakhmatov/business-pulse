@@ -28,3 +28,27 @@ test('Synthetic demo books retain refunds and quantities in separate streams',()
  assert.equal(r.volume.value,-2);
  assert.equal(rows.length,2);
 });
+
+test('Demo analysis links changes to operation count and average and updates with financial basis',async()=>{
+ const {demoAnalysis}=await import('../demo-data.mjs');const rows=[];
+ for(let i=0;i<60;i++){
+  const day=new Date(Date.parse('2026-10-19T12:00:00Z')-i*86400000).toISOString().slice(0,10);
+  for(const basis of ['cash_receipts','recognized_revenue'])rows.push({...sale('id'+i,basis==='cash_receipts'?(i<30?112:100):200,basis),date:day});
+ }
+ const d={rows},cash=demoSummary(d,'cafe',date),done=demoSummary(d,'cafe',date,'recognized_revenue');
+ const analysis=demoAnalysis(d,cash);
+ assert.match(analysis.summary,/12,0%/);
+ assert.match(analysis.cards[0].explanation,/Число операций изменилось на 0,0%/);
+ assert.match(analysis.cards[0].explanation,/средний чек — на \+12,0%/);
+ assert.match(demoAnalysis(d,done).cards[0].evidence,/0,0%/);
+ assert.notEqual(analysis.summary,demoAnalysis(d,done).summary);
+});
+test('Demo analysis with incomplete history avoids invented comparisons; unknown amounts have no financial conclusions',async()=>{
+ const {demoAnalysis}=await import('../demo-data.mjs');
+ const d={rows:[sale('a',100,'cash_receipts')]};
+ const a=demoAnalysis(d,demoSummary(d,'cafe',date));
+ assert.match(a.cards[0].title,/нужна история/);
+ assert.doesNotMatch(a.summary,/Изменение к прошлому периоду/);
+ const unknown={rows:[sale('a',100,undefined)]};
+ assert.deepEqual(demoAnalysis(unknown,demoSummary(unknown,'cafe',date)).cards,[]);
+});

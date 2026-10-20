@@ -83,6 +83,8 @@
 #unverifiedReview summary{cursor:pointer;font-weight:650}
 #unverifiedReview details>div{margin-top:7px;color:#7c8599}
 .demo-mode #sideImport,.demo-mode .right-top,.demo-mode #importUtilities,.demo-mode #modal{display:none!important}
+
+.demo-ai-panel{margin-top:18px;border-color:#dedaf8;background:linear-gradient(135deg,#fbfaff,#fff)}body:not(.demo-mode) #demoAiPanel,.demo-mode .bottom-grid{display:none}.ai-label{display:block;font-size:10px;letter-spacing:1.2px;font-weight:800;color:#6b61d9;margin-bottom:10px}.ai-intro{font-size:13px;line-height:1.65;color:#737d96;margin:9px 0 0;max-width:820px}.demo-ai-panel .panel-head{margin-bottom:12px}.ai-summary{font-size:15px;line-height:1.65;color:#323d5c;margin:12px 0 18px}.ai-findings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ai-finding{border:1px solid #e8e5f4;background:#fff;border-radius:15px;padding:17px}.ai-finding h3{font-size:14px;line-height:1.4;margin:0 0 10px}.ai-evidence{font-size:12px;line-height:1.5;color:#6254ca;font-weight:750}.ai-finding p{font-size:12px;line-height:1.65;color:#737d96}.ai-action{border-top:1px solid #efedf6;padding-top:12px;font-size:12px;line-height:1.6;color:#424c68}.ai-action strong{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#6b61d9;margin-bottom:5px}.ai-demo-note{font-size:11px;line-height:1.6;color:#8b91a8;margin:16px 0 0}.calculation-guide{margin-top:18px}.calculation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}.calculation-grid strong{font-size:12px;color:#454f70}.calculation-grid p{font-size:12px;line-height:1.65;color:#7e879e;margin:8px 0 0}@media(max-width:850px){.ai-findings{grid-template-columns:1fr}.calculation-grid{grid-template-columns:1fr 1fr}.demo-ai-panel .panel-head{flex-wrap:wrap}}@media(max-width:480px){.calculation-grid{grid-template-columns:1fr}}
 </style>
 <link rel="stylesheet" href="payments.css?v=20261020-demo-sync-v3">
 </head>
@@ -135,10 +137,30 @@
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">Динамика продаж</h2><p class="section-muted">Последние 7 полных дней</p></div><span class="subtle-chip">Продажи по дням</span></div><div class="chart-box"><svg id="revenueChart" class="trend-chart" viewBox="0 0 600 228" role="img" aria-label="График продаж за последние семь дней" preserveAspectRatio="xMidYMid meet"></svg><div class="chart-labels" id="chartLabels"></div></div><div class="chart-caption" id="chartCaption">Суммы из данных по продажам и возвратам</div></section>
   <section class="panel"><div class="panel-head"><div><h2 class="section-title" id="topTitle">Топ-3 услуги</h2><p class="section-muted">По сумме продаж за 30 дней</p></div><span class="subtle-chip">ТОП-3</span></div><div class="top-list" id="topItems"></div></section>
  </div>
+
+ <section class="panel demo-ai-panel" id="demoAiPanel" aria-labelledby="demoAiTitle">
+  <div class="panel-head"><div><span class="ai-label">ИНТЕЛЛЕКТУАЛЬНЫЙ РАЗБОР</span><h2 class="section-title" id="demoAiTitle">Что стоит за цифрами</h2><p class="ai-intro">В рабочем приложении искусственный интеллект сопоставляет финансовые показатели, выделяет значимые изменения и предлагает, что проверить в первую очередь.</p></div><span class="subtle-chip">Пример ИИ-анализа</span></div>
+  <p class="ai-summary" id="demoAiSummary"></p>
+  <div class="ai-findings" id="demoAiFindings"></div>
+  <p class="ai-demo-note">Демонстрационный пример разбора по цифрам выбранной компании. Выводы меняются при переключении компании и вида показателей. В личной компании ИИ формирует анализ по вашим данным.</p>
+ </section>
  <div class="bottom-grid">
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">На что обратить внимание</h2><p class="section-muted">Сигналы, которые стоит проверить</p></div><span class="subtle-chip">Анализ</span></div><div id="concerns"></div></section>
   <section class="panel"><div class="panel-head"><div><h2 class="section-title">Что идёт хорошо</h2><p class="section-muted">Положительные изменения</p></div><span class="subtle-chip">Позитив</span></div><div id="positives"></div></section>
  </div>
+
+ <section class="panel calculation-guide" aria-labelledby="calculationTitle">
+  <h2 class="section-title" id="calculationTitle">Как читать показатели</h2>
+  <p class="ai-intro">Сервис рассчитывает цифры из операций. Искусственный интеллект получает готовые показатели и помогает увидеть их взаимосвязь: что изменилось, насколько это существенно и где искать объяснение.</p>
+  <div class="calculation-grid">
+   <div><strong>Полученные оплаты</strong><p>Деньги, фактически поступившие от клиентов за 30 завершённых дней, включая авансы. Возвраты вычитаются.</p></div>
+   <div><strong>Выполненные продажи</strong><p>Стоимость уже оказанных услуг, выполненных работ или проданных товаров. Учитывается отдельно от оплат.</p></div>
+   <div><strong>Количество</strong><p>Клиника и магазин — количество услуг и товаров с учётом возвратов. Кафе — оплаченные чеки. Автосервис — уникальные выполненные заказы.</p></div>
+   <div><strong>Средний чек и динамика</strong><p>Средний чек — выбранная сумма за 30 дней, делённая на число операций. Динамика сравнивает два периода по 30 дней при достаточной полноте истории.</p></div>
+   <div><strong>Топ-3 и график</strong><p>Топ показывает крупнейшие позиции по выбранной сумме за 30 дней; график — её изменение за семь завершённых дней.</p></div>
+   <div><strong>Где помогает ИИ</strong><p>Сопоставляет динамику, число операций, средний чек и концентрацию результата. Объясняет сигналы и предлагает действия для проверки.</p></div>
+  </div>
+ </section>
  <div class="data-bar"><div><strong id="bottomDataTitle">Все показатели рассчитаны по демонстрационным данным.</strong><div id="bottomDataHint" style="margin-top:5px">Переключайте компании, оплаты и выполненные продажи. Для работы со своими отчётами подключите бесплатный тест на 48 часов через Telegram.</div></div></div>
 <footer id="bpPaymentFooter" class="bp-payment-footer" aria-label="Оплата и тарифы"><a class="bp-prices-link" href="?view=payment" data-bp-pay>Цены</a></footer>
 <nav aria-label="Юридическая информация" style="display:flex;flex-wrap:wrap;gap:10px 18px;font-size:12px;line-height:1.6;padding:8px 0 20px"><a href="./legal/offer.html">Оферта и соглашение</a><a href="./legal/privacy.html">Конфиденциальность</a><a href="./legal/tariffs.html">Тарифы</a><a href="./legal/refunds.html">Возвраты</a><a href="./legal/contacts.html">Контакты и реквизиты</a></nav>
@@ -147,7 +169,7 @@
 <script src="smart-import.js?v=20261018-quantity-v1"></script>
 <script src="excel-adapter.js?v=20261018-smart-v2-fallback"></script>
 <script type="module">
-import { demoSummary, withDemoBooks } from './demo-data.mjs';
+import { demoSummary, withDemoBooks, demoAnalysis } from './demo-data.mjs?v=20261020-analysis-v1';
 'use strict';
 (function(){
 const $=id=>document.getElementById(id);
@@ -247,6 +269,9 @@ function render(){
  bad.push({title:'Проверьте полноту данных',desc:'Оплаты и выполненные продажи показаны отдельно. Разница между ними сама по себе не означает долг клиента.'});
  if(!good.length)good.push({title:'Показатели появятся после уточнения данных',desc:'Загрузите отчёт с полученными оплатами или выполненными продажами.'});
  $('concerns').innerHTML=insightHTML(bad,true);$('positives').innerHTML=insightHTML(good,false);
+ const analysis=demoAnalysis(d,r);
+ $('demoAiSummary').textContent=analysis.summary;
+ $('demoAiFindings').innerHTML=analysis.cards.map(item=>'<article class="ai-finding"><h3>'+escapeHTML(item.title)+'</h3><div class="ai-evidence">'+escapeHTML(item.evidence)+'</div><p>'+escapeHTML(item.explanation)+'</p><div class="ai-action"><strong>Следующий шаг</strong>'+escapeHTML(item.action)+'</div></article>').join('');
  $('warningBanner').classList.toggle('show',d.imported&&(!verified||!r.coverage.comparable));
  $('warningBanner').textContent=!verified?'Нужно уточнить смысл сумм. Они не включены в оплаты и выполненные продажи.':'Истории недостаточно для полного сравнения двух периодов по 30 дней.';
  $('bottomDataTitle').textContent=d.imported?'Показатели пересчитаны из загруженного файла.':'Демонстрационные данные · расчёты как в рабочем приложении.';
