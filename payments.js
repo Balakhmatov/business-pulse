@@ -11,7 +11,7 @@
     {id:'halfyear',name:'6 месяцев',price:9990,detail:'−33% · экономия 4 950 ₽'},
     {id:'year',name:'12 месяцев',price:17990,detail:'−40% · экономия 11 890 ₽'}
   ];
-  const button=document.createElement('button');button.type='button';button.className='bp-pay-toggle';button.textContent='Оплата';button.setAttribute('aria-haspopup','dialog');
+  const button=document.createElement('button');button.type='button';button.className='bp-pay-toggle';button.textContent='Подключить';button.setAttribute('aria-haspopup','dialog');
   const dialog=document.createElement('dialog');dialog.className='bp-pay-dialog';dialog.setAttribute('aria-labelledby','bp-pay-title');
   // All interpolated strings below are fixed product copy, never server HTML.
   dialog.innerHTML='<div class="bp-pay-head"><div><h2 id="bp-pay-title">Выберите тариф</h2></div><button type="button" class="bp-pay-close" aria-label="Закрыть">×</button></div>'+

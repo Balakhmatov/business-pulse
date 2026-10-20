@@ -4,3 +4,5 @@
 .bp-pay-trial{font-size:17px;line-height:1.6}
 
 .bp-payment-footer{flex-direction:column;gap:12px}
+
+.bp-pay-toggle{min-width:280px;min-height:64px;padding:18px 64px;font-size:19px;border-radius:18px}@media(max-width:560px){.bp-pay-toggle{min-width:0;width:100%;max-width:420px}}
