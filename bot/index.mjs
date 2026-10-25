@@ -103,19 +103,19 @@ async function sendReport(chatId, test = false) {
 controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,botUsername:EXPECTED_USERNAME,
   defaultHour:SEND_HOUR,timeZone:TIMEZONE,isSubscribed:id=>subscribers.has(id)&&subscribers.get(id).enabled!==false});
 
-async function handle(update) {
+async function handle(update,track=true) {
   const observedMessage=update.callback_query?.message||update.message;
   const sender=update.callback_query?.from||observedMessage?.from;
   if(observedMessage?.chat?.type==='private'&&String(sender?.id)===String(observedMessage.chat.id))
     controls.rememberMessage(String(observedMessage.chat.id),observedMessage.message_id,observedMessage.date);
-  if(await controls.handle(update))return;
+  if(await controls.handle(update,{track}))return;
   const callback = update.callback_query;
   if (callback) {
     const chat = callback.message?.chat;
     if (chat?.type !== 'private' || String(callback.from?.id) !== String(chat.id)) return;
     if(['bp:report','bp:subscribe','bp:unsubscribe'].includes(callback.data)){
       await api('answerCallbackQuery',{callback_query_id:callback.id});
-      await handle({message:{chat,from:callback.from,text:'/'+callback.data.slice(3)}});
+      await handle({message:{chat,from:callback.from,text:'/'+callback.data.slice(3)}},false);
       return;
     }
     if (callback.data === 'bp:test') {
@@ -267,3 +267,4 @@ run().catch(error => {
   console.error('Bot startup failed: ' + error.message);
   process.exitCode = 1;
 });
+

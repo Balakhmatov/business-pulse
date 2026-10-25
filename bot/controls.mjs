@@ -7,6 +7,7 @@ import { companyAdmin } from '../api/company-admin.mjs';
 import { INDUSTRIES } from '../api/finance-summary.mjs';
 import { validNotificationHour } from './notification-schedule.mjs';
 import { createChatCleanup } from './chat-cleanup.mjs';
+import { createVisitorStats } from './visitor-stats.mjs';
 import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,assertSubscription,startCompanyTrial,pricesText,PLANS,rub,mskDate,paymentConfirmation,confirmReceivedPayment,reminderFor,trialReminderText } from '../api/billing.mjs';
 
 const button=(text,data)=>({text,callback_data:'bpu:'+data});
@@ -33,6 +34,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   db.exec('CREATE TABLE IF NOT EXISTS bot_support_sessions (actor_id TEXT PRIMARY KEY,expires_ms INTEGER NOT NULL);'+
     'CREATE TABLE IF NOT EXISTS bot_support_routes (support_id TEXT NOT NULL,message_id INTEGER NOT NULL,actor_id TEXT NOT NULL,created_ms INTEGER NOT NULL,PRIMARY KEY(support_id,message_id));');
   const cleanup=createChatCleanup({db,api:transport,now});
+  const visitorStats=createVisitorStats({db,now,adminIds});
   const api=async(method,payload)=>{
     const result=await transport(method,payload);
     if(method==='sendMessage'||method==='copyMessage')cleanup.remember(payload.chat_id,result?.message_id,result?.date);
@@ -124,6 +126,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     rows.push([button('Мой профиль и ID','id')]);
     if(adminIds.has(actor)){
       rows.push([button('Управление компаниями','list:0')]);
+      rows.push([button('Статистика бота','stats:0')]);
       rows.push([button('Проверить уведомления','testnotices')]);
       rows.push([button('Настроить оплату СБП','paylinks')]);
     }
@@ -295,7 +298,28 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
       }
     }finally{reminding=false;}
   }
-  async function handle(update){
+  async function showStats(actor,offset=0){
+    if(!adminIds.has(actor))throw Error('Доступно только администратору.');
+    const s=visitorStats.summary(),recent=visitorStats.recent(offset),rows=[];
+    const date=ms=>new Date(ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'});
+    const period=(label,p)=>label+': '+p.users+' чел. · новых '+p.new_users+' · вернулось '+p.returning+'\nЗаходов: '+p.sessions+' · /start: '+p.starts;
+    const nav=[];
+    if(offset>0)nav.push(button('Предыдущие','stats:'+Math.max(0,offset-10)));
+    if(recent.length>10)nav.push(button('Далее','stats:'+(offset+10)));
+    if(nav.length)rows.push(nav);
+    rows.push([button('Обновить','stats:'+offset)],[button('В меню','home')]);
+    const people=recent.slice(0,10).map((v,i)=>(offset+i+1)+'. '+v.display_name.slice(0,48)+(v.username?' · @'+v.username.slice(0,32):'')+'\nID: '+v.telegram_id+' · '+date(v.last_ms)+'\nЗаходов: '+v.sessions+' · дней активности: '+v.active_days).join('\n\n');
+    return send(actor,'Статистика бота\n\nВсего посетителей: '+s.total+'\n\n'+
+      [period('Сегодня',s.today),period('Вчера',s.yesterday),period('7 дней',s.week),period('30 дней',s.month)].join('\n\n')+
+      '\n\nПоследние посетители\n'+(people||'Посещений пока нет.')+
+      '\n\nУчёт с '+date(s.started_ms)+' МСК. Администраторы исключены.\n'+
+      'Посещение — сообщение или нажатие кнопки. Новый заход — после 30 минут бездействия. «Вернулось» — посещали до начала периода.\n'+
+      'Простое открытие чата и Mini App Telegram боту не сообщает.',rows);
+  }
+  async function handle(update,{track=true}={}){
+    if(track){
+      try{visitorStats.record(update);}catch(error){console.error('Bot visit tracking failed:',error.message);}
+    }
     const callback=update.callback_query,message=callback?.message||update.message;
     const user=callback?.from||message?.from;
     if(!message||message.chat?.type!=='private'||String(user?.id)!==String(message.chat.id))return false;
@@ -308,7 +332,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     const supportSession=!callback&&db.prepare('SELECT expires_ms FROM bot_support_sessions WHERE actor_id=?').get(actor);
     const supportRoute=!callback&&actor===supportId&&message.reply_to_message?.message_id?db.prepare('SELECT actor_id FROM bot_support_routes WHERE support_id=? AND message_id=?').get(actor,message.reply_to_message.message_id):null;
     const paymentSession=!callback&&db.prepare('SELECT * FROM billing_link_sessions WHERE actor_id=?').get(actor);
-    if(!paymentSession&&!supportSession&&!supportRoute&&!isOurCallback&&!message.users_shared&&!['/start','/menu','/help','/myid'].includes(command)&&text!=='Отмена')return false;
+    if(!paymentSession&&!supportSession&&!supportRoute&&!isOurCallback&&!message.users_shared&&!['/start','/menu','/help','/myid','/stats'].includes(command)&&text!=='Отмена')return false;
     profile(user);
     if(isOurCallback)await api('answerCallbackQuery',{callback_query_id:callback.id});
     try{
@@ -368,6 +392,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         else if(command==='/start'&&payload==='prices')await prices(actor);
         else if(command==='/start'&&payload==='support')await support(actor);
         else if(command==='/myid')await send(actor,profileText(user));
+        else if(command==='/stats')await showStats(actor);
         else await home(actor);
         return true;
       }
@@ -377,6 +402,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
         await send(actor,'Вход подтверждён. Вернитесь на сайт — теперь можно выбрать тариф и оплатить.',[[button('В меню','home')]]);
       }
       else if(action==='home')await home(actor);
+      else if(action==='stats')await showStats(actor,Number(a||0));
       else if(action==='trial'){
         const c=access(actor,a,true);
         startCompanyTrial(db,c,actor,now(),adminIds);
@@ -472,3 +498,4 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
   }
   return {handle,notificationHour,notifications,trialReminderTick,hasAccess:actor=>Boolean(subscriptionFor(db,workspace(String(actor)),now())?.access),rememberMessage:cleanup.remember,close:()=>db.close()};
 }
+

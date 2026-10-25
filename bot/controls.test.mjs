@@ -46,6 +46,25 @@ function fixture(t,appUrl='https://example.org/',trial=true){
     restart:()=>{controls.close();controls=make();}};
 }
 
+test('Bot statistics are admin-only and synthetic legacy callback dispatch is not tracked twice',async t=>{
+  const f=fixture(t);
+  await f.msg('101','/start');
+  assert.ok(!f.last().reply_markup.inline_keyboard.flat().some(b=>b.text==='Статистика бота'));
+  await f.msg('101','/stats');assert.match(f.last().text,/только администратору/);
+  await f.click('202','stats:0');assert.match(f.last().text,/только администратору/);
+  await f.msg('999','/start');
+  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(b=>b.text==='Статистика бота'));
+  await f.click('999','stats:0');assert.match(f.last().text,/Всего посетителей: 2/);
+  assert.match(f.last().text,/МСК/);assert.match(f.last().text,/101/);
+  const actions=f.db.prepare('SELECT SUM(actions) AS n FROM bot_visit_days').get().n;
+  // index.mjs forwards bp:report as a synthetic message with track:false.
+  const controls=createBotControls({dbPath:f.dbPath,api:async()=>({message_id:999}),adminIds:f.admins,supportId:'999',appUrl:'https://example.org/',botUsername:'business_pulse_app_bot'});
+  t.after(()=>controls.close());
+  await controls.handle({message:{from:{id:101},chat:{id:101,type:'private'},text:'/report'}},{track:false});
+  assert.equal(f.db.prepare('SELECT SUM(actions) AS n FROM bot_visit_days').get().n,actions);
+  f.restart();await f.msg('999','/stats');assert.match(f.last().text,/Всего посетителей: 2/);
+});
+
 test('Trial activation is admin only, lasts 48 hours, survives restart and cannot be reset',async t=>{
   const f=fixture(t,'https://example.org/',false);
   await f.msg('101','/start');assert.match(f.last().text,/не активирован/);
@@ -406,3 +425,4 @@ test('Website payment login requires a separate explicit confirmation in the bot
   assert.match(f.last().text,/Вход подтверждён/);
   assert.equal(login.actor(login.poll(a.challenge,a.secret).token),'101');
 });
+
