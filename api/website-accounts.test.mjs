@@ -16,7 +16,7 @@ const createDb = () => {
 test('Invited website account receives independent company, trial and revocable session', () => {
   const db = createDb(); let at = 1000000;
   const web = createWebsiteAccounts(db, () => at);
-  const invite = web.createInvite('Кондитерская');
+  const invite = web.createInvite('Кондитерская','cafe');
   assert.match(invite.code, /^[a-f0-9]{48}$/);
   assert.throws(() => web.register({ email:'owner@example.com', password:'secret-pass-123', invite:invite.code }), /условия/);
   const {token} = web.register({ email:'owner@example.com',password:'secret-pass-123',invite:invite.code,accepted_terms:true });
@@ -24,6 +24,7 @@ test('Invited website account receives independent company, trial and revocable 
   assert.match(actor, /^web:/);
   const company = db.prepare('SELECT * FROM companies WHERE owner_id=?').get(actor);
   assert.equal(company.name, 'Кондитерская');
+  assert.equal(company.industry, 'cafe');
   assert.equal(subscriptionFor(db, company, at).access, true);
   assert.equal(subscriptionFor(db, company, at).state, 'trial');
   assert.throws(() => web.register({email:'x@example.com',password:'secret-pass-123',invite:invite.code,accepted_terms:true}), /использовано/);
