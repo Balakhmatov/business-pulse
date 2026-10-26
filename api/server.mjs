@@ -16,6 +16,7 @@ import { createCorrectionService } from './corrections.mjs';
 import { resetTestData,clearAdminCompanyData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
+import { createAccountLink } from './account-link.mjs';
 import { setCompanyIndustry } from './company-industry.mjs';
 import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,assertSubscription,PLANS } from './billing.mjs';
 
@@ -44,6 +45,7 @@ ensurePaymentLinks(db);
 const payments=createPayments({db});
 const webLogin=createWebLogin(db);
 const websiteAccounts=createWebsiteAccounts(db);
+const accountLink=createAccountLink(db);
 const websiteSelfService=createWebsiteSelfService(db);
 const authMail=createAuthMail();
 const paymentTimer=setInterval(()=>void payments.reconcile(),60000);
@@ -265,6 +267,14 @@ const server=http.createServer(async(req,res)=>{
   try{id=websiteActor||(paymentOnlyActor&&webPaymentRoute?paymentOnlyActor:telegramID(req.headers['x-telegram-init-data']));}
   catch{return reply(res,401,{error:'Войдите в личный кабинет или откройте приложение через Telegram.'},origin);}
   try{
+    if(url.pathname==='/api/account-link/status'&&req.method==='GET'){
+      if(!websiteActor)return reply(res,403,{error:'Войдите на сайт по email для привязки.'},origin);
+      return reply(res,200,accountLink.linked(websiteActor),origin);
+    }
+    if(url.pathname==='/api/account-link/start'&&req.method==='POST'){
+      if(!websiteActor)return reply(res,403,{error:'Войдите на сайт по email для привязки.'},origin);
+      return reply(res,200,accountLink.start(websiteActor),origin);
+    }
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
     if(req.method==='GET'&&url.pathname==='/api/subscription')return reply(res,200,{company:c,subscription:subscriptionFor(db,c),plans:PLANS},origin);
