@@ -8,6 +8,7 @@ import { createAccumulator } from './accumulate.mjs';
 // Keep mapping tests in the existing trusted VPS deployment test entrypoint.
 import './import-mapping.test.mjs';
 import './ai-insights.test.mjs';
+import './ai-evidence.test.mjs';
 import './corrections.test.mjs';
 import './finance-summary.test.mjs';
 import excel from '../excel-adapter.js';
