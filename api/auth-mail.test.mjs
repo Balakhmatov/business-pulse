@@ -34,3 +34,28 @@ test('failed email delivery rejects without exposing provider response',async()=
   });
   await assert.rejects(()=>sender.sendReset('owner@example.com','f'.repeat(48)),/Письмо не отправлено/);
 });
+
+test('existing Timeweb Cloud mailbox is preferred to Resend API',async()=>{
+  const sent=[];
+  const sender=createAuthMail({
+    smtpUser:'support@cityai.site',smtpPassword:'secret-password',
+    from:'support@cityai.site',apiKey:'resend-key',
+    fetchFn:async()=>{throw Error('Resend must not be used');},
+    smtpFn:async info=>{sent.push(info);return true;}
+  });
+  assert.equal(sender.ready,true);
+  await sender.sendVerification('user@example.com','c'.repeat(48));
+  await sender.sendReset('user@example.com','d'.repeat(48));
+  assert.equal(sent.length,2);
+  assert.equal(sent[0].host,'smtp.timeweb.ru');
+  assert.equal(sent[0].port,465);
+  assert.equal(sent[0].user,'support@cityai.site');
+  assert.match(sent[0].text,/#verify=c{48}/);
+  assert.match(sent[1].text,/#reset=d{48}/);
+});
+test('SMTP sender requires matching account address and password',()=>{
+  const missing=createAuthMail({smtpUser:'support@cityai.site',smtpPassword:'',from:'support@cityai.site',apiKey:''});
+  const mismatch=createAuthMail({smtpUser:'support@cityai.site',smtpPassword:'ok',from:'info@cityai.site',apiKey:''});
+  assert.equal(missing.ready,false);
+  assert.equal(mismatch.ready,false);
+});

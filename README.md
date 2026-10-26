@@ -207,12 +207,17 @@ cd /opt/business-pulse
 
 **Восстановление:** кнопка «Забыли пароль?» и письмо со ссылкой `#reset=<одноразовый токен>` (30 минут). После смены пароля все прежние веб-сессии аккаунта отзываются. Токены никогда не хранятся в базе открытым текстом (только SHA-256) и не возвращаются браузеру из API запроса письма. Повторное использование или просрочка отклоняются. Ограничение отправки на адрес и глобальный лимит защищают от автоматических массовых писем.
 
-**Почтовая доставка** — Resend (HTTPS API), без npm-зависимостей. Для активации нужно подтвердить собственный домен отправителя в Resend и настроить в `/etc/business-pulse/mail.env` (права 0600):
+**Почтовая доставка** — существующий почтовый ящик Timeweb Cloud через защищённый SMTP, без покупки отдельного почтового API. Настройки Timeweb: `smtp.timeweb.ru:465` (SMTP поверх TLS), логин — полный адрес ящика, пароль — пароль от ящика. В исходящем `From` должен быть тот же адрес, под которым выполняется SMTP-авторизация. Реализация использует Node.js TLS с проверкой сертификата, без сторонних npm-пакетов.
+
+Добавьте на VPS в `/etc/business-pulse/mail.env` (права 0600, владелец root):
 ```dotenv
-BP_MAIL_RESEND_API_KEY=re_replace_with_real_key
-BP_MAIL_FROM=no-reply@cityai.site
+BP_MAIL_SMTP_USER=actual-mailbox@example.com
+BP_MAIL_SMTP_PASSWORD=put-real-password-on-server-only
+BP_MAIL_FROM=actual-mailbox@example.com
 ```
-Если на VPS установлен старый unit-файл, добавьте `EnvironmentFile=-/etc/business-pulse/mail.env` в systemd drop-in `/etc/systemd/system/business-pulse-api.service.d/mail.conf` под `[Service]`, затем `systemctl daemon-reload && systemctl restart business-pulse-api`. Не храните ключи в Git и не выводите их в логи. Новый файл `deploy/business-pulse-api.service` уже включает этот optional environment file. Проверка готовности: `GET /api/web-auth/config` должна возвращать `registration_available:true`. Без настроенной почты публичная регистрация и сброс пароля честно отвечают 503, не обещая письма.
+Не размещайте реальные учётные данные в Git, переписке и логах. Сервис читает `EnvironmentFile=-/etc/business-pulse/mail.env` через systemd. Если установлен старый unit, создайте drop-in `/etc/systemd/system/business-pulse-api.service.d/mail.conf` со строками `[Service]` и `EnvironmentFile=-/etc/business-pulse/mail.env`, после чего `systemctl daemon-reload && systemctl restart business-pulse-api`. Проверка: `GET /api/web-auth/config` возвращает `registration_available:true` только при наличии настроенных реквизитов. Это не проверяет фактическую доставку: проведите реальный тест регистрации и смены пароля на доступный почтовый ящик. Если в VPS заблокирован исходящий порт 465, требуется снять сетевое ограничение у хостера.
+
+Resend остаётся необязательным резервным вариантом через `BP_MAIL_RESEND_API_KEY` и `BP_MAIL_FROM`, но при наличии корректно заполненных SMTP-переменных приоритет отдаётся Timeweb. Без почтовых реквизитов публичная регистрация и восстановление пароля не отправляют запросов, а возвращают 503.
 
 Роуты: `POST /api/web-auth/signup`, `POST /api/web-auth/verify`, `POST /api/web-auth/reset/request`, `POST /api/web-auth/reset/confirm`. Логин, выход и защищённые запросы продолжают использовать `/api/web-auth/login`, `/api/web-auth/logout`, `X-BP-Web-Session`. Сессии имеют срок 30 суток, а браузер хранит токен только в `sessionStorage`; закрытие вкладки/браузерного сеанса может потребовать повторного входа.
 
