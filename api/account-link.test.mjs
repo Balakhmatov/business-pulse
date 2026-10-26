@@ -13,7 +13,7 @@ function fixture(t){
     'CREATE TABLE web_accounts(email TEXT PRIMARY KEY,actor_id TEXT UNIQUE NOT NULL REFERENCES users(telegram_id));'+
     'CREATE TABLE operations(company_id TEXT REFERENCES companies(id),amount_kopecks INTEGER);'+
     "INSERT INTO users VALUES('web:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'),('101'),('202');"+
-    "INSERT INTO companies VALUES('web-company','web:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','Кафе Онлайн','cafe'),('tg-company','101','Кафе Telegram','cafe');"+
+    "INSERT INTO companies(id,owner_id,name,industry) VALUES('web-company','web:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa','Кафе Онлайн','cafe'),('tg-company','101','Кафе Telegram','cafe');"+
     "INSERT INTO web_accounts VALUES('owner@example.org','web:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');");
   ensureCompanyMembers(db);ensureCompanyBilling(db);
   const link=createAccountLink(db,()=>Date.parse('2026-10-26T12:00:00Z'));
