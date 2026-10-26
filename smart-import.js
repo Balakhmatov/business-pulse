@@ -6,6 +6,15 @@
 })(typeof window!=='undefined'?window:globalThis,function(){
   'use strict';
   const KEYS=['date','id','item','amount','status'];
+  function customerKind(label){
+    const s=String(label??'').normalize('NFKC').replace(/[_-]/g,' ').replace(/\s+/g,' ').trim().toLowerCase().replace(/\s*\([^)]*\)$/,'');
+    if(/врач|сотрудник|менеджер|ответствен|организац|поставщик|doctor|employee/.test(s))return null;
+    if(/^(?:(?:id|ид|код|идентификатор|номер)\s+(?:пациента|клиента|покупателя|медкарты|медицинской карты|карты пациента)|(?:patient|customer|client)\s*id|(?:пациент|клиент|покупатель)\s+(?:id|ид|код)|id\s*(?:patient|customer|client))$/.test(s))return 'id';
+    if(/^(?:(?:мобильный|контактный)\s+)?(?:телефон|phone|mobile)(?:\s+(?:пациента|клиента|покупателя))?$/.test(s))return 'phone';
+    if(/^(?:email|e mail|электронная почта|почта)(?:\s+(?:пациента|клиента|покупателя))?$/.test(s))return 'email';
+    return null;
+  }
+
   const quantityHeader=/^(?:количество(?:\s+(?:товаров|услуг|работ|единиц|штук))?|кол[- ]?во|шт\.?|quantity|qty|units?)(?:\s*\([^)]*\))?$/i;
   const WORDS={
     date:[/\bdate\b|\btime\b|^day$/i,/дата|день|время|создан|закрыт|проведен|проведён|день операц|период/i],
@@ -65,6 +74,7 @@
     });
   }
   function score(p,key){
+    if(customerKind(p.label))return -100;
     const h=fieldHeader(p.label,key);
     if(key==='date')return h*3+p.dates*14-p.nums*2;
     if(key==='amount'){
@@ -110,6 +120,11 @@
     }
     const quantities=head.map((h,i)=>quantityHeader.test(norm(h))&&!claimed.has(i)?i:-1).filter(i=>i>=0);
     if(quantities.length===1){mapping.quantity=quantities[0];confidence.quantity='высокая';}
+    const customerColumns=head.map((h,i)=>({index:i,kind:customerKind(h)})).filter(x=>x.kind&&!claimed.has(x.index));
+    for(const kind of ['id','phone','email']){
+      const found=customerColumns.filter(x=>x.kind===kind);
+      if(found.length){if(found.length===1){mapping.customer=found[0].index;confidence.customer='высокая';}break;}
+    }
     return {mapping,confidence,profiles:ps,ambiguities};
   }
   function headerCandidate(matrix,i){
@@ -272,5 +287,5 @@
       materialRisks:[...new Set([...localCodes,...aiCodes])]
     };
   }
-  return {detect,guess,dateLike,numberLike,financialSemantics,financialConfirmation};
+  return {detect,guess,dateLike,numberLike,financialSemantics,financialConfirmation,customerKind};
 });

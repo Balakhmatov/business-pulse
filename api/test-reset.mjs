@@ -14,7 +14,7 @@ export function clearCompanyData(db,company,actor,confirmation){
   try{
     const removed=db.prepare('DELETE FROM operations WHERE company_id=?').run(company.id).changes;
     // Remove undo snapshots too, so cleared transactions cannot be restored.
-    for(const table of ['import_batch_changes','operation_correction_changes','import_batches','imports','ai_analysis_cache','ai_analyses','import_mapping_templates','import_mapping_suggestions']){
+    for(const table of ['import_batch_changes','operation_correction_changes','import_batches','imports','customer_identity_secrets','ai_analysis_cache','ai_analyses','import_mapping_templates','import_mapping_suggestions']){
       if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))
         db.prepare('DELETE FROM '+table+' WHERE company_id=?').run(company.id);
     }
