@@ -8,7 +8,7 @@ const personal=fs.readFileSync(new URL('../personal.js',import.meta.url),'utf8')
 test('authenticated dashboard does not construct demo datasets or render public demo automatically',()=>{
   assert.match(index,/const showPublicDemo=!authenticatedShell\|\|demoRequested;/);
   assert.match(index,/if\(showPublicDemo\)Object\.keys\(configs\)\.forEach\(k=>state\.datasets\[k\]=demo\(configs\[k\]\)\);/);
-  assert.match(index,/if\(showPublicDemo\)render\(\);/);
+  assert.match(index,/if\(showPublicDemo\)\{[\s\S]*?render\(\);[\s\S]*?\}/);
   assert.match(index,/const state=\{business:showPublicDemo\?'clinic':'mine'/);
 });
 test('only explicit demo URL bypasses private workspace and has a return control',()=>{
@@ -58,4 +58,15 @@ test('Seven-day reports do not trigger a fixed 25-day coverage warning',()=>{
   assert.match(personal,/if\(imported&&r\.coverage&&!r\.coverage\.comparable\)/);
   assert.doesNotMatch(personal,/r\.coverage\.current_days<25/);
   assert.match(personal,/Сумма '\+periodLabel/);
+});
+
+test('Public demo shows selectable three-month analytics and private trial allows 90 days',()=>{
+  assert.match(index,/id="demoPeriods"/);
+  assert.match(index,/data-demo-days="7"/);
+  assert.match(index,/data-demo-days="30"/);
+  assert.match(index,/data-demo-days="90"/);
+  assert.match(index,/demoSummary\(d,state\.business,yesterday,d\.viewBasis,state\.demoDays\)/);
+  assert.match(index,/body\.private-workspace \.demo-periods\{display:none!important\}/);
+  assert.match(personal,/button\.disabled=days>90&&!allowed/);
+  assert.match(personal,/span>\(isLongPeriodAllowed\(\)\?1095:90\)/);
 });

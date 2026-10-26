@@ -339,7 +339,7 @@
     periodPanel.querySelectorAll('[data-days]').forEach(button=>{
       const days=Number(button.dataset.days);
       button.classList.toggle('active',state.minePeriod.days===days&&!state.minePeriod.from);
-      button.disabled=days>30&&!allowed;
+      button.disabled=days>90&&!allowed;
       button.title=button.disabled?'Расширенная история доступна с платной подпиской':'';
     });
     $('privateCustomPeriod').classList.toggle('active',!!state.minePeriod.from);
@@ -347,7 +347,7 @@
     $('privateTo').max=yesterday;
     $('privatePeriodHint').textContent=allowed
       ?'График и рекомендации ИИ за выбранный период, до трёх лет.'
-      :'Доступно до 30 дней. История до трёх лет — в платной подписке.';
+      :'Доступно до 90 дней. История за год и три года — в платной подписке.';
   }
   async function changePeriod(next){
     state.minePeriod=next;
@@ -374,8 +374,8 @@
   $('privateApplyDates').onclick=()=>{
     const from=$('privateFrom').value,to=$('privateTo').value;
     const span=Math.round((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000)+1;
-    if(!from||!to||!Number.isFinite(span)||span<1||span>(isLongPeriodAllowed()?1095:30)||to>yesterday){
-      periodError.textContent='Укажите завершённые даты в пределах '+(isLongPeriodAllowed()?'трёх лет':'30 дней')+'.';
+    if(!from||!to||!Number.isFinite(span)||span<1||span>(isLongPeriodAllowed()?1095:90)||to>yesterday){
+      periodError.textContent='Укажите завершённые даты в пределах '+(isLongPeriodAllowed()?'трёх лет':'90 дней')+'.';
       return;
     }
     periodDates.hidden=true;

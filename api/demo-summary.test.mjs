@@ -52,3 +52,30 @@ test('Demo analysis with incomplete history avoids invented comparisons; unknown
  const unknown={rows:[sale('a',100,undefined)]};
  assert.deepEqual(demoAnalysis(unknown,demoSummary(unknown,'cafe',date)).cards,[]);
 });
+
+test('Public demo offers 7, 30 and 90 days of complete reporting and period-aware narratives',async()=>{
+  const {demoAnalysis}=await import('../demo-data.mjs');
+  const end='2026-10-19',rows=[];
+  for(let i=0;i<180;i++){
+    const date=new Date(Date.parse(end+'T00:00:00Z')-i*86400000).toISOString().slice(0,10);
+    rows.push({...sale('order-'+i,i<90?120:100,'cash_receipts'),date});
+  }
+  const d={rows};
+  const lastWeek=demoSummary(d,'cafe',end,null,7);
+  const lastMonth=demoSummary(d,'cafe',end,null,30);
+  const threeMonths=demoSummary(d,'cafe',end,null,90);
+  assert.equal(lastWeek.period.days,7);
+  assert.equal(lastWeek.chart7.length,7);
+  assert.equal(lastMonth.period.days,30);
+  assert.equal(threeMonths.period.days,90);
+  assert.equal(threeMonths.chart7.length,13);
+  assert.equal(threeMonths.chart_granularity,'week');
+  assert.equal(threeMonths.revenue30_kopecks,1080000);
+  assert.equal(threeMonths.previous30_kopecks,900000);
+  assert.equal(threeMonths.change_percent,20);
+  assert.equal(threeMonths.chart7.reduce((sum,x)=>sum+x.amount_kopecks,0),1080000);
+  const narrative=demoAnalysis(d,threeMonths);
+  assert.match(narrative.summary,/90 дней/);
+  assert.match(narrative.cards[0].evidence,/20,0%/);
+  assert.throws(()=>demoSummary(d,'cafe',end,null,91),/90 дней/);
+});

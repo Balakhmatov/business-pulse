@@ -87,6 +87,10 @@
 
 .demo-ai-panel{margin-top:18px;border-color:#dedaf8;background:linear-gradient(135deg,#fbfaff,#fff)}body:not(.demo-mode) #demoAiPanel,.demo-mode .bottom-grid{display:none}.ai-label{display:block;font-size:10px;letter-spacing:1.2px;font-weight:800;color:#6b61d9;margin-bottom:10px}.ai-intro{font-size:13px;line-height:1.65;color:#737d96;margin:9px 0 0;max-width:820px}.demo-ai-panel .panel-head{margin-bottom:12px}.ai-summary{font-size:15px;line-height:1.65;color:#323d5c;margin:12px 0 18px}.ai-findings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ai-finding{border:1px solid #e8e5f4;background:#fff;border-radius:15px;padding:17px}.ai-finding h3{font-size:14px;line-height:1.4;margin:0 0 10px}.ai-evidence{font-size:12px;line-height:1.5;color:#6254ca;font-weight:750}.ai-finding p{font-size:12px;line-height:1.65;color:#737d96}.ai-action{border-top:1px solid #efedf6;padding-top:12px;font-size:12px;line-height:1.6;color:#424c68}.ai-action strong{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#6b61d9;margin-bottom:5px}.ai-demo-note{font-size:11px;line-height:1.6;color:#8b91a8;margin:16px 0 0}.calculation-guide{margin-top:18px}.calculation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}.calculation-grid strong{font-size:12px;color:#454f70}.calculation-grid p{font-size:12px;line-height:1.65;color:#7e879e;margin:8px 0 0}@media(max-width:850px){.ai-findings{grid-template-columns:1fr}.calculation-grid{grid-template-columns:1fr 1fr}.demo-ai-panel .panel-head{flex-wrap:wrap}}@media(max-width:480px){.calculation-grid{grid-template-columns:1fr}}
 .brand,.mobile-brand{text-decoration:none}.average-kpi{grid-column:span 2}
+.demo-periods{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 17px;color:#69728b;font-size:13px;font-weight:650}
+.demo-periods button{border:0;border-radius:10px;padding:10px 13px;min-height:40px;font-weight:700;font-size:12px;color:#555d78;background:#ecedf5;cursor:pointer}
+.demo-periods button.active{color:#fff;background:#6761e7}
+body.private-workspace .demo-periods{display:none!important}
 </style>
 <link rel="stylesheet" href="payments.css?v=20261020-connect-v1">
 </head>
@@ -123,6 +127,12 @@
  <div class="import-utilities" id="importUtilities"><button type="button" class="ghost-btn" id="clearImport" hidden>Сбросить импорт</button></div>
  <div id="subscriptionInfo" class="data-review" hidden></div>
  <div class="switchbar"><div class="company-switch" role="group" aria-label="Выбор демонстрационной компании"><button class="company-tab active" data-business="clinic" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-clinic"/></svg> Клиника</button><button class="company-tab" data-business="store" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-store"/></svg> Магазин</button><button class="company-tab" data-business="cafe" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-cafe"/></svg> Кафе</button><button class="company-tab" data-business="auto" type="button">Автосервис</button><button class="company-tab" data-business="other" type="button">Другой бизнес</button></div><span class="demo-pill" id="dataBadge">Демо-данные</span></div>
+ <div class="demo-periods" id="demoPeriods" role="group" aria-label="Период демонстрационной аналитики">
+  <span>Период аналитики</span>
+  <button type="button" data-demo-days="7">7 дней</button>
+  <button type="button" data-demo-days="30">30 дней</button>
+  <button type="button" data-demo-days="90" class="active" aria-pressed="true">90 дней</button>
+ </div>
  <div class="source-note"><span class="dot"></span><strong id="companyName">Клиника «Гармония»</strong><span>·</span><span id="asOf">Данные по вчера включительно</span><span>·</span><span id="rowsInfo">90 дней истории</span></div>
 <div id="financeBooks" class="finance-books" aria-label="Полученные оплаты и выполненные продажи" hidden></div>
 <div id="unverifiedReview" class="data-review" hidden></div>
@@ -170,7 +180,7 @@
 <script src="smart-import.js?v=20261018-quantity-v1"></script>
 <script src="excel-adapter.js?v=20261018-smart-v2-fallback"></script>
 <script type="module">
-import { demoSummary, withDemoBooks, demoAnalysis } from './demo-data.mjs?v=20261020-analysis-v1';
+import { demoSummary, withDemoBooks, demoAnalysis } from './demo-data.mjs?v=20261026-demo90-v1';
 'use strict';
 (function(){
 const $=id=>document.getElementById(id);
@@ -188,17 +198,17 @@ const demoMoneyLabels={clinic:{paid:'Оплачено пациентами',done
 configs.auto={...configs.store,name:'Автосервис «Мотор»',type:'Автосервис',top:'Топ-3 работы',seed:781,items:[['Замена масла',2400],['Диагностика',1800],['Ремонт подвески',9500]],base:18};
 configs.other={...configs.store,name:'Компания «Пример»',type:'Универсальный бизнес',top:'Топ-3 позиции',seed:882};
 function rng(seed){let t=seed;return()=>{t=(t*1664525+1013904223)>>>0;return t/4294967296}}
-function demo(c){const random=rng(c.seed),rows=[],special={};let seq=0;for(let i=89;i>=0;i--){const dt=dateShift(yesterday,-i),weekday=new Date(dt+'T12:00:00').getDay(),wf=c.lowDays.includes(weekday)?.77:1.16;const drift=1+(89-i)*c.trend;const waves=1+.14*Math.sin(i/6)+.09*Math.cos(i/11);const n=Math.max(4,Math.round(c.base*wf*drift*waves*(.83+random()*.35)));
+function demo(c){const random=rng(c.seed),rows=[],special={};let seq=0;for(let i=179;i>=0;i--){const dt=dateShift(yesterday,-i),weekday=new Date(dt+'T12:00:00').getDay(),wf=c.lowDays.includes(weekday)?.77:1.16;const drift=1+(179-i)*c.trend;const waves=1+.14*Math.sin(i/6)+.09*Math.cos(i/11);const n=Math.max(4,Math.round(c.base*wf*drift*waves*(.83+random()*.35)));
  for(let j=0;j<n;j++){const id='D'+c.seed+'-'+(++seq),parts=random()>.72?2:1;for(let p=0;p<parts;p++){const item=c.items[Math.floor(random()*c.items.length)],amount=Math.round(item[1]*(.92+random()*.16));rows.push({date:dt,amount,item:item[0],id,status:'sale'});}if(c!==configs.clinic&&random()<.021){const refund=c.items[Math.floor(random()*c.items.length)];rows.push({date:dt,amount:-refund[1],item:refund[0],id:'R'+(++seq),status:'refund'});}}
  if(c===configs.clinic)special[dt]={noShows:Math.round(n*(.045+random()*.055)),cancellations:Math.round(n*(.03+random()*.045)),plans:Math.round(35+random()*28)};
-}return {rows:withDemoBooks(rows),special,imported:false,meta:{source:'Синтетические данные, 90 полных дней'}}}
+}return {rows:withDemoBooks(rows),special,imported:false,meta:{source:'Демонстрационная история для сравнения двух периодов по 90 дней'}}}
 // Real authenticated workspaces never create synthetic demo operations.
 const telegramApp=window.Telegram&&window.Telegram.WebApp;
 const demoRequested=new URLSearchParams(location.search).get('demo')==='1';
 const webSessionReady=/^[a-f0-9]{48}$/.test(sessionStorage.getItem('bp-web-session')||'');
 const authenticatedShell=Boolean(telegramApp?.initData||webSessionReady);
 const showPublicDemo=!authenticatedShell||demoRequested;
-const state={business:showPublicDemo?'clinic':'mine',datasets:{},fileTable:null};
+const state={business:showPublicDemo?'clinic':'mine',demoDays:90,datasets:{},fileTable:null};
 if(showPublicDemo)Object.keys(configs).forEach(k=>state.datasets[k]=demo(configs[k]));
 if(telegramApp&&telegramApp.initData){
  document.documentElement.classList.add('in-telegram');
@@ -230,14 +240,16 @@ function insightHTML(items,warn){return items.map(i=>`<div class="insight-item">
 function render(){
  document.body.classList.add('demo-mode');
  const c=configs[state.business],d=state.datasets[state.business];
- const r=demoSummary(d,state.business,yesterday,d.viewBasis);
+ const r=demoSummary(d,state.business,yesterday,d.viewBasis,state.demoDays);
+ const periodLabel='за '+r.period.days+' дней';
  const verified=r.primary_basis!=='unverified',copy=demoMoneyLabels[state.business];
  const short=r.primary_basis==='cash_receipts'?'Поступления':'Продажи';
  const title=r.primary_basis==='cash_receipts'?copy.paid:copy.done;
  const fmt=value=>money(value/100);
  $('businessDesc').textContent=c.type+' · полученные оплаты и выполненная работа';
  $('companyName').textContent=c.name;$('asOf').textContent='По '+verboseDate(yesterday)+' включительно';
- $('rowsInfo').textContent=d.imported?'Загружено '+number(d.rows.length)+' строк':'90 дней истории';
+ $('rowsInfo').textContent=d.imported?'Загружено '+number(d.rows.length)+' строк':'Демо: до 90 дней аналитики';
+ document.querySelectorAll('[data-demo-days]').forEach(b=>{const active=Number(b.dataset.demoDays)===state.demoDays;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
  $('dataBadge').textContent=d.imported?'Ваши данные (локально)':'Демо-данные';
  const holder=$('financeBooks');
  const labels=[['cash_receipts',copy.paid,'Фактически полученные деньги, включая авансы'],
@@ -253,31 +265,31 @@ function render(){
  $('unverifiedReview').hidden=!r.financial_books.unverified.available;
  $('unverifiedReview').textContent='Нужно уточнить данные · '+fmt(r.financial_books.unverified.amount30_kopecks)+'. Эти суммы не добавляются ни к оплатам, ни к выполненным продажам.';
  $('debtInfo').hidden=true;
- document.querySelector('.revenue-panel .kpi-name').textContent=verified?title+' за 30 дней':'Данные требуют уточнения';
+ document.querySelector('.revenue-panel .kpi-name').textContent=verified?title+' '+periodLabel:'Данные требуют уточнения';
  $('revenue30').textContent=verified?fmt(r.revenue30_kopecks):'—';
  $('revenueChange').textContent=r.change_percent===null?'Пока не с чем сравнить':signed(r.change_percent)+' к предыдущему периоду';
  $('revenueChange').classList.toggle('down',r.change_percent!==null&&r.change_percent<0);
- $('comparisonDesc').textContent=r.coverage.comparable?'Последние 30 завершённых дней с учётом возвратов':'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из 30 дней, ранее — за '+r.coverage.previous_days+' из 30';
+ $('comparisonDesc').textContent=r.coverage.comparable?'Выбранный период с учётом возвратов':'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из '+r.period.days+' дней, ранее — за '+r.coverage.previous_days+' из '+r.period.days;
  $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=short+' за вчера';
  $('revenueYesterday').textContent=verified?fmt(r.yesterday_kopecks):'—';$('yesterdayDate').textContent=verboseDate(yesterday);
- $('countLabel').textContent=r.volume.label+' за 30 дней';
+ $('countLabel').textContent=r.volume.label+' '+periodLabel;
  $('salesCount').textContent=Number.isFinite(r.volume.value)?r.volume.value.toLocaleString('ru-RU',{maximumFractionDigits:3})+(r.volume.unit?' '+r.volume.unit:''):'—';
  $('salesCaption').textContent=r.volume.caption;
  $('averageLabel').textContent='Средний чек';$('averageTicket').textContent=verified&&r.average_receipt_kopecks!==null?fmt(r.average_receipt_kopecks):'—';
- $('averageCaption').textContent='Сумма за 30 дней / число операций';
+ $('averageCaption').textContent='Сумма '+periodLabel+' / число чеков';
  $('topTitle').textContent=c.top;
  const top=verified?r.top3.filter(x=>x.amount_kopecks>0):[],max=top[0]?.amount_kopecks||1;
  $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong>'+escapeHTML(x.item)+'</strong><span>'+fmt(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+(x.amount_kopecks/max*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Для списка позиций нужны подтверждённые данные.</p>';
- $('topItems').closest('.panel').querySelector('.section-muted').textContent='По сумме '+(r.primary_basis==='cash_receipts'?'поступлений':'продаж')+' за 30 дней';
+ $('topItems').closest('.panel').querySelector('.section-muted').textContent='По сумме '+(r.primary_basis==='cash_receipts'?'поступлений':'продаж')+' '+periodLabel;
  $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика: '+short.toLowerCase();
- $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=short+' по дням';
- $('revenueChart').setAttribute('aria-label','График: '+short.toLowerCase()+' за последние семь дней');
+ $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=short+' '+(r.chart_granularity==='week'?'по неделям':'по дням');
+ $('revenueChart').setAttribute('aria-label','График: '+short.toLowerCase()+' '+periodLabel);
  chart(r.chart7.map(x=>verified?x.amount_kopecks/100:0),r.chart7.map(x=>x.date));
- $('chartCaption').textContent=verified?short+' по дням. Возвраты учтены.':'Для графика нужны подтверждённые оплаты или выполненные продажи.';
+ $('chartCaption').textContent=verified?short+' '+(r.chart_granularity==='week'?'по неделям':'по дням')+'. Возвраты учтены.':'Для графика нужны подтверждённые оплаты или выполненные продажи.';
  const bad=[],good=[];
- if(verified&&r.change_percent<0)bad.push({title:short+' — снижение',desc:'Изменение к прошлым 30 дням: '+signed(r.change_percent)+'. Проверьте полноту отчёта.'});
- if(verified&&r.change_percent>0)good.push({title:short+' — рост',desc:'Рост к предыдущим 30 дням: '+signed(r.change_percent)+'.'});
- if(top.length)good.push({title:'Больше всего по сумме — '+top[0].item,desc:'За 30 дней: '+fmt(top[0].amount_kopecks)+'.'});
+ if(verified&&r.change_percent<0)bad.push({title:short+' — снижение',desc:'Изменение к предыдущему периоду: '+signed(r.change_percent)+'. Проверьте полноту отчёта.'});
+ if(verified&&r.change_percent>0)good.push({title:short+' — рост',desc:'Рост к предыдущему периоду: '+signed(r.change_percent)+'.'});
+ if(top.length)good.push({title:'Больше всего по сумме — '+top[0].item,desc:'Сумма '+periodLabel+': '+fmt(top[0].amount_kopecks)+'.'});
  bad.push({title:'Проверьте полноту данных',desc:'Оплаты и выполненные продажи показаны отдельно. Разница между ними сама по себе не означает долг клиента.'});
  if(!good.length)good.push({title:'Показатели появятся после уточнения данных',desc:'Загрузите отчёт с полученными оплатами или выполненными продажами.'});
  $('concerns').innerHTML=insightHTML(bad,true);$('positives').innerHTML=insightHTML(good,false);
@@ -285,7 +297,7 @@ function render(){
  $('demoAiSummary').textContent=analysis.summary;
  $('demoAiFindings').innerHTML=analysis.cards.map(item=>'<article class="ai-finding"><h3>'+escapeHTML(item.title)+'</h3><div class="ai-evidence">'+escapeHTML(item.evidence)+'</div><p>'+escapeHTML(item.explanation)+'</p><div class="ai-action"><strong>Следующий шаг</strong>'+escapeHTML(item.action)+'</div></article>').join('');
  $('warningBanner').classList.toggle('show',d.imported&&(!verified||!r.coverage.comparable));
- $('warningBanner').textContent=!verified?'Нужно уточнить смысл сумм. Они не включены в оплаты и выполненные продажи.':'Истории недостаточно для полного сравнения двух периодов по 30 дней.';
+ $('warningBanner').textContent=!verified?'Нужно уточнить смысл сумм. Они не включены в оплаты и выполненные продажи.':'Истории недостаточно для сравнения двух равных периодов.';
  $('bottomDataTitle').textContent=d.imported?'Показатели пересчитаны из загруженного файла.':'Демонстрационные данные · расчёты как в рабочем приложении.';
  $('bottomDataHint').textContent=d.imported?'Источник: '+d.meta.name+'. Хранится только в текущей вкладке.':'Переключайте компании, оплаты и выполненные продажи. Для работы со своими отчётами подключите бесплатный тест на 48 часов через Telegram.';
  $('clearImport').hidden=!d.imported;
@@ -640,7 +652,10 @@ async function readFile(file){
 $('fileInput').onchange=e=>readFile(e.target.files[0]);const zone=$('dropZone');zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag')});zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');readFile(e.dataTransfer.files[0])});
 $('confirmImport').onclick=()=>{try{const m=mapping(),res=parseImported(state.fileTable,m);state.datasets[state.business]={rows:res.rows.map(row=>({...row,financial_basis:state.fileTable._bpFinancialReview?.type==='cash_receipts'?'cash_receipts':state.fileTable._bpFinancialReview?.type==='reported_revenue'?'recognized_revenue':'unverified'})),imported:true,special:{},meta:{name:state.fileTable.name,hasOrderId:m.id>=0}};showModal(false);render()}catch(e){$('importAlert').textContent=e.message}};
 window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday};
-if(showPublicDemo)render();
+if(showPublicDemo){
+ document.querySelectorAll('[data-demo-days]').forEach(b=>b.onclick=()=>{state.demoDays=Number(b.dataset.demoDays);render();});
+ render();
+}
 if(authenticatedShell&&demoRequested){
   // Explicit demo is separate and has a visible way back on desktop and mobile.
   const returnLink=document.createElement('a');
@@ -653,7 +668,7 @@ if(authenticatedShell&&demoRequested){
 })();
 </script>
 <script src="web-access.js?v=20261026-public-signup-v2"></script>
-<script type="module" src="personal.js?v=20261026-smart-periods-v2"></script>
+<script type="module" src="personal.js?v=20261026-trial90-v1"></script>
 <script src="payments.js?v=20261026-website-access-v1" defer></script>
 </body>
 </html>

@@ -319,12 +319,23 @@ test('Website login grants payment access only after bot confirmation and cannot
 });
 
 
-test('Trial reports are limited to a month; admin/premium get 3 years and custom calendar selection',async t=>{
+test('Trial allows up to 90 days including AI; 1-3 years require paid access',async t=>{
   const {call}=await apiFixture(t);
   await call('101','/me');
   const normal=await call('101','/report?days=7');
   assert.equal(normal.status,200);assert.equal(normal.data.period.days,7);
-  assert.equal((await call('101','/report?days=90')).status,403);
+  const threeMonths=await call('101','/report?days=90');
+  assert.equal(threeMonths.status,200);
+  assert.equal(threeMonths.data.period.days,90);
+  const threeMonthAnalysis=await call('101','/analysis?days=90');
+  assert.equal(threeMonthAnalysis.status,200);
+  const yesterday=normal.data.period.to;
+  const firstDay=new Date(Date.parse(yesterday+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
+  const custom=await call('101','/report?from='+firstDay+'&to='+yesterday);
+  assert.equal(custom.status,200);
+  assert.equal(custom.data.period.days,90);
+  assert.equal((await call('101','/report?days=365')).status,403);
+  assert.equal((await call('101','/report?from=2026-01-01&to=2026-10-20')).status,403);
   assert.equal((await call('101','/analysis?days=1095')).status,403);
   const admin=await call('1296951270','/report?days=1095');
   assert.equal(admin.status,200);
