@@ -9,7 +9,7 @@ function fixture(t){
   const db=new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys=ON;'+
     'CREATE TABLE users(telegram_id TEXT PRIMARY KEY);'+
-    'CREATE TABLE companies(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(telegram_id),name TEXT NOT NULL,industry TEXT NOT NULL);'+
+    'CREATE TABLE companies(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(telegram_id),name TEXT NOT NULL,industry TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);'+
     'CREATE TABLE web_accounts(email TEXT PRIMARY KEY,actor_id TEXT UNIQUE NOT NULL REFERENCES users(telegram_id));'+
     'CREATE TABLE operations(company_id TEXT REFERENCES companies(id),amount_kopecks INTEGER);'+
     "INSERT INTO users VALUES('web:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'),('101'),('202');"+
