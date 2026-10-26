@@ -13,7 +13,7 @@ import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
 import { calculateFinancialSummary } from './finance-summary.mjs';
 import { createCorrectionService } from './corrections.mjs';
-import { resetTestData,clearAdminCompanyData } from './test-reset.mjs';
+import { resetTestData,clearCompanyData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
 import { createAccountLink } from './account-link.mjs';
@@ -276,7 +276,7 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,accountLink.start(websiteActor),origin);
     }
     const c=companyFor(id);
-    if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
+    if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c),stored_operations:st.total.get(c.id).n},origin);
     if(req.method==='GET'&&url.pathname==='/api/subscription')return reply(res,200,{company:c,subscription:subscriptionFor(db,c),plans:PLANS},origin);
     if(req.method==='POST'&&url.pathname==='/api/company/industry'){
       // Available to the owner even outside an active subscription.
@@ -295,6 +295,15 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,{payment:await payments.create(c,id,input.plan)},origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/payments/refresh')return reply(res,200,{subscription:await payments.refresh(c)},origin);
+    // Data deletion must remain available to the authenticated owner after
+    // a trial expires; access to one's own records is not subscription-gated.
+    if(req.method==='POST'&&url.pathname==='/api/clear-company-data'){
+      if(c.access_role!=='owner')return reply(res,403,{error:'Очистить данные может только владелец компании.'},origin);
+      const input=await readJSON(req);
+      if(companyForUser(db,id)?.id!==c.id)return reply(res,403,{error:'Доступ к компании изменился. Откройте кабинет заново.'},origin);
+      const result=clearCompanyData(db,c,id,input?.confirm);
+      return reply(res,200,{...result,report:report(c)},origin);
+    }
     assertSubscription(db,c);
     if(req.method==='GET'&&url.pathname==='/api/report')
       return reply(res,200,report(c,url.searchParams.get('basis')),origin);
@@ -328,11 +337,6 @@ const server=http.createServer(async(req,res)=>{
       // An undo changes the underlying financial evidence just like an import.
       ai.onImport(c);
       return reply(res,200,{...result,report:report(c),history:accumulator.history(c)},origin);
-    }
-    if(req.method==='POST'&&url.pathname==='/api/clear-company-data'){
-      const input=await readCompanyJSON(req,c,id);
-      const result=clearAdminCompanyData(db,c,id,input?.confirm);
-      return reply(res,200,{...result,report:report(c)},origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/reset-test-data'){
       if(c.access_role!=='owner')return reply(res,403,{error:'Очистка тестовых данных доступна только владельцу компании.'},origin);

@@ -84,7 +84,7 @@ test('Existing cash-only cafe import is never automatically counted as earned sa
   try{assert.equal(db.prepare('SELECT COUNT(*) n FROM operations').get().n,1);}
   finally{db.close();}
 });
-test('Only authenticated admin owner can clear own data; undo, AI and mappings are removed without changing access',async t=>{
+test('Company owner may clear own data; operation history, AI and mappings disappear but billing stays',async t=>{
   const {call,dbPath}=await apiFixture(t,false);
   const admin='1296951270';
   const own=(await call(admin,'/me')).data.company;
@@ -95,7 +95,7 @@ test('Only authenticated admin owner can clear own data; undo, AI and mappings a
   assert.equal((await call(admin,'/import',{source:'business.csv',financial_basis:'cash_receipts',rows})).status,200);
   assert.equal((await call('101','/import',{source:'other.csv',financial_basis:'cash_receipts',rows})).status,200);
   assert.equal((await call(admin,'/clear-company-data',{})).status,400);
-  assert.equal((await call('101','/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'})).status,403);
+  assert.equal((await call('101','/clear-company-data',{confirm:'NOT_APPROVED'})).status,400);
   companyAdmin({dbPath,action:'addmember',ownerId:admin,memberId:'303'});
   assert.equal((await call('303','/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'})).status,403);
   const db=new DatabaseSync(dbPath);
@@ -142,6 +142,33 @@ test('Unpaid owner and employee are blocked on all business endpoints; admin tri
   assert.equal((await call('303','/report')).status,402);
 });
 
+test('A normal owner can clear own data, even after trial expiration, without deleting other companies or billing',async t=>{
+  const {call,dbPath}=await apiFixture(t);
+  const owner=(await call('101','/me')).data.company;
+  const other=(await call('202','/me')).data.company;
+  const date='2026-10-25';
+  const row={date,id:'REAL-1',item:'Лечение',amount_kopecks:175000,status:'sale'};
+  assert.equal((await call('101','/import',{source:'clinic.xlsx',financial_basis:'recognized_revenue',rows:[row]})).status,200);
+  assert.equal((await call('202','/import',{source:'other.xlsx',financial_basis:'cash_receipts',rows:[row]})).status,200);
+  const db=new DatabaseSync(dbPath);
+  try{
+    const original=db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(owner.id);
+    db.prepare('UPDATE company_billing SET trial_ends_ms=? WHERE company_id=?').run(1,owner.id);
+    assert.equal((await call('101','/report')).status,402);
+    assert.equal((await call('101','/me')).data.stored_operations,1);
+    const response=await call('101','/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'});
+    assert.equal(response.status,200);
+    assert.equal(response.data.removed,1);
+    assert.equal(response.data.report.source,null);
+    assert.equal((await call('101','/me')).data.stored_operations,0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?').get(other.id).n,1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM companies WHERE id=?').get(owner.id).n,1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM imports WHERE company_id=?').get(owner.id).n,0);
+    assert.deepEqual({...db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(owner.id)},
+      {...original,trial_ends_ms:1});
+    assert.equal((await call('101','/clear-company-data',{confirm:'INVALID'})).status,400);
+  }finally{db.close();}
+});
 test('Only the real company owner can update business type without altering operations or payments',async t=>{
   const {call,dbPath}=await apiFixture(t);
   const owner=(await call('101','/me')).data.company;
