@@ -71,7 +71,7 @@ test('password reset token expires and mail throttle applies per address',()=>{
   x.db.close();
 });
 test('optional invitation registration still works',()=>{
-  const x=fixture(),inv=x.web.createInvite('Автосервис','auto');
+  const x=fixture(),inv=x.web.createInvite('Кондитерская','cafe');
   const legacy=x.web.register({email:'invite@example.com',password:'strong-password-2026',invite:inv.code,accepted_terms:true});
   assert.ok(x.web.actor(legacy.token));
   x.db.close();
