@@ -62,28 +62,54 @@
   const inviteBox = dialog.querySelector('#bp-web-invite-box');
   const acceptBox = dialog.querySelector('#bp-web-accept-box');
   const switchButton = dialog.querySelector('.bp-web-auth-switch');
-  let registering = false;
+  let mode = 'login', linkToken = '', mailEnabled = null;
+  const fields={
+    login:['email','password'],signup:['company','industry','email','password','accepted'],
+    invite:['email','password','invite','accepted'],forgot:['email'],
+    reset:['password','confirm'],verify:[]
+  };
+  const copy={
+    login:['Вход в Бизнес Пульс','Войдите, чтобы получить аналитику компании.','Войти'],
+    signup:['Регистрация','Подтвердите email, чтобы начать бесплатный тест на 48 часов.','Зарегистрироваться'],
+    invite:['Активация приглашения','Введите код приглашения, чтобы создать аккаунт.','Создать аккаунт'],
+    forgot:['Восстановление пароля','Отправим ссылку для смены пароля на вашу почту.','Отправить ссылку'],
+    reset:['Новый пароль','Придумайте новый пароль (не менее 10 символов).','Сохранить пароль'],
+    verify:['Подтверждение почты','Проверяем ссылку подтверждения.','']
+  };
   function setMode(value) {
-    registering = value;
-    inviteBox.hidden = !registering;
-    acceptBox.hidden = !registering;
-    form.elements.invite.required = registering;
-    form.elements.accepted.required = registering;
-    form.elements.password.autocomplete = registering ? 'new-password' : 'current-password';
-    dialog.querySelector('h2').textContent = registering ? 'Активация приглашения' : 'Вход в Бизнес Пульс';
-    dialog.querySelector('#bp-web-intro').textContent = registering
-      ? 'Создайте личный кабинет. Бесплатный тест на 48 часов начнётся после регистрации.'
-      : 'Войдите, чтобы загрузить отчёт и получить аналитику своей компании.';
-    form.querySelector('[type=submit]').textContent = registering ? 'Создать аккаунт' : 'Войти';
-    switchButton.textContent = registering ? 'Уже есть аккаунт? Войти' : 'Есть приглашение? Создать аккаунт';
-    message.textContent = '';
+    mode=value;
+    const active=fields[value];
+    const nodes={company:dialog.querySelector('#bp-web-company-box'),
+      industry:dialog.querySelector('#bp-web-industry-box'),
+      email:form.elements.email.closest('label'),
+      password:form.elements.password.closest('label'),
+      confirm:dialog.querySelector('#bp-web-confirm-box'),
+      invite:inviteBox,accepted:acceptBox};
+    for(const [key,node] of Object.entries(nodes)){
+      const shown=active.includes(key);
+      node.hidden=!shown;
+      const input=key==='accepted'?form.elements.accepted:form.elements[key];
+      input.disabled=!shown;
+      input.required=shown&&key!=='industry';
+    }
+    dialog.querySelector('h2').textContent=copy[value][0];
+    dialog.querySelector('#bp-web-intro').textContent=copy[value][1];
+    form.querySelector('[type=submit]').textContent=copy[value][2];
+    form.querySelector('[type=submit]').hidden=value==='verify';
+    form.elements.password.autocomplete=value==='login'?'current-password':'new-password';
+    dialog.querySelectorAll('[data-mode]').forEach(button=>button.hidden=button.dataset.mode===value);
+    message.textContent='';
+    form.querySelector('[type=submit]').disabled=mailEnabled===false&&['signup','forgot'].includes(value);
+    if(mailEnabled===false&&['signup','forgot'].includes(value))
+      message.textContent='Отправка писем пока не настроена. Свяжитесь с поддержкой.';
   }
-  function open(register = false) {
-    setMode(register);
+  function open(value='login') {
+    setMode(typeof value==='boolean'?(value?'invite':'login'):value);
     if (!dialog.open) dialog.showModal();
-    form.elements.email.focus();
+    const first=fields[mode].find(k=>!['accepted','industry'].includes(k));
+    if(first&&form.elements[first])form.elements[first].focus();
   }
-  switchButton.onclick = () => setMode(!registering);
+  dialog.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>open(button.dataset.mode));
   dialog.querySelector('.bp-web-auth-close').onclick = () => dialog.close();
   form.addEventListener('submit', async event => {
     event.preventDefault();
