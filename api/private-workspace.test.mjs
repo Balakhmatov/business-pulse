@@ -53,3 +53,9 @@ test('data deletion is named consistently, protected by in-page confirmation and
   assert.match(personal,/tg\.initData&&typeof tg\.showConfirm==='function'/);
   assert.match(personal,/clearFeedback\.textContent='Не удалось очистить данные:/);
 });
+
+test('Seven-day reports do not trigger a fixed 25-day coverage warning',()=>{
+  assert.match(personal,/if\(imported&&r\.coverage&&!r\.coverage\.comparable\)/);
+  assert.doesNotMatch(personal,/r\.coverage\.current_days<25/);
+  assert.match(personal,/Сумма '\+periodLabel/);
+});

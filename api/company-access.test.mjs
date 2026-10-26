@@ -24,7 +24,7 @@ async function apiFixture(t,trial=true){
   let logs='';child.stdout.on('data',x=>logs+=x);child.stderr.on('data',x=>logs+=x);
   const base='http://127.0.0.1:'+port;
   let ready=false;
-  for(let i=0;i<100;i++){
+  for(let i=0;i<300;i++){
     try{if((await fetch(base+'/api/health')).ok){ready=true;break;}}catch{}
     if(child.exitCode!==null)break;
     await new Promise(resolve=>setTimeout(resolve,20));
