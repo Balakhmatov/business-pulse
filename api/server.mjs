@@ -141,7 +141,11 @@ function report(c,requestedBasis=null,range=null){
   const historyDays=['paid','admin'].includes(subscription.state)?1095:90;
   const customers=calculateCustomerAnalytics(st.customerRows.all(c.id,shift(end,1-historyDays),end),summary.period,summary.primary_basis);
   customers.history_window_days=historyDays;
-  return {...summary,customers,company:c,subscription,
+  const currentRows=entries.filter(row=>row.sold_on>=summary.period.from&&
+    (row.financial_basis===summary.primary_basis||row.financial_basis==='paid_fulfilled'&&summary.primary_basis!=='unverified'));
+  const syntheticRows=currentRows.filter(row=>row.source_id.startsWith('AUTO-DAY-V1-')).length;
+  const operationIdentity={estimated:syntheticRows>0,synthetic_rows:syntheticRows,total_rows:currentRows.length};
+  return {...summary,customers,operation_identity:operationIdentity,company:c,subscription,
     source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,
       last_import_rows:src.row_count,last_change_at:src.last_change_at}:null,
     warning:src?null:'Отчёт ещё не загружен. Здесь пока нет финансовых данных.'
@@ -157,17 +161,21 @@ function normalize(input){
   if(!input||!Array.isArray(input.rows)||input.rows.length<1||input.rows.length>10000)throw Error('Expected 1..10000 rows');
   if(typeof input.source!=='string'||!input.source.trim()||input.source.length>120)throw Error('Invalid source');
   const today=mskToday(),result=[],seen=new Set();
-  for(const r of input.rows){
+  for(const raw of input.rows){
+    if(raw?.synthetic_id!==undefined&&typeof raw.synthetic_id!=='boolean')throw Error('Invalid operation identity mode');
+    const missingID=raw&&(raw.id==null||typeof raw.id==='string'&&!raw.id.trim());
+    const r=raw&&(raw.synthetic_id===true||missingID)?{...raw,id:'AUTO-DAY',synthetic_id:true}:raw;
     if(!r||typeof r.date!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(r.date)||Number.isNaN(Date.parse(r.date+'T00:00:00Z'))||new Date(r.date+'T00:00:00Z').toISOString().slice(0,10)!==r.date||r.date>today||r.date<shift(today,-3650))throw Error('Invalid date');
     if(typeof r.id!=='string'||!r.id.trim()||r.id.length>100||typeof r.item!=='string'||!r.item.trim()||r.item.length>140)throw Error('Invalid ID or item');
     if(!Number.isSafeInteger(r.amount_kopecks)||Math.abs(r.amount_kopecks)>1e12||r.amount_kopecks===0)throw Error('Invalid amount');
     if(!(r.quantity_milli===undefined||r.quantity_milli===null||
       (Number.isSafeInteger(r.quantity_milli)&&r.quantity_milli>0&&r.quantity_milli<=1000000000)))
       throw Error('Неверное количество: проверьте столбец «Количество».');
+    if(r.synthetic_id!==undefined&&typeof r.synthetic_id!=='boolean')throw Error('Invalid operation identity mode');
     if(!['sale','refund'].includes(r.status)||(r.status==='sale'&&r.amount_kopecks<0)||(r.status==='refund'&&r.amount_kopecks>0))throw Error('Invalid status');
     if(r.occurrence!==undefined&&(!Number.isSafeInteger(r.occurrence)||r.occurrence<0||r.occurrence>100000))throw Error('Invalid line occurrence');
     const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null,r.customer_ref_kind??null,r.customer_ref??null,r.occurrence??null].join('\u0000');
-    if(!seen.has(key)){result.push({...r,customer_key:undefined});seen.add(key);}
+    if(r.synthetic_id===true||!seen.has(key)){result.push({...r,customer_key:undefined});seen.add(key);}
   }
   return result;
 }

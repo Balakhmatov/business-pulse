@@ -12,14 +12,35 @@
     if(/^(?:(?:id|ид|код|идентификатор|номер)\s+(?:пациента|клиента|покупателя|медкарты|медицинской карты|карты пациента)|(?:patient|customer|client)\s*id|(?:пациент|клиент|покупатель)\s+(?:id|ид|код)|id\s*(?:patient|customer|client))$/.test(s))return 'id';
     if(/^(?:(?:мобильный|контактный)\s+)?(?:телефон|phone|mobile)(?:\s+(?:пациента|клиента|покупателя))?$/.test(s))return 'phone';
     if(/^(?:email|e mail|электронная почта|почта)(?:\s+(?:пациента|клиента|покупателя))?$/.test(s))return 'email';
+    if(/^(?:ф\.?\s*и\.?\s*о\.?|фамилия(?: имя)? (?:и )?отчество|полное имя|имя пациента|пациент|клиент|patient name|customer name|client name)(?:\s+(?:пациента|клиента|покупателя))?$/.test(s))return 'name';
+    if(/^(?:фамилия|имя|отчество)(?: пациента| клиента)?$/.test(s))return 'name';
     return null;
+  }
+  const namePartHeader=h=>/^(?:фамилия|имя|отчество)(?: пациента| клиента)?$/i.test(String(h??'').replace(/\s+/g,' ').trim());
+  // Shared by the browser and API: the same reference must receive the same
+  // within-day occurrence across chunk boundaries, without exporting raw names.
+  function normalizeCustomerRef(value,kind){
+    if(typeof value!=='string'||value.length>200)return undefined;
+    let v=value.normalize('NFKC').trim();if(!v)return undefined;
+    if(kind==='name'){
+      v=v.toLowerCase().replace(/ё/g,'е').replace(/[‐‑‒–—]/g,'-').replace(/[’‘]/g,"'").replace(/\s+/g,' ');
+      if(/^(?:нет данных|не указан[ао]?|без имени|неизвестный пациент|unknown patient|no name)$/.test(v))return undefined;
+      return /^[\p{L} .'-]+$/u.test(v)&&v.split(' ').length>=2?v:undefined;
+    }
+    if(kind==='phone'){
+      if(!/^[+\d\s().-]+$/.test(v))return undefined;
+      v=v.replace(/\D/g,'');if(v.length===11&&v.startsWith('8'))v='7'+v.slice(1);
+      return v.length>=10&&v.length<=15?v:undefined;
+    }
+    if(kind==='email'){v=v.toLowerCase();return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?v:undefined;}
+    return kind==='id'?v:undefined;
   }
 
   const quantityHeader=/^(?:количество(?:\s+(?:товаров|услуг|работ|единиц|штук))?|кол[- ]?во|шт\.?|quantity|qty|units?)(?:\s*\([^)]*\))?$/i;
   const WORDS={
     date:[/\bdate\b|\btime\b|^day$/i,/дата|день|время|создан|закрыт|проведен|проведён|день операц|период/i],
     id:[/\breceipt\b|\border.?id\b|\btransaction.?id\b|\bdocument.?id\b|\bvisit.?id\b/i,/номер.{0,12}(чека|визита|заказа|документа|продаж)|\bчек\b|чека|визит|заказ|идентификатор|код реализац|номер операц|номер документа|(?:^|\s)(?:id|ид|uuid)[\s_-]*(?:операц|транзакц|платеж|платёж|чек|визит|документ|заказ)|№\s*записи\s*журнала|номер\s*записи\s*журнала|реестровая запись|регистратор|документ основание/i],
-    item:[/\bproduct\b|\bitem\b|\bservice\b|\bdescription\b|\bname\b/i,/номенклатур|товар|услуг|наименован|позици|предмет|описан|продукт/i],
+    item:[/\bproduct\b|\bitem\b|\bservice\b|\bdescription\b|\bname\b/i,/номенклатур|товар|услуг|процедур|что (?:делали|сделано)|наименован|позици|предмет|описан|продукт/i],
     amount:[/\bamount\b|\brevenue\b|\bturnover\b|\btotal\b|\bpaid\b|\bsum\b/i,/выручк|оплачен|оплат[аеыу]|сумм|оборот|стоимост|стоимость|к оплате|получено|сумма расч[её]та|итого рублей|сумма реализации/i],
     status:[/\bstatus\b|\btype\b|\boperation\b|\bmovement\b/i,/статус|возврат|вид движен|вид операц|тип операц|назначени|признак расч[её]та/i]
   };
@@ -121,8 +142,9 @@
     const quantities=head.map((h,i)=>quantityHeader.test(norm(h))&&!claimed.has(i)?i:-1).filter(i=>i>=0);
     if(quantities.length===1){mapping.quantity=quantities[0];confidence.quantity='высокая';}
     const customerColumns=head.map((h,i)=>({index:i,kind:customerKind(h)})).filter(x=>x.kind&&!claimed.has(x.index));
-    for(const kind of ['id','phone','email']){
-      const found=customerColumns.filter(x=>x.kind===kind);
+    for(const kind of ['id','phone','email','name']){
+      let found=customerColumns.filter(x=>x.kind===kind);
+      if(kind==='name'&&found.some(x=>!namePartHeader(head[x.index])))found=found.filter(x=>!namePartHeader(head[x.index]));
       if(found.length){if(found.length===1){mapping.customer=found[0].index;confidence.customer='высокая';}break;}
     }
     return {mapping,confidence,profiles:ps,ambiguities};
@@ -176,6 +198,16 @@
       rows.push(Array.from({length:cols},(_,i)=>row[i]||''));
     }
     if(!rows.length)throw Error('Под заголовками не найдены операции.');
+    // A normal clinic export may split the name over several columns.
+    const namePart=part=>{
+      const hits=padded.map((h,i)=>new RegExp('^'+part+'(?: пациента| клиента)?$','i').test(norm(h))?i:-1).filter(i=>i>=0);
+      return hits.length===1?hits[0]:-1;
+    };
+    const surname=namePart('фамилия'),given=namePart('имя'),patronymic=namePart('отчество');
+    if(padded.length<300&&!padded.some(h=>customerKind(h)==='name'&&!namePartHeader(h))&&surname>=0&&(given>=0||patronymic>=0)){
+      padded.push('ФИО пациента (из отдельных столбцов)');
+      for(const row of rows)row.push([surname,given,patronymic].filter(i=>i>=0).map(i=>norm(row[i])).filter(Boolean).join(' '));
+    }
     const result=guess(padded,rows);
     const preamble=raw.slice(0,header).flat().join(' ');
     const names=padded.join(' ');
@@ -183,11 +215,11 @@
     const explicitSummary=summary.test(preamble)||summary.test(name||'')||summary.test(names);
     const summaryColumns=/количеств|средний чек|средн|процент|доля выручки|показател|группиров|всего за период/i.test(names);
     // A daily/monthly totals table with no receipt ID is not a transaction export.
-    const aggregate=(explicitSummary||summaryColumns)&&id<0&&amount>=0;
+    const aggregate=(explicitSummary||(summaryColumns&&result.mapping.customer===undefined))&&id<0&&amount>=0;
     const warnings=[];
     if(aggregate)warnings.push('Похоже на сводный отчёт. Его нельзя объединять с отдельными продажами: возникнет двойной учёт.');
     warnings.push(...result.ambiguities);
-    if(id<0)warnings.push('Не найден надёжный ID чека/визита. В личной компании потребуется выбрать этот столбец вручную.');
+    if(id<0)warnings.push('В отчёте нет ID операции: сервис создаст условные записи по пациенту и дате. Число визитов и средний чек будут оценочными.');
     if(date<0||amount<0)warnings.push('Дата или сумма определены неоднозначно — проверьте выбор столбцов.');
     if(footer)warnings.push('Пропущены итоговые строки: '+footer+'.');
     return {
@@ -287,5 +319,5 @@
       materialRisks:[...new Set([...localCodes,...aiCodes])]
     };
   }
-  return {detect,guess,dateLike,numberLike,financialSemantics,financialConfirmation,customerKind};
+  return {detect,guess,dateLike,numberLike,financialSemantics,financialConfirmation,customerKind,normalizeCustomerRef};
 });

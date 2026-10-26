@@ -63,18 +63,20 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
     const facts = {};
     const add = (id, value) => { facts[id] = value; };
     add('revenue', title+' за выбранный период '+r.period.from+' — '+r.period.to+' ('+days+' дней): '+money(r.revenue30_kopecks)+'.');
-    add('receipts', 'За тот же период было ' + currentReceipts + ' операций с уникальными номерами.');
+    if(r.operation_identity?.estimated)add('operation_identity_estimate','В исходном отчёте нет ID операций: '+r.operation_identity.synthetic_rows+' строк сгруппированы по пациенту и дню. Число чеков, визитов и средний чек — оценки; несколько визитов за один день могут объединиться.');
+    add('receipts','За тот же период было '+currentReceipts+(r.operation_identity?.estimated?' условных групп записей (оценка по пациенту и дню).':' операций с уникальными номерами.'));
     if(Number.isFinite(r.volume?.value))add('industry_volume',r.volume.label+': '+r.volume.value+' '+r.volume.unit+'. '+r.volume.caption);
     else if(r.volume)add('industry_volume_missing',r.volume.label+': нет данных. '+r.volume.caption);
     if(Number.isFinite(r.customers?.financial?.average_ltv_kopecks)){
       const f=r.customers.financial;
-      add('observed_ltv','Средняя сумма на идентифицированного пациента/клиента по доступной истории с '+r.customers.history_from+' по '+r.customers.as_of+': '+money(f.average_ltv_kopecks)+'. Это наблюдаемая сумма выбранного финансового типа, не прогноз полного LTV и не прибыль. ID заполнен у '+f.coverage.identified_rows+' из '+f.coverage.total_rows+' строк.');
+      add('observed_ltv','Средняя сумма на идентифицированного пациента/клиента по доступной истории с '+r.customers.history_from+' по '+r.customers.as_of+': '+money(f.average_ltv_kopecks)+'. Это наблюдаемая сумма выбранного финансового типа, не прогноз полного LTV и не прибыль. Связь с человеком установлена у '+f.coverage.identified_rows+' из '+f.coverage.total_rows+' строк. '+(f.estimated?'Оценка: используются ФИО, условные обращения по дням или суммы без подтверждённого смысла. Совпадения имён могут объединить людей, варианты написания — разделить. Процент ошибки неизвестен.':''));
     }
     if(r.customers?.visits?.available){
       const v=r.customers.visits;
-      add('returning_patients','В выбранном периоде пациентов с оказанными услугами: '+v.period_patients+'; из них вернувшихся в другой день после первой даты в доступной истории: '+v.returning_patients+'. История может не охватывать начало отношений.');
+      add('returning_patients','В выбранном периоде пациентов с оказанными услугами: '+v.period_patients+'; из них вернувшихся в другой день после первой даты в доступной истории: '+v.returning_patients+'. История может не охватывать начало отношений. '+(v.estimated?'Идентификация и визиты оценочные: используются ФИО или условные обращения по дням.':''));
     }
-    if (r.average_receipt_kopecks !== null) add('average', 'Средний чек: ' + money(r.average_receipt_kopecks) + '.');
+    if(r.customers?.available&&!r.customers.visits.available&&r.customers.activity?.available){const a=r.customers.activity;add('repeat_activity','За выбранный период людей с повторными операциями в разные дни: '+a.returning_patients+' из '+a.period_patients+'. Это даты операций, не подтверждённые повторные посещения. '+(a.estimated?'Связь людей и обращений приблизительная; процент погрешности неизвестен.':''));}
+    if (r.average_receipt_kopecks !== null) add('average', (r.operation_identity?.estimated?'Средняя сумма на условную группу записей (оценка): ':'Средний чек: ') + money(r.average_receipt_kopecks) + '.');
     add('data_coverage', 'Операции присутствуют за ' + curDays + ' из '+days+' дней; отсутствие операций не доказывает нулевые продажи.');
     if (comparable) {
       add('revenue_change', 'Изменение к предыдущему периоду той же длительности: ' + percent(r.change_percent) + '.');
@@ -171,7 +173,7 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
       const identity=[c.id,revision.get(c.id)?.revision||0,range.from,range.to,r.primary_basis,c.industry];
       // Preserve existing ready analyses when no patient information was added.
       // Subscription upgrades change the customer history scope, hence facts.
-      if(r.customers?.available)identity.push('customers-v1',r.customers.history_window_days??null);
+      if(r.customers?.available){identity.push('customers-v1',r.customers.history_window_days??null);if(r.customers.financial.estimated||!r.customers.visits.available)identity.push('minimal-v1');}
       cacheKey=createHash('sha256').update(JSON.stringify(identity)).digest('hex');
       saved=read.get(c.id,cacheKey);
       if(apiKey&&saved?.status!=='ready'){

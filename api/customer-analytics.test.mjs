@@ -60,7 +60,8 @@ test('Customer keys are stable across restart, normalize contacts, isolate compa
  assert.notEqual(key,identity.key('b','+7 999 123 45 67','phone'));
  assert.equal(identity.key('a',' USER@Example.org ','email'),identity.key('a','user@example.org','email'));
  assert.notEqual(identity.key('a','001','id'),identity.key('a','1','id'));
- assert.throws(()=>identity.key('a','Иван Петров','name'));
+ assert.match(identity.key('a','Иван Петров','name'),/^name-v1:/);
+ assert.throws(()=>identity.key('a','Иван Петров','unsupported'));
  assert.equal(identity.key('a','ошибка +79991234567','phone'),undefined);
  assert.equal(identity.key('a','—','phone'),undefined);assert.equal(identity.key('a','нет','email'),undefined);
  assert.equal(identity.key('a','','id'),undefined);
@@ -106,12 +107,12 @@ test('Smart import prefers patient ID to contact, never assigns it as receipt, a
  const table=[head,['2026-01-20','v1','Услуга','2','10000','001','+79991234567','Иван Петров']];
  const detected=smart.detect(table,'clinic.xlsx');assert.equal(detected.mappingGuess.customer,5);assert.equal(detected.mappingGuess.id,1);
  assert.equal(smart.guess(['Дата','ID пациента','Сумма'],[['2026-01-20','001','10000']]).mapping.id,-1);
- assert.equal(smart.customerKind('Телефон врача'),null);assert.equal(smart.customerKind('ФИО пациента'),null);
+ assert.equal(smart.customerKind('Телефон врача'),null);assert.equal(smart.customerKind('ФИО пациента'),'name');
  assert.equal(smart.customerKind('ID пациента (МИС)'),'id');
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const parse=Function('dayStamp','window',html.slice(html.indexOf('function parseDate('),html.indexOf('const financialFlagLabels='))+'return parseImported;')(d=>d.toISOString().slice(0,10),{BP_SmartImport:smart});
  const parsed=parse(detected,detected.mappingGuess);assert.equal(parsed.rows[0].customer_ref,'001');assert.equal(parsed.rows[0].customer_ref_kind,'id');
- assert.throws(()=>parse(detected,{...detected.mappingGuess,customer:7}),/ФИО/);
+ assert.equal(parse(detected,{...detected.mappingGuess,customer:7}).rows[0].customer_ref_kind,'name');
  const saved=validateMapping(head,detected.mappingGuess);assert.equal(saved.customer,5);
  assert.throws(()=>validateMapping(head,{...saved,customer:saved.amount}),/Пациент/);
 });
@@ -149,7 +150,7 @@ test('Import hashes patient identity inside the write transaction and rolls back
  const f=fixture(t);
  const engine=createAccumulator(f.db,{customerKeyFor:(c,r)=>f.identity.key(c.id,r.customer_ref,r.customer_ref_kind)});
  const base={date:'2026-01-20',item:'Услуга',amount_kopecks:10000,status:'sale',customer_ref:'+79991234567',customer_ref_kind:'phone'};
- assert.throws(()=>engine.ingest({id:'a'},{source:'test.xlsx'},[{...base,id:'v1'},{...base,id:'v2',customer_ref_kind:'name'}]),/постоянный ID/);
+ assert.throws(()=>engine.ingest({id:'a'},{source:'test.xlsx'},[{...base,id:'v1'},{...base,id:'v2',customer_ref_kind:'unsupported'}]),/ID, телефон/);
  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM operations').get().n,0);
  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM customer_identity_secrets').get().n,0);
 });

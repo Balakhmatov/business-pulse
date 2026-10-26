@@ -35,6 +35,7 @@ function canonical(input,nowMs){
        (row.status==='sale'&&row.amount_kopecks<0)||
        (row.status==='refund'&&row.amount_kopecks>0))
       throw error('Некорректная строка в запросе на сверку.');
+    if(row.synthetic_id===true)throw error('Для режима исправлений нужны ID операций из исходной системы.');
     const id=row.id.trim();
     if(ids.has(id))throw error('Для сверки нужен уникальный ID каждой операции. Повторяется: '+id.slice(0,32));
     ids.add(id);

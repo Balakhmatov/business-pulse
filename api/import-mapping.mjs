@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import smartImport from '../smart-import.js';
 
 // Only column headers and coarse type ratios may reach AI. Raw Excel cells,
 // receipt IDs, amounts, personal names, source filename are never sent.
@@ -24,7 +25,7 @@ export function validateMapping(head,mapping){
   for(const key of FIELDS){
     const i=mapping[key];
     if(!Number.isInteger(i)||i < -1||i>=head.length)throw safeError('Некорректный номер столбца: '+key);
-    if(['date','id','amount'].includes(key)&&i<0)throw safeError('Дата, ID чека и сумма обязательны.');
+    if(['date','amount'].includes(key)&&i<0)throw safeError('Дата и сумма обязательны.');
     if(i>=0){
       if(occupied.has(i))throw safeError('Один столбец нельзя назначить двум разным полям.');
       occupied.add(i);
@@ -84,6 +85,7 @@ function validateAIResult(raw,head,profiles){
     const i=m[field];
     if(!Number.isInteger(i)||i < -1||i>=head.length)return null;
     if(i>=0){
+      if(smartImport.customerKind(head[i]))return null;
       if(occupied.has(i))return null;
       occupied.add(i);
     }
