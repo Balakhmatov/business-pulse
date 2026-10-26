@@ -55,6 +55,7 @@
     body.private-workspace .private-sidelink{display:flex;align-items:center;gap:8px;color:#a7b1d1;
       text-decoration:none;font-size:12px;padding:12px;border-radius:10px}
     body.private-workspace .private-sidelink:hover{background:#252c49;color:white}
+    body.private-workspace.bp-access-locked .main > .private-company-settings:not([hidden]){display:block!important}
     body.private-workspace .private-company-settings[hidden]{display:none!important}
     body.private-workspace .private-company-settings{background:#fff;border:1px solid #e8eaf2;
       border-radius:13px;margin:0 0 16px;padding:12px 16px;color:#3f4863}
@@ -115,14 +116,16 @@
   const industryStatus=$('privateIndustryStatus');
   let industrySaving=false;
   industrySave.onclick=async()=>{
-    if(industrySaving||!state.mineReport||state.mineReport.company?.access_role!=='owner')return;
+    const currentCompany=state.mineReport?.company||state.mineCompany;
+    if(industrySaving||currentCompany?.access_role!=='owner')return;
     industrySaving=true;
     industrySave.disabled=true;
     industryStatus.textContent='Сохраняем…';
     try {
       const result=await request('/company/industry',{industry:industrySelect.value});
-      state.mineReport=result.report||state.mineReport;
-      state.mineReport.company=result.company;
+      if(result.report)state.mineReport=result.report;
+      state.mineCompany=result.company;
+      if(state.mineReport)state.mineReport.company=result.company;
       state.mineAI=null;
       state.mineViewBasis=null;
       industryStatus.textContent=result.changed?'Тип бизнеса сохранён. Показатели пересчитаны.':'Этот тип бизнеса уже выбран.';
@@ -461,11 +464,12 @@
       subscriptionBox.textContent=state.mineLoading?'Проверяем доступ к компании…':state.mineError||'Не удалось проверить доступ. Откройте приложение заново.';
     }
 
-    companySettings.hidden=!r;
-    if(r?.company){
-      industrySelect.value=r.company.industry||'other';
-      industrySelect.disabled=r.company.access_role!=='owner';
-      industrySave.hidden=r.company.access_role!=='owner';
+    const currentCompany=r?.company||state.mineCompany;
+    companySettings.hidden=!currentCompany;
+    if(currentCompany){
+      industrySelect.value=currentCompany.industry||'other';
+      industrySelect.disabled=currentCompany.access_role!=='owner';
+      industrySave.hidden=currentCompany.access_role!=='owner';
       industrySave.disabled=industrySaving;
     }
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
@@ -577,9 +581,18 @@
     if(state.business==='mine')renderMine();
     try{
       state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
+      state.mineCompany=state.mineReport?.company;
     }catch(error){
       state.mineError=error.message||'Не удалось получить данные.';
-      if(error.status===402||error.status===401){state.mineReport=null;state.mineSubscription=null;if(error.status===402)try{state.mineSubscription=(await request('/subscription')).subscription;}catch{}}
+      if(error.status===402||error.status===401){
+        state.mineReport=null;
+        state.mineSubscription=null;
+        if(error.status===402)try{
+          const me=await request('/me');
+          state.mineSubscription=me.subscription;
+          state.mineCompany=me.company;
+        }catch{}
+      }
     }
     finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }
