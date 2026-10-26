@@ -969,11 +969,16 @@
       if(result.invalid>0)throw Error('Обнаружено '+result.invalid+' строк с ошибками: '+result.invalidExamples.join('; ')+'. Исправьте данные перед загрузкой.');
       if(!result.rows.length&&!(isCorrection&&result.cancelled_ids.length))
         throw Error('Нет корректных оплаченных операций для импорта.');
-      if(result.rows.length>10000)throw Error('Сервер принимает до 10 000 операций за одну загрузку.');
-      const rows=result.rows.map(x=>({
-        date:x.date,id:String(x.id),item:String(x.item),
-        amount_kopecks:Math.round(x.amount*100),status:x.status,quantity_milli:x.quantity_milli??null
-      }));
+      if(result.rows.length>100000)throw Error('В одном файле можно загрузить до 100 000 операций. Разделите отчёт на несколько файлов.');
+      const occurrenceCounts=new Map();
+      const rows=result.rows.map(x=>{
+        const date=x.date,id=String(x.id),item=String(x.item),status=x.status;
+        const group=JSON.stringify([date,id.trim(),item.trim(),status]);
+        const occurrence=occurrenceCounts.get(group)||0;
+        occurrenceCounts.set(group,occurrence+1);
+        return {date,id,item,amount_kopecks:Math.round(x.amount*100),status,
+          quantity_milli:x.quantity_milli??null,occurrence};
+      });
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
       if(!validateBookChoice())
         throw Error(!bookSelect.value?'Выберите, что означают суммы в файле: полученные деньги, выполненные продажи или суммы без уточнения.':basisConflict()||'Подтвердите, что услуги уже оказаны или товары переданы. Авансы за будущие услуги и просто выставленные счета сюда не входят.');
@@ -995,13 +1000,36 @@
         financial:state.fileTable._bpAiMappingAmount===columns.amount
           ?state.fileTable._bpAiFinancial||null:null
       };
-      const answer=isCorrection
-        ?await request('/import/corrections/apply',{
+      let answer;
+      if(isCorrection){
+        answer=await request('/import/corrections/apply',{
           ...correctionData,confirm_token:checkedCorrection.confirm_token,
           expires_at_ms:checkedCorrection.expires_at_ms
-        })
-        :await request('/import',{source:state.fileTable.name.slice(0,120),
-          financial_basis:financialBasis,rows});
+        });
+      }else{
+        const batchSize=5000,parts=Math.ceil(rows.length/batchSize);
+        const combined={received:0,added:0,updated:0,unchanged:0,deleted:0,total:0};
+        for(let part=0;part<parts;part++){
+          $('importAlert').textContent='Сохраняем отчёт: пакет '+(part+1)+' из '+parts+
+            ' · '+Math.min(rows.length,(part+1)*batchSize)+' / '+rows.length+' строк.';
+          try{
+            answer=await request('/import',{
+              source:state.fileTable.name.slice(0,120),
+              financial_basis:financialBasis,
+              more_chunks:part<parts-1,
+              rows:rows.slice(part*batchSize,(part+1)*batchSize)
+            });
+          }catch(error){
+            const saved=combined.received;
+            throw Error((saved?'Сохранено '+saved+' строк, дальнейшая загрузка остановлена. ':'')+
+              error.message+' Повторно загрузите этот же файл: уже записанные операции не задвоятся.');
+          }
+          const stats=answer.stats||{};
+          for(const key of ['received','added','updated','unchanged','deleted'])combined[key]+=Number(stats[key]||0);
+          combined.total=stats.total||combined.total;
+        }
+        answer.stats=combined;
+      }
       // Saving the mapping is independent of successful accounting: a template
       // API outage must not undo or retry a completed transaction import.
       let savedTemplate=false;
