@@ -276,7 +276,7 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,accountLink.start(websiteActor),origin);
     }
     const c=companyFor(id);
-    if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
+    if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c),stored_operations:st.total.get(c.id).n},origin);
     if(req.method==='GET'&&url.pathname==='/api/subscription')return reply(res,200,{company:c,subscription:subscriptionFor(db,c),plans:PLANS},origin);
     if(req.method==='POST'&&url.pathname==='/api/company/industry'){
       // Available to the owner even outside an active subscription.
