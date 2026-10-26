@@ -30,9 +30,13 @@ export async function sendTimewebMail({host='smtp.timeweb.ru',port=465,user,pass
   if(!safeMailAddress(user)||!safeMailAddress(from)||user!==from||!safeMailAddress(to)||
     typeof password!=='string'||!password||!['smtp.timeweb.ru'].includes(host)||port!==465)
     throw mailError();
+  let stage='tls',smtpResponseCode='',socketErrorCode='';
   const socket=connect({host,port,servername:host,rejectUnauthorized:true});
-  socket.setTimeout(12000,()=>socket.destroy(mailError()));
-  socket.on('error',()=>{}); // errors are handled through the SMTP read stream
+  socket.setTimeout(12000,()=>{socketErrorCode='TIMEOUT';socket.destroy(mailError());});
+  socket.on('error',error=>{
+    const code=String(error?.code||'');
+    if(!socketErrorCode&&/^[A-Z0-9_]{1,40}$/.test(code))socketErrorCode=code;
+  }); // never log email addresses, passwords or SMTP message bodies
   const reader=readline.createInterface({input:socket,crlfDelay:Infinity,terminal:false});
   const iterator=reader[Symbol.asyncIterator]();
   async function reply(expected){
@@ -45,7 +49,7 @@ export async function sendTimewebMail({host='smtp.timeweb.ru',port=465,user,pass
       if(code&&code!==match[1])throw mailError();
       code=match[1];
       if(match[2]===' '){
-        if(Number(code)!==expected)throw mailError();
+        if(Number(code)!==expected){smtpResponseCode=code;throw mailError();}
         return;
       }
     }
@@ -63,20 +67,36 @@ export async function sendTimewebMail({host='smtp.timeweb.ru',port=465,user,pass
       socket.once('error',reject);
     });
     if(!socket.authorized)throw mailError();
+    stage='greeting';
     await reply(220);
+    stage='ehlo';
     await command('EHLO business-pulse.local',250);
     // LOGIN is supported by Timeweb; credentials travel only in validated TLS.
+    stage='auth-start';
     await command('AUTH LOGIN',334);
+    stage='auth-username';
     await command(Buffer.from(user,'utf8').toString('base64'),334);
+    stage='auth-password';
     await command(Buffer.from(password,'utf8').toString('base64'),235);
+    stage='sender';
     await command('MAIL FROM:<'+from+'>',250);
+    stage='recipient';
     await command('RCPT TO:<'+to+'>',250);
+    stage='data-start';
     await command('DATA',354);
+    stage='data-completion';
     socket.write(formatMail({from,to,subject,text})+'.\r\n');
     await reply(250);
-    await command('QUIT',221);
+    // The message is accepted after 250; a lost QUIT reply is not a send failure.
+    stage='quit';
+    try{await command('QUIT',221);}catch{}
     return true;
   }catch{
+    // Only whitelist diagnostic stage and protocol/status codes; never print
+    // credentials, mailbox addresses, server messages or reset links.
+    console.error('Business Pulse SMTP: stage='+stage+
+      (smtpResponseCode?' smtp_code='+smtpResponseCode:'')+
+      (socketErrorCode?' network_code='+socketErrorCode:''));
     throw mailError();
   }finally{
     reader.close();
