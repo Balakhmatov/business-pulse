@@ -8,7 +8,7 @@ const personal=fs.readFileSync(new URL('../personal.js',import.meta.url),'utf8')
 test('authenticated dashboard does not construct demo datasets or render public demo automatically',()=>{
   assert.match(index,/const showPublicDemo=!authenticatedShell\|\|demoRequested;/);
   assert.match(index,/if\(showPublicDemo\)Object\.keys\(configs\)\.forEach\(k=>state\.datasets\[k\]=demo\(configs\[k\]\)\);/);
-  assert.match(index,/if\(showPublicDemo\)render\(\);/);
+  assert.match(index,/if\(showPublicDemo\)\{[\s\S]*?render\(\);[\s\S]*?\}/);
   assert.match(index,/const state=\{business:showPublicDemo\?'clinic':'mine'/);
 });
 test('only explicit demo URL bypasses private workspace and has a return control',()=>{
