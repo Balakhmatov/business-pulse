@@ -4,8 +4,9 @@
   const tg=window.Telegram?.WebApp;
   const isTelegram=Boolean(tg?.initData);
   let session=sessionStorage.getItem('bp-pay-session')||'',loginAttempt=null;
-  const authenticated=()=>isTelegram||Boolean(session);
-  const authHeaders=()=>isTelegram?{'X-Telegram-Init-Data':tg.initData}:{'X-BP-Web-Session':session};
+  const websiteSession=()=>sessionStorage.getItem('bp-web-session')||'';
+  const authenticated=()=>isTelegram||Boolean(websiteSession()||session);
+  const authHeaders=()=>isTelegram?{'X-Telegram-Init-Data':tg.initData}:{'X-BP-Web-Session':websiteSession()||session};
   const plans=[
     {id:'month',name:'1 месяц',price:2490,detail:'Стандартная подписка'},
     {id:'halfyear',name:'6 месяцев',price:9990,detail:'−33% · экономия 4 950 ₽'},
@@ -69,10 +70,10 @@
       let subscription=null;
       if(authenticated()){
         const r=await fetch(root+'/payments/refresh',{method:'POST',headers:authHeaders(),signal:AbortSignal.timeout(25000)});
-        if(r.status===401){session='';sessionStorage.removeItem('bp-pay-session');}else if(!r.ok)throw Error('subscription');subscription=r.ok?(await r.json()).subscription:null;
+        if(r.status===401){session='';sessionStorage.removeItem('bp-pay-session');sessionStorage.removeItem('bp-web-session');}else if(!r.ok)throw Error('subscription');subscription=r.ok?(await r.json()).subscription:null;
       }
       available=data.payments_available===true&&Boolean(subscription);
-      status.textContent=!authenticated()?'Войдите через Telegram, затем выберите тариф и оплатите на сайте.':available?'Поставьте галочку принятия условий — кнопки оплаты станут доступны.':'Оплата пока недоступна. Напишите в поддержку.';
+      status.textContent=!authenticated()?'Войдите в личный кабинет или через Telegram, затем выберите тариф.':available?'Поставьте галочку принятия условий — кнопки оплаты станут доступны.':'Оплата пока недоступна. Напишите в поддержку.';
       for(const [id,c] of controls)c.card.classList.toggle('selected',id===chosen);
       update();
     }catch{status.textContent='Не удалось загрузить оплату. Закройте окно и попробуйте ещё раз или напишите в поддержку.';}
