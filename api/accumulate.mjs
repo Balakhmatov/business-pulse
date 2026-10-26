@@ -98,6 +98,14 @@ export function createAccumulator(db) {
     'OR operations.quantity_milli IS NOT excluded.quantity_milli'
   );
   const getPrevious = db.prepare('SELECT amount_kopecks,quantity_milli FROM operations WHERE company_id=? AND import_key=?');
+  // A paid/fulfilled export must never overlap independently imported cash
+  // or earned revenue for the same receipt line. Otherwise one financial
+  // book would count the same purchase twice.
+  const overlappingBasis=db.prepare(
+    "SELECT financial_basis FROM operations WHERE company_id=? AND sold_on=? "+
+    "AND source_id=? AND item=? AND status=? AND financial_basis IN "+
+    "('cash_receipts','recognized_revenue','paid_fulfilled') LIMIT 5"
+  );
   const count = db.prepare('SELECT count(*) AS n FROM operations WHERE company_id=?');
   const countBasis = db.prepare('SELECT count(*) AS n FROM operations WHERE company_id=? AND financial_basis=?');
   const latest = db.prepare('SELECT source,row_count,imported_at,last_change_at FROM imports WHERE company_id=?');
@@ -164,6 +172,15 @@ export function createAccumulator(db) {
       const oldMeta=latest.get(company.id);
       for (const entry of keyed) {
         const {row,key} = entry;
+        if(basis==='paid_fulfilled'||basis==='cash_receipts'||basis==='recognized_revenue'){
+          const conflicts=overlappingBasis.all(company.id,row.date,row.id.trim(),row.item.trim(),row.status);
+          if(conflicts.some(x=>basis==='paid_fulfilled'
+            ?x.financial_basis!=='paid_fulfilled'
+            :x.financial_basis==='paid_fulfilled')){
+            const e=Error('Эти чеки уже загружены с другим финансовым типом. Не загружайте один и тот же отчёт как оплату и как одновременно оплаченную продажу. Обратитесь в поддержку для изменения типа существующих операций.');
+            e.status=409;throw e;
+          }
+        }
         const prev = getPrevious.get(company.id,key);
         if (!prev) stats.added++;
         else if (prev.amount_kopecks === row.amount_kopecks && prev.quantity_milli === (row.quantity_milli??null)) stats.unchanged++;
