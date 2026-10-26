@@ -43,3 +43,13 @@ test('only cafe and store can select paid-and-fulfilled imports with explicit co
   assert.match(personal,/confirm_paid_fulfilled:financialBasis==='paid_fulfilled'&&earnedConfirm\.checked/);
   assert.match(personal,/financialBasis==='paid_fulfilled'\?'cash_receipts'/);
 });
+
+test('data deletion is named consistently, protected by in-page confirmation and works outside Telegram',()=>{
+  assert.match(personal,/clearTests\.textContent='Очистить данные'/);
+  assert.doesNotMatch(personal,/clearTests\.textContent='Очистить тестовые данные'/);
+  assert.match(personal,/function confirmCompanyClear\(\)/);
+  assert.match(personal,/field\.value\.trim\(\)\.toUpperCase\(\)!=='УДАЛИТЬ'/);
+  assert.match(personal,/confirm:'DELETE_ALL_COMPANY_DATA'/);
+  assert.match(personal,/tg\.initData&&typeof tg\.showConfirm==='function'/);
+  assert.match(personal,/clearFeedback\.textContent='Не удалось очистить данные:/);
+});
