@@ -218,7 +218,7 @@ const dots=days.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="4.3" fill="#fff
 const line=days.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');const area=line+` L ${x(6)} ${h-bottom} L ${x(0)} ${h-bottom} Z`;
 $('revenueChart').innerHTML=`<defs><linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8d87f5" stop-opacity=".22"/><stop offset="1" stop-color="#8d87f5" stop-opacity=".012"/></linearGradient></defs>${grid}<path d="${area}" fill="url(#areaFill)"/><path d="${line}" fill="none" stroke="#6e69ec" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
 $('chartLabels').innerHTML=labels.map(d=>`<span>${escapeHTML(dateLabel(d))}</span>`).join('')}
-function insightHTML(items,warn){return items.map(i=>`<div class="insight-item"><div class="insight-icon ${warn?'warn':''}">${svgIcon(warn?'alert':'check')}</div><div><strong>${escapeHTML(i.title)}</strong><p>${escapeHTML(i.desc)}</p></div></div>`).join('')}
+function insightHTML(items,warn){return items.map(i=>`<div class="insight-item"><div class="insight-icon ${warn?'warn':''}">${svgIcon(warn?'alert':'check')}</div><div><strong>${escapeHTML(i.title)}</strong><p>${escapeHTML(i.desc)}</p>${i.recommendation?'<p><strong>Рекомендация:</strong> '+escapeHTML(i.recommendation)+'</p>':''}</div></div>`).join('')}
 function render(){
  document.body.classList.add('demo-mode');
  const c=configs[state.business],d=state.datasets[state.business];
