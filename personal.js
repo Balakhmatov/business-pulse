@@ -74,6 +74,24 @@
     body.private-workspace .private-telegram-link [hidden]{display:none!important}
     body.private-workspace .private-settings-note,body.private-workspace #privateIndustryStatus{
       font-size:12px;line-height:1.55;color:#707d95;margin:11px 0 0}
+    body.private-workspace .clear-data-dialog[hidden]{display:none!important}
+    body.private-workspace .clear-data-dialog{position:fixed;inset:0;z-index:100;
+      background:#10163099;display:flex;justify-content:center;align-items:center;padding:16px}
+    body.private-workspace .clear-data-dialog-card{width:min(460px,100%);background:#fff;
+      border-radius:19px;padding:clamp(20px,4vw,30px);box-shadow:0 20px 80px #10163055;color:#1e2844}
+    body.private-workspace .clear-data-dialog-card h2{font-size:21px;margin:0 0 10px}
+    body.private-workspace .clear-data-dialog-card p{font-size:13px;line-height:1.7;color:#58637a}
+    body.private-workspace .clear-data-dialog-card label{display:block;font-size:12px;font-weight:750;margin:19px 0 7px}
+    body.private-workspace .clear-data-dialog-card input{width:100%;min-height:44px;padding:11px;
+      border:1px solid #dce1ed;border-radius:10px;color:#1e2844;background:#fff;font-size:14px}
+    body.private-workspace .clear-data-dialog-actions{display:flex;gap:10px;margin-top:16px}
+    body.private-workspace .clear-data-dialog-actions button{flex:1;min-height:44px;white-space:normal}
+    body.private-workspace .clear-data-dialog-confirm{background:#bd3f57;color:#fff;border:0;
+      border-radius:12px;padding:0 16px;font-size:13px;font-weight:700}
+    body.private-workspace .clear-data-dialog-confirm:disabled{opacity:.4;cursor:default}
+    body.private-workspace .clear-data-feedback{margin:8px 0 16px;font-size:12px;
+      line-height:1.5;color:#5c6680}
+    body.private-workspace .clear-data-feedback[hidden]{display:none!important}
     body.private-workspace .topbar .eyebrow{color:#625dca}
     body.private-workspace .data-bar{background:#f9faff}
     @media(max-width:680px){
@@ -215,11 +233,62 @@
 
   const clearTests=document.createElement('button');
   clearTests.type='button';
-  clearTests.id='clearTestData';
+  clearTests.id='clearCompanyData';
   clearTests.className='ghost-btn';
-  clearTests.textContent='Очистить тестовые данные';
+  clearTests.textContent='Очистить данные';
   clearTests.hidden=true;
   $('importUtilities').appendChild(clearTests);
+  const clearFeedback=document.createElement('p');
+  clearFeedback.className='clear-data-feedback';
+  clearFeedback.hidden=true;
+  clearFeedback.setAttribute('role','status');
+  clearFeedback.setAttribute('aria-live','polite');
+  $('importUtilities').after(clearFeedback);
+
+  // Own confirmation dialog works in Safari, normal browsers and Telegram.
+  // Telegram.WebApp.showConfirm exists even without signed initData and may
+  // never invoke its callback when the page is opened outside Telegram.
+  function confirmCompanyClear(){
+    return new Promise(resolve=>{
+      const overlay=document.createElement('div');
+      overlay.className='clear-data-dialog';
+      overlay.setAttribute('role','dialog');
+      overlay.setAttribute('aria-modal','true');
+      overlay.setAttribute('aria-labelledby','clearDataTitle');
+      overlay.innerHTML='<section class="clear-data-dialog-card">'+
+        '<h2 id="clearDataTitle">Удалить данные компании?</h2>'+
+        '<p>Будут безвозвратно удалены все загруженные операции, история импорта, сохранённые шаблоны и выводы ИИ. Компания, сотрудники, учётная запись и подписка останутся.</p>'+
+        '<label for="clearDataPhrase">Введите УДАЛИТЬ для подтверждения</label>'+
+        '<input id="clearDataPhrase" type="text" autocomplete="off" spellcheck="false" placeholder="УДАЛИТЬ">'+
+        '<div class="clear-data-dialog-actions">'+
+        '<button class="ghost-btn" type="button" data-action="cancel">Отмена</button>'+
+        '<button class="clear-data-dialog-confirm" type="button" data-action="confirm" disabled>Удалить данные</button>'+
+        '</div></section>';
+      document.body.append(overlay);
+      const field=overlay.querySelector('input');
+      const approve=overlay.querySelector('[data-action="confirm"]');
+      const previousFocus=document.activeElement;
+      let finished=false;
+      const close=accepted=>{
+        if(finished)return;
+        finished=true;
+        overlay.removeEventListener('keydown',onKeyDown);
+        overlay.remove();
+        if(previousFocus?.isConnected)previousFocus.focus();
+        resolve(accepted);
+      };
+      const onKeyDown=event=>{
+        if(event.key==='Escape'){event.preventDefault();close(false);}
+        if(event.key==='Enter'&&!approve.disabled){event.preventDefault();close(true);}
+      };
+      overlay.addEventListener('keydown',onKeyDown);
+      field.addEventListener('input',()=>{approve.disabled=field.value.trim().toUpperCase()!=='УДАЛИТЬ';});
+      overlay.querySelector('[data-action="cancel"]').onclick=()=>close(false);
+      approve.onclick=()=>{if(!approve.disabled)close(true);};
+      overlay.addEventListener('click',event=>{if(event.target===overlay)close(false);});
+      field.focus();
+    });
+  }
 
   // Shared company import journal. Filenames are always rendered via textContent.
   const importHistoryButton=document.createElement('button');
@@ -302,52 +371,45 @@
   };
   function updateQuickButton(){
     const busy=!!(state.mineLoading||state.mineSaving||state.mineClearing);
-    const operator=state.mineReport?.subscription?.state==='admin'&&state.mineReport?.company?.access_role==='owner';
-    importHistoryButton.hidden=state.business!=='mine';
+    const company=state.mineReport?.company||state.mineCompany;
+    const total=state.mineReport?.source?.rows??state.mineStoredRows??0;
+    importHistoryButton.hidden=state.business!=='mine'||!companySubscription()?.access;
     if(state.business!=='mine'){importHistoryPanel.hidden=true;importHistoryButton.textContent='История загрузок';}
     retryLoad.hidden=state.business!=='mine'||!state.mineError;
     retryLoad.disabled=busy;
-    const src=state.mineReport?.source;
-    clearTests.textContent=state.mineClearing?'Удаляем…':operator?'Очистить данные':'Очистить тестовые данные';
-    clearTests.hidden=state.business!=='mine'||!src||!src.rows||(!operator&&
-      !/синтетич|тестов|demo|sample|пример/i.test(src.name));
+    clearTests.textContent=state.mineClearing?'Удаляем…':'Очистить данные';
+    clearTests.hidden=state.business!=='mine'||company?.access_role!=='owner'||total<=0;
     clearTests.disabled=busy;
   }
   clearTests.onclick=async()=>{
     if(clearTests.hidden||state.mineClearing||state.mineSaving||state.mineLoading)return;
-    const fullReset=state.mineReport?.subscription?.state==='admin'&&state.mineReport?.company?.access_role==='owner';
-    const prompt=fullReset
-      ?'Удалить ВСЕ загруженные операции, историю загрузок и анализ ИИ из «Моя компания»? Компания, сотрудники и доступ сохранятся. Действие нельзя отменить.'
-      :'Удалить все синтетические операции из «Моя компания»? Данные других компаний не затрагиваются. Это действие нельзя отменить.';
-    const confirmed=await new Promise(resolve=>{
-      if(typeof tg.showConfirm==='function')tg.showConfirm(prompt,resolve);
-      else resolve(window.confirm(prompt));
-    });
+    const confirmed=await confirmCompanyClear();
     if(!confirmed)return;
     state.mineClearing=true;
     state.mineError='';
-    clearTests.textContent='Удаляем…';
+    clearFeedback.hidden=false;
+    clearFeedback.textContent='Удаляем операции и историю загрузок…';
     updateQuickButton();
     try{
-      const result=await request(fullReset?'/clear-company-data':'/reset-test-data',{
-        confirm:fullReset?'DELETE_ALL_COMPANY_DATA':'DELETE_TEST_DATA'
-      });
-      ++analysisSeq; // cancel any stale pending analysis responses
+      const result=await request('/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'});
+      ++analysisSeq; // cancel any stale pending AI responses
       state.mineReport=result.report;
+      state.mineCompany=result.report?.company||state.mineCompany;
+      state.mineStoredRows=0;
       state.mineAI=null;
       state.mineImportStats=null;
       state.mineTemplateNotice='';
       state.mineViewBasis=null;
       invalidateCorrection();
+      importHistoryPanel.hidden=true;
+      importHistoryButton.textContent='История загрузок';
+      clearFeedback.textContent='Данные удалены: '+result.removed+' операций. Компания и подписка сохранены.';
       renderMine();
-      if(!importHistoryPanel.hidden)void refreshImportHistory();
-      if(typeof tg.showAlert==='function')tg.showAlert('Удалено операций: '+result.removed+'. Можно загрузить новые данные.');
     }catch(error){
-      state.mineError=error.message||'Не удалось очистить тестовые данные.';
+      clearFeedback.textContent='Не удалось очистить данные: '+(error.message||'Ошибка сервера');
       renderMine();
     }finally{
       state.mineClearing=false;
-      clearTests.textContent='Очистить тестовые данные';
       updateQuickButton();
     }
   };
@@ -383,7 +445,7 @@
   }
   function fmtK(x){return Number.isFinite(x)?money(x/100):'—'}
   async function request(route,body){
-    if(body&&(route.startsWith('/import')||route==='/reset-test-data'||route==='/clear-company-data'))requireImportAccess();
+    if(body&&(route.startsWith('/import')||route==='/reset-test-data'))requireImportAccess();
     // VPS may briefly restart the API after a new commit. Retry READS only.
     // Never retry POST: repeating financial imports or deletion is unsafe.
     const tries=body?1:4;
