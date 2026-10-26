@@ -94,6 +94,21 @@
     body.private-workspace .clear-data-feedback{margin:8px 0 16px;font-size:12px;
       line-height:1.5;color:#5c6680}
     body.private-workspace .clear-data-feedback[hidden]{display:none!important}
+    body.private-workspace .private-period-panel{background:#fff;border:1px solid #e7e9f2;
+      padding:16px;border-radius:16px;margin:0 0 16px}
+    body.private-workspace .private-period-heading{display:flex;flex-wrap:wrap;gap:8px;
+      justify-content:space-between;font-size:13px;color:#252e47;margin-bottom:13px}
+    body.private-workspace .private-period-heading span{font-size:11px;color:#8a94a7}
+    body.private-workspace .private-period-options{display:flex;flex-wrap:wrap;gap:7px}
+    body.private-workspace .private-period-option{border:0;border-radius:11px;padding:10px 12px;
+      background:#f2f3f8;color:#525b76;font-weight:700;font-size:12px;min-height:40px}
+    body.private-workspace .private-period-option.active{background:#6862e5;color:#fff}
+    body.private-workspace .private-period-option:disabled{opacity:.4;cursor:not-allowed}
+    body.private-workspace .private-period-dates{margin-top:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+    body.private-workspace .private-period-dates[hidden]{display:none!important}
+    body.private-workspace .private-period-dates label{font-size:12px;display:flex;flex-direction:column;gap:5px}
+    body.private-workspace .private-period-dates input{border:1px solid #e1e4ef;border-radius:9px;
+      padding:9px;max-width:160px;min-height:40px;background:#fff;color:#252e47}
     body.private-workspace .topbar .eyebrow{color:#625dca}
     body.private-workspace .data-bar{background:#f9faff}
     @media(max-width:680px){
@@ -293,6 +308,80 @@
     });
   }
 
+  // One reporting period controls financial KPIs, chart and AI interpretation.
+  state.minePeriod={days:30};
+  function periodQuery(){
+    const p=state.minePeriod;
+    return p.from&&p.to?'from='+encodeURIComponent(p.from)+'&to='+encodeURIComponent(p.to):
+      'days='+p.days;
+  }
+  function isLongPeriodAllowed(){
+    return ['paid','admin'].includes(companySubscription()?.state);
+  }
+  const periodPanel=document.createElement('section');
+  periodPanel.className='private-period-panel';
+  periodPanel.innerHTML='<div class="private-period-heading"><strong>Период аналитики</strong>'+
+    '<span id="privatePeriodHint">Показатели, динамика и ИИ-анализ за выбранный период</span></div>'+
+    '<div class="private-period-options">'+
+    [['7 дней',7],['30 дней',30],['90 дней',90],['Год',365],['3 года',1095]].map(
+      ([label,days])=>'<button type="button" class="private-period-option" data-days="'+days+'">'+label+'</button>'
+    ).join('')+
+    '<button type="button" class="private-period-option" id="privateCustomPeriod">По датам</button></div>'+
+    '<div class="private-period-dates" id="privatePeriodDates" hidden>'+
+    '<label>С <input id="privateFrom" type="date"></label>'+
+    '<label>По <input id="privateTo" type="date"></label>'+
+    '<button type="button" class="ghost-btn" id="privateApplyDates">Применить</button></div>'+
+    '<p class="private-settings-note" id="privatePeriodError" role="status"></p>';
+  $('subscriptionInfo').after(periodPanel);
+  const periodError=$('privatePeriodError'),periodDates=$('privatePeriodDates');
+  function renderPeriodControls(){
+    const allowed=isLongPeriodAllowed();
+    periodPanel.querySelectorAll('[data-days]').forEach(button=>{
+      const days=Number(button.dataset.days);
+      button.classList.toggle('active',state.minePeriod.days===days&&!state.minePeriod.from);
+      button.disabled=days>30&&!allowed;
+      button.title=button.disabled?'Расширенная история доступна с платной подпиской':'';
+    });
+    $('privateCustomPeriod').classList.toggle('active',!!state.minePeriod.from);
+    $('privateFrom').max=yesterday;
+    $('privateTo').max=yesterday;
+    $('privatePeriodHint').textContent=allowed
+      ?'График и рекомендации ИИ за выбранный период, до трёх лет.'
+      :'Доступно до 30 дней. История до трёх лет — в платной подписке.';
+  }
+  async function changePeriod(next){
+    state.minePeriod=next;
+    state.mineAI=null;
+    ++analysisSeq;
+    periodError.textContent='';
+    renderPeriodControls();
+    await loadMine();
+  }
+  periodPanel.querySelectorAll('[data-days]').forEach(button=>{
+    button.onclick=()=>{
+      if(button.disabled)return;
+      periodDates.hidden=true;
+      void changePeriod({days:Number(button.dataset.days)});
+    };
+  });
+  $('privateCustomPeriod').onclick=()=>{
+    periodDates.hidden=!periodDates.hidden;
+    if(!periodDates.hidden){
+      $('privateTo').value=state.minePeriod.to||yesterday;
+      $('privateFrom').value=state.minePeriod.from||dateShift(yesterday,-29);
+    }
+  };
+  $('privateApplyDates').onclick=()=>{
+    const from=$('privateFrom').value,to=$('privateTo').value;
+    const span=Math.round((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000)+1;
+    if(!from||!to||!Number.isFinite(span)||span<1||span>(isLongPeriodAllowed()?1095:30)||to>yesterday){
+      periodError.textContent='Укажите завершённые даты в пределах '+(isLongPeriodAllowed()?'трёх лет':'30 дней')+'.';
+      return;
+    }
+    periodDates.hidden=true;
+    void changePeriod({from,to,days:span});
+  };
+
   // Shared company import journal. Filenames are always rendered via textContent.
   const importHistoryButton=document.createElement('button');
   importHistoryButton.type='button';
@@ -426,7 +515,7 @@
     if(state.business==='mine')renderMine();
     for(let attempt=0;attempt<18;attempt++){
       try{
-        const result=await request('/analysis');
+        const result=await request('/analysis?'+periodQuery());
         if(current!==analysisSeq)return;
         state.mineAI=result;
         if(state.business==='mine')renderMine();
@@ -592,12 +681,13 @@
       industrySave.disabled=industrySaving;
     }
     if(state.fileTable)refreshBothOption();
+    renderPeriodControls();
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
     const noData=!imported&&!loading;
     document.body.classList.toggle('private-empty-view',noData);
     empty.hidden=imported||locked||loading||!!state.mineError;
     const end=r&&r.as_of?r.as_of:yesterday;
-    const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
+    const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length>0?r.chart7:null;
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
     const change=imported&&r.primary_basis!=='unverified'?r.change_percent:null;
@@ -614,7 +704,8 @@
     const averageCard=$('averageTicket').closest('.mini-kpi');
     volumeCard.hidden=!Number.isFinite(r?.volume?.value);
     averageCard.hidden=!Number.isFinite(r?.average_receipt_kopecks);
-    document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' за 30 дней';
+    const periodLabel=r?.period?.days===7?'за 7 дней':r?.period?.days===30?'за 30 дней':r?.period?.days===365?'за год':r?.period?.days===1095?'за 3 года':'за '+(r?.period?.days||30)+' дней';
+    document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' '+periodLabel;
     $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика: '+shortMetric.toLowerCase();
     $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=shortMetric+' по дням';
     $('companyName').textContent=r&&r.company?r.company.name:'Моя компания';
@@ -625,20 +716,20 @@
     $('revenue30').textContent=imported&&verified?fmtK(r.revenue30_kopecks):'—';
     $('revenueChange').textContent=change===null?'Пока не с чем сравнить':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
-    $('comparisonDesc').textContent=imported&&verified&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из 30 дней, ранее — за '+r.coverage.previous_days+' из 30':'Последние 30 завершённых дней с учётом возвратов';
+    $('comparisonDesc').textContent=imported&&verified&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из '+(r.period?.days||30)+' дней, ранее — за '+r.coverage.previous_days:'Выбранный период с учётом возвратов';
     $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
-      shortMetric+' за вчера';
+      shortMetric+' за последний день периода';
     $('revenueYesterday').textContent=imported&&verified?fmtK(r.yesterday_kopecks):'—';
     $('yesterdayDate').textContent=verboseDate(end);
     const volume=r?.volume;
-    $('countLabel').textContent=(volume?.label||'Количество операций')+' за 30 дней';
+    $('countLabel').textContent=(volume?.label||'Количество операций')+' '+periodLabel;
     $('salesCount').textContent=imported&&Number.isFinite(volume?.value)
       ?Number(volume.value).toLocaleString('ru-RU',{maximumFractionDigits:3})+(volume.unit?' '+volume.unit:'')
       :'—';
     $('salesCaption').textContent=volume?.caption||'Пока нет данных о количестве';
     $('averageLabel').textContent='Средний чек';
     $('averageTicket').textContent=imported&&verified&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
-    $('averageCaption').textContent='Сумма за 30 дней / число операций';
+    $('averageCaption').textContent='Сумма '+periodLabel+' / число чеков';
     $('topTitle').textContent=r?.company?.industry==='clinic'?'Топ-3 услуги':
       r?.company?.industry==='store'?'Топ-3 товара':
       r?.company?.industry==='auto'?'Топ-3 работы':'Топ-3 позиции';
@@ -646,7 +737,7 @@
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
-    $('chartCaption').textContent=verified?shortMetric+' по дням. Возвраты и исправления учтены.':
+    $('chartCaption').textContent=verified?shortMetric+' '+(r?.chart_granularity==='month'?'по месяцам':r?.chart_granularity==='week'?'по неделям':'по дням')+'. Возвраты и исправления учтены.':
       'Загрузите подтверждённые оплаты или выполненные продажи для графика.';
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
@@ -657,7 +748,7 @@
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
     const ready=imported&&ai?.status==='ready'&&ai.analysis&&
-      ai.primary_basis===r?.primary_basis;
+      ai.primary_basis===r?.primary_basis&&ai.period_key===(r?.period?.from+'_'+r?.period?.to);
     if(ready){
       const asItem=x=>({
         title:x.title,
@@ -704,7 +795,7 @@
     state.mineError='';
     if(state.business==='mine')renderMine();
     try{
-      state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
+      state.mineReport=await request('/report?'+periodQuery()+(state.mineViewBasis?'&basis='+state.mineViewBasis:''));
       state.mineCompany=state.mineReport?.company;
       state.mineStoredRows=state.mineReport?.source?.rows??0;
     }catch(error){
@@ -1194,7 +1285,7 @@
       state.mineImportStats=answer.stats||null;
       state.mineViewBasis=financialBasis==='paid_fulfilled'?'cash_receipts':financialBasis;
       try{
-        state.mineReport=await request('/report?basis='+state.mineViewBasis);
+        state.mineReport=await request('/report?'+periodQuery()+'&basis='+state.mineViewBasis);
       }catch{state.mineReport=answer.report;}
       state.mineAI=null;
       state.mineError='';
