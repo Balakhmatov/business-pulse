@@ -1,10 +1,11 @@
 'use strict';
 (function(){
-  // Personal workspace is opt-in through verified Telegram Mini App initData.
-  // The three synthetic demo companies remain entirely local and unchanged.
+  // Workspace uses either signed Telegram initData or an independently
+  // authenticated website account. Synthetic demo remains public/read-only.
   const demo=window.BP_Demo;
-  const tg=window.Telegram&&window.Telegram.WebApp;
-  if(!demo||!tg||!tg.initData)return;
+  const tg=window.Telegram?.WebApp||{};
+  const webSession=()=>sessionStorage.getItem('bp-web-session')||'';
+  if(!demo||(!tg.initData&&!webSession()))return;
   const {state,parseImported,mapping,showModal,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday}=demo;
   const $=id=>document.getElementById(id);
   const accessStyle=document.createElement('style');
@@ -294,7 +295,7 @@
       try{
         response=await fetch(URL_ROOT+route,{
           method:body?'POST':'GET',
-          headers:{'X-Telegram-Init-Data':tg.initData,...(body?{'Content-Type':'application/json'}:{})},
+          headers:{...(tg.initData?{'X-Telegram-Init-Data':tg.initData}:{'X-BP-Web-Session':webSession()}),...(body?{'Content-Type':'application/json'}:{})},
           body:body?JSON.stringify(body):undefined,
           cache:'no-store'
         });
@@ -309,7 +310,8 @@
     let result;
     try{result=await response.json()}catch{throw Error('Сервер вернул некорректный ответ.')}
     if(!response.ok){
-      const error=Error(response.status===401?'Авторизация Telegram устарела. Закройте и снова откройте Mini App.':result.error||'Ошибка сервера '+response.status);
+      const error=Error(response.status===401?(tg.initData?'Авторизация Telegram устарела. Закройте и снова откройте Mini App.':'Сессия закончилась. Войдите в кабинет заново.'):result.error||'Ошибка сервера '+response.status);
+      if(response.status===401&&!tg.initData)window.dispatchEvent(new Event('bp:web-session-expired'));
       error.status=response.status;
       if(response.status===401||response.status===402){
         const previous=companySubscription();
