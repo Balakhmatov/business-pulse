@@ -155,3 +155,32 @@ test('Other category counts identifiers in only one ledger, never adds cash and 
   assert.equal(other.financial_books.recognized_revenue.amount30_kopecks,100000);
   assert.equal(other.financial_books.unverified.amount30_kopecks,4000000);
 });
+
+test('Custom 90-day and full-year summaries calculate all dates and equal prior periods',()=>{
+  const end='2026-10-17';
+  const shift=(day,n)=>new Date(Date.parse(day+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+  const from=shift(end,-89);
+  const entries=[];
+  for(let i=0;i<90;i++){
+    entries.push(entry('cash_receipts','cur-'+i,15000,shift(from,i)));
+    entries.push(entry('cash_receipts','prev-'+i,10000,shift(from,-90+i)));
+  }
+  const summary=calculateFinancialSummary(entries,{cash_receipts:180},end,null,'cafe',{from,to:end,days:90});
+  assert.equal(summary.period.days,90);
+  assert.equal(summary.revenue30_kopecks,1350000);
+  assert.equal(summary.previous30_kopecks,900000);
+  assert.equal(summary.change_percent,50);
+  assert.equal(summary.chart_granularity,'week');
+  assert.equal(summary.chart7.length,13);
+  assert.equal(summary.chart7.reduce((v,x)=>v+x.amount_kopecks,0),summary.revenue30_kopecks);
+  const history=calculateFinancialSummary(entries,{cash_receipts:180},end,null,'cafe',{
+    from:shift(end,-364),to:end,days:365});
+  assert.equal(history.chart_granularity,'month');
+  assert.ok(history.chart7.length>=12);
+  assert.equal(history.chart7.reduce((v,x)=>v+x.amount_kopecks,0),history.revenue30_kopecks);
+});
+test('Default summary now supports a full month of daily data points',()=>{
+  const r=calculateFinancialSummary([entry('cash_receipts','A',15000)],{cash_receipts:1},END);
+  assert.equal(r.period.days,30);
+  assert.equal(r.chart7.length,30);
+});

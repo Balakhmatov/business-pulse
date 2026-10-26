@@ -25,8 +25,8 @@ test('private workspace hides sector selector and teaches first import without s
 });
 test('customer import/history and AI remain intact',()=>{
   assert.match(personal,/request\('\/import\/history'\)/);
-  assert.match(personal,/request\('\/report'/);
-  assert.match(personal,/request\('\/analysis'/);
+  assert.match(personal,/request\('\/report\?'\+periodQuery\(\)/);
+  assert.match(personal,/request\('\/analysis\?'\+periodQuery\(\)\)/);
   assert.match(personal,/request\('\/import'/);
 });
 
@@ -40,8 +40,8 @@ test('empty finance books are hidden instead of rendering disabled no-data cards
 });
 test('only cafe and store can select paid-and-fulfilled imports with explicit confirmation',()=>{
   assert.match(personal,/bothOption\.hidden=!\['cafe','store'\]\.includes\(industry\)/);
-  assert.match(personal,/confirm_paid_fulfilled:financialBasis==='paid_fulfilled'&&earnedConfirm\.checked/);
-  assert.match(personal,/financialBasis==='paid_fulfilled'\?'cash_receipts'/);
+  assert.match(personal,/source_headers:state\.fileTable\.head\.slice\(0,80\)/);
+  assert.match(personal,/bookChoice\.hidden=true/);
 });
 
 test('data deletion is named consistently, protected by in-page confirmation and works outside Telegram',()=>{

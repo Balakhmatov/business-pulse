@@ -218,12 +218,14 @@ function signed(n){return(n>0?'+':'')+n.toFixed(1).replace('.',',')+'%'}
 function fmtCurrencyMaybe(amount,hasData){return hasData?money(amount):'—'}
 function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function chart(days,labels){const w=600,h=228,left=6,right=8,top=17,bottom=9;
-const min=Math.min(0,...days),max=Math.max(...days,1)*1.13;let y=v=>top+(max-v)/(max-min)*(h-top-bottom),x=i=>left+i*(w-left-right)/6;
+const min=Math.min(0,...days),max=Math.max(...days,1)*1.13;let y=v=>top+(max-v)/(max-min)*(h-top-bottom),x=i=>left+i*(w-left-right)/Math.max(1,days.length-1);
 let grid='';for(let i=0;i<4;i++){let pos=top+i*(h-top-bottom)/3;grid+=`<line x1="${left}" x2="${w-right}" y1="${pos}" y2="${pos}" stroke="#edf0f7" stroke-width="1" stroke-dasharray="4 6"/>`}
 const dots=days.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="4.3" fill="#fff" stroke="#6762e7" stroke-width="2.8"><title>${escapeHTML(labels[i])}: ${money(v)}</title></circle>`).join('');
-const line=days.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');const area=line+` L ${x(6)} ${h-bottom} L ${x(0)} ${h-bottom} Z`;
+const line=days.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');const area=line+` L ${x(days.length-1)} ${h-bottom} L ${x(0)} ${h-bottom} Z`;
 $('revenueChart').innerHTML=`<defs><linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8d87f5" stop-opacity=".22"/><stop offset="1" stop-color="#8d87f5" stop-opacity=".012"/></linearGradient></defs>${grid}<path d="${area}" fill="url(#areaFill)"/><path d="${line}" fill="none" stroke="#6e69ec" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
-$('chartLabels').innerHTML=labels.map(d=>`<span>${escapeHTML(dateLabel(d))}</span>`).join('')}
+const stride=Math.max(1,Math.ceil(labels.length/7));
+$('chartLabels').innerHTML=labels.filter((d,i)=>i%stride===0||i===labels.length-1)
+  .map(d=>`<span>${escapeHTML(dateLabel(d))}</span>`).join('')}
 function insightHTML(items,warn){return items.map(i=>`<div class="insight-item"><div class="insight-icon ${warn?'warn':''}">${svgIcon(warn?'alert':'check')}</div><div><strong>${escapeHTML(i.title)}</strong><p>${escapeHTML(i.desc)}</p>${i.recommendation?'<p><strong>Рекомендация:</strong> '+escapeHTML(i.recommendation)+'</p>':''}</div></div>`).join('')}
 function render(){
  document.body.classList.add('demo-mode');
@@ -511,6 +513,7 @@ function preview(f){
   try{
     const m=mapping(),result=parseImported(f,m);
     const review=financialReview(f,m);
+    if(state.business==='mine')review.needsConfirm=false;
     demoBookField.hidden=state.business==='mine';
     const chosenDemoBook=$('demoFinancialBook').value;
     if(state.business!=='mine'&&chosenDemoBook&&!review.blocked){
@@ -551,7 +554,7 @@ function preview(f){
     const positiveLabel=['recognized_revenue','paid_fulfilled'].includes(selectedBook)?'Продажа':
       selectedBook==='cash_receipts'?'Оплата':'Операция';
     $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':positiveLabel)+'</td></tr>').join('')+'</tbody></table>';
-    $('confirmImport').disabled=(state.business==='mine'&&!selectedBook)||idMissing||review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
+    $('confirmImport').disabled=idMissing||review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
   }catch(e){
     f._bpFinancialReview=null;
     panel.hidden=true;
@@ -650,7 +653,7 @@ if(authenticatedShell&&demoRequested){
 })();
 </script>
 <script src="web-access.js?v=20261026-public-signup-v2"></script>
-<script type="module" src="personal.js?v=20261026-clear-data-owner-fix-v1"></script>
+<script type="module" src="personal.js?v=20261026-smart-periods-v1"></script>
 <script src="payments.js?v=20261026-website-access-v1" defer></script>
 </body>
 </html>
