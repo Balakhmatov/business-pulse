@@ -406,7 +406,7 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
         else if(command==='/start'&&payload?.startsWith('link_')){
           const token=payload.slice(5);
           const target=accountLink.preview(token);
-          await send(actor,'Подключить Telegram к веб-кабинету «'+target.company_name+'»?\\n\\nПосле подтверждения сайт и Telegram будут работать с одной компанией, отчётами и подпиской. Если у обоих аккаунтов уже есть отдельные финансовые операции, автоматическая привязка будет остановлена.',
+          await send(actor,'Подключить Telegram к веб-кабинету «'+target.company_name+'»?\n\nПосле подтверждения сайт и Telegram будут работать с одной компанией, отчётами и подпиской. Если у обоих аккаунтов уже есть отдельные финансовые операции, автоматическая привязка будет остановлена.',
             [[button('Да, связать аккаунты','link:'+token)],[button('Отмена','home')]]);
         }
         else if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
@@ -425,7 +425,7 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
       else if(action==='home')await home(actor);
       else if(action==='link'){
         const result=accountLink.complete(a,actor);
-        await home(actor,false,'\\n\\nTelegram связан с веб-кабинетом. Общая компания: '+result.company_name+'.');
+        await home(actor,false,'\n\nTelegram связан с веб-кабинетом. Общая компания: '+result.company_name+'.');
       }
       else if(action==='stats')await showStats(actor,Number(a||0));
       else if(action==='trial'){
