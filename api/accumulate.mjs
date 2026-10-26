@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 // Identity: date + receipt ID + item + sale/refund + occurrence within receipt/item.
 // This assumes stable receipt IDs and stable line ordering if several same-name
 // items exist within a receipt. A future explicit line ID will remove that caveat.
-export const FINANCIAL_BASES=['unverified','cash_receipts','recognized_revenue'];
+export const FINANCIAL_BASES=['unverified','cash_receipts','recognized_revenue','paid_fulfilled'];
 export function financialBasis(value){
   if(value===undefined||value===null)return 'unverified'; // legacy/test imports
   if(!FINANCIAL_BASES.includes(value))throw Object.assign(Error('Неверный тип финансовых данных.'),{status:400});
