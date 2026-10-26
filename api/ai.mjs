@@ -220,12 +220,14 @@ export function createAI({ db, report, listOperations }) {
       analysis: null,primary_basis:report(c,null,range).primary_basis,period_key:key };
   }
   function onImport(c) {
-    // Invalidate stale analysis on EVERY import, including when the key is absent.
+    // After import, precompute the default 30-day report under its actual
+    // period key, avoiding a second paid model call on the first dashboard open.
+    const period=report(c).period;
     if (!apiKey) {
-      upsert.run(c.id, randomUUID(), 'pending', null, Date.now());
+      upsert.run(c.id, rangeKey(period)+'|'+randomUUID(), 'pending', null, Date.now());
       return;
     }
-    schedule(c, true);
+    schedule(c, true,period);
   }
   return { get, onImport };
 }
