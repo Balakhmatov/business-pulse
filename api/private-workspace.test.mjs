@@ -26,7 +26,7 @@ test('private workspace hides sector selector and teaches first import without s
 test('customer import/history and AI remain intact',()=>{
   assert.match(personal,/request\('\/import\/history'\)/);
   assert.match(personal,/request\('\/report'/);
-  assert.match(personal,/request\('\/analysis'/);
+  assert.match(personal,/request\('\/analysis\?'\+periodQuery\(\)\)/);
   assert.match(personal,/request\('\/import'/);
 });
 
