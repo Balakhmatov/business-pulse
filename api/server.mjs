@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { createWebLogin } from './web-login.mjs';
+import { createWebsiteAccounts } from './website-accounts.mjs';
 import { createPayments } from './yookassa.mjs';
 import { ensurePaymentLinks } from './payment-links.mjs';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
@@ -39,6 +40,7 @@ ensureBillingSchema(db);
 ensurePaymentLinks(db);
 const payments=createPayments({db});
 const webLogin=createWebLogin(db);
+const websiteAccounts=createWebsiteAccounts(db);
 const paymentTimer=setInterval(()=>void payments.reconcile(),60000);
 paymentTimer.unref();
 void payments.reconcile();
@@ -202,9 +204,26 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='POST'&&url.pathname==='/api/web-login/poll'){
     try{const input=await readJSON(req);return reply(res,200,webLogin.poll(input.challenge,input.secret),origin);}catch(e){return reply(res,400,{error:e.message},origin);}
   }
-  const webActor=webLogin.actor(req.headers['x-bp-web-session']);
+  if(req.method==='POST'&&url.pathname==='/api/web-auth/register'){
+    try{const input=await readJSON(req);return reply(res,201,websiteAccounts.register(input),origin);}
+    catch(e){return reply(res,e.status||400,{error:e.message},origin);}
+  }
+  if(req.method==='POST'&&url.pathname==='/api/web-auth/login'){
+    try{const input=await readJSON(req);return reply(res,200,websiteAccounts.login(input),origin);}
+    catch(e){return reply(res,e.status||400,{error:e.message},origin);}
+  }
+  if(req.method==='POST'&&url.pathname==='/api/web-auth/logout'){
+    websiteAccounts.logout(req.headers['x-bp-web-session']);
+    return reply(res,200,{ok:true},origin);
+  }
+  const webSession=req.headers['x-bp-web-session'];
+  const websiteActor=websiteAccounts.actor(webSession);
+  // Telegram-authorized web sessions remain payment-only, as originally intended.
+  const paymentOnlyActor=webLogin.actor(webSession);
   const webPaymentRoute=['/api/payments','/api/payments/refresh'].includes(url.pathname)&&req.method==='POST';
-  let id;try{id=webActor&&webPaymentRoute?webActor:telegramID(req.headers['x-telegram-init-data']);}catch{return reply(res,401,{error:'Open the app in Telegram again'},origin);}
+  let id;
+  try{id=websiteActor||(paymentOnlyActor&&webPaymentRoute?paymentOnlyActor:telegramID(req.headers['x-telegram-init-data']));}
+  catch{return reply(res,401,{error:'Войдите в личный кабинет или откройте приложение через Telegram.'},origin);}
   try{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
