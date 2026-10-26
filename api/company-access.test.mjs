@@ -45,6 +45,40 @@ async function apiFixture(t,trial=true){
   return {base,dbPath,headersFor,call};
 }
 
+test('Only authenticated admin owner can clear own data; undo, AI and mappings are removed without changing access',async t=>{
+  const {call,dbPath}=await apiFixture(t,false);
+  const admin='1296951270';
+  const own=(await call(admin,'/me')).data.company;
+  const other=(await call('101','/me')).data.company;
+  const setup=new DatabaseSync(dbPath);
+  try{startCompanyTrial(setup,other,admin);}finally{setup.close();}
+  const rows=[{date:'2026-10-20',id:'REAL-1',item:'Услуга',amount_kopecks:10000,status:'sale'}];
+  assert.equal((await call(admin,'/import',{source:'business.csv',financial_basis:'cash_receipts',rows})).status,200);
+  assert.equal((await call('101','/import',{source:'other.csv',financial_basis:'cash_receipts',rows})).status,200);
+  assert.equal((await call(admin,'/clear-company-data',{})).status,400);
+  assert.equal((await call('101','/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'})).status,403);
+  companyAdmin({dbPath,action:'addmember',ownerId:admin,memberId:'303'});
+  assert.equal((await call('303','/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'})).status,403);
+  const db=new DatabaseSync(dbPath);
+  try{
+    const tables=['operations','imports','import_batches','import_batch_changes','ai_analyses'];
+    for(const table of tables)assert.ok(db.prepare('SELECT COUNT(*) n FROM '+table+' WHERE company_id=?').get(own.id).n>0,table);
+    const before=db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(own.id);
+    const cleared=await call(admin,'/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'});
+    assert.equal(cleared.status,200);assert.equal(cleared.data.removed,1);
+    for(const table of [...tables,'operation_correction_changes','import_mapping_templates','import_mapping_suggestions'])
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM '+table+' WHERE company_id=?').get(own.id).n,0,table);
+    assert.deepEqual(db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(own.id),before);
+    assert.equal((await call(admin,'/subscription')).data.subscription.state,'admin');
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM operations WHERE company_id<>?').get(own.id).n,1);
+    assert.equal((await call('303','/report')).status,200);
+    assert.equal((await call(admin,'/import/history')).data.history.length,0);
+    assert.equal((await call(admin,'/analysis')).data.status,'no_data');
+    assert.equal((await call(admin,'/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'})).data.removed,0);
+    assert.equal((await call(admin,'/import',{source:'new.csv',financial_basis:'cash_receipts',rows})).data.stats.added,1);
+  }finally{db.close();}
+});
+
 test('Unpaid owner and employee are blocked on all business endpoints; admin trial and payment activate same company',async t=>{
   const f=await apiFixture(t,false),{call,dbPath}=f;
   const c=(await call('101','/me')).data.company;
@@ -189,3 +223,4 @@ test('Website login grants payment access only after bot confirmation and cannot
   assert.equal((await fetch(f.base+'/api/payments',{method:'POST',headers,body:JSON.stringify({plan:'month'})})).status,400);
   assert.equal((await poll()).status,400);
 });
+

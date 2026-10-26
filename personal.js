@@ -171,13 +171,17 @@
     retryLoad.hidden=state.business!=='mine'||!state.mineError;
     retryLoad.disabled=busy;
     const src=state.mineReport?.source;
-    clearTests.hidden=state.business!=='mine'||!src||!src.rows||
-      !/синтетич|тестов|demo|sample|пример/i.test(src.name);
+    clearTests.textContent=state.mineClearing?'Удаляем…':operator?'Очистить данные':'Очистить тестовые данные';
+    clearTests.hidden=state.business!=='mine'||(!operator&&(!src||!src.rows||
+      !/синтетич|тестов|demo|sample|пример/i.test(src.name)));
     clearTests.disabled=busy;
   }
   clearTests.onclick=async()=>{
-    if(clearTests.hidden||state.mineClearing||state.mineSaving)return;
-    const prompt='Удалить все синтетические операции из «Моя компания»? Данные других компаний не затрагиваются. Это действие нельзя отменить.';
+    if(clearTests.hidden||state.mineClearing||state.mineSaving||state.mineLoading)return;
+    const fullReset=state.mineReport?.subscription?.state==='admin'&&state.mineReport?.company?.access_role==='owner';
+    const prompt=fullReset
+      ?'Удалить ВСЕ загруженные операции, историю загрузок и анализ ИИ из «Моя компания»? Компания, сотрудники и доступ сохранятся. Действие нельзя отменить.'
+      :'Удалить все синтетические операции из «Моя компания»? Данные других компаний не затрагиваются. Это действие нельзя отменить.';
     const confirmed=await new Promise(resolve=>{
       if(typeof tg.showConfirm==='function')tg.showConfirm(prompt,resolve);
       else resolve(window.confirm(prompt));
@@ -188,13 +192,19 @@
     clearTests.textContent='Удаляем…';
     updateQuickButton();
     try{
-      const result=await request('/reset-test-data',{confirm:'DELETE_TEST_DATA'});
+      const result=await request(fullReset?'/clear-company-data':'/reset-test-data',{
+        confirm:fullReset?'DELETE_ALL_COMPANY_DATA':'DELETE_TEST_DATA'
+      });
       ++analysisSeq; // cancel any stale pending analysis responses
       state.mineReport=result.report;
       state.mineAI=null;
       state.mineImportStats=null;
+      state.mineTemplateNotice='';
+      state.mineViewBasis=null;
+      invalidateCorrection();
       renderMine();
-      if(typeof tg.showAlert==='function')tg.showAlert('Удалено тестовых операций: '+result.removed+'. Теперь можно загрузить чистый набор.');
+      if(!importHistoryPanel.hidden)void refreshImportHistory();
+      if(typeof tg.showAlert==='function')tg.showAlert('Удалено операций: '+result.removed+'. Можно загрузить новые данные.');
     }catch(error){
       state.mineError=error.message||'Не удалось очистить тестовые данные.';
       renderMine();
@@ -275,7 +285,7 @@
   }
   function fmtK(x){return Number.isFinite(x)?money(x/100):'—'}
   async function request(route,body){
-    if(body&&(route.startsWith('/import')||route==='/reset-test-data'))requireImportAccess();
+    if(body&&(route.startsWith('/import')||route==='/reset-test-data'||route==='/clear-company-data'))requireImportAccess();
     // VPS may briefly restart the API after a new commit. Retry READS only.
     // Never retry POST: repeating financial imports or deletion is unsafe.
     const tries=body?1:4;

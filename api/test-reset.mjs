@@ -1,3 +1,27 @@
+import { isAdminCompany } from './billing.mjs';
+
+// Full reset is restricted to the authenticated administrator's own company.
+export function clearAdminCompanyData(db,company,actor,confirmation){
+  if(company.access_role!=='owner'||String(company.owner_id)!==String(actor)||!isAdminCompany({owner_id:actor})){
+    const error=new Error('Полная очистка доступна только администратору в собственной компании.');
+    error.status=403;throw error;
+  }
+  if(confirmation!=='DELETE_ALL_COMPANY_DATA'){
+    const error=new Error('Подтвердите удаление всех данных компании.');
+    error.status=400;throw error;
+  }
+  db.exec('BEGIN IMMEDIATE');
+  try{
+    const removed=db.prepare('DELETE FROM operations WHERE company_id=?').run(company.id).changes;
+    // Remove undo snapshots too, so cleared transactions cannot be restored.
+    for(const table of ['import_batch_changes','operation_correction_changes','import_batches','imports','ai_analyses','import_mapping_templates','import_mapping_suggestions']){
+      if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))
+        db.prepare('DELETE FROM '+table+' WHERE company_id=?').run(company.id);
+    }
+    db.exec('COMMIT');return {removed};
+  }catch(error){db.exec('ROLLBACK');throw error;}
+}
+
 // Clear only a personal company's recognizable synthetic fixtures, never arbitrary business data.
 // The API authenticates the Telegram user and chooses the company before calling this function.
 const TEST_SOURCE = /синтетич|тестов|demo|sample|пример/i;
@@ -31,3 +55,4 @@ export function resetTestData(db, companyId) {
     throw e;
   }
 }
+

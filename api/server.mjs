@@ -10,7 +10,7 @@ import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
 import { calculateFinancialSummary } from './finance-summary.mjs';
 import { createCorrectionService } from './corrections.mjs';
-import { resetTestData } from './test-reset.mjs';
+import { resetTestData,clearAdminCompanyData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
 import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,assertSubscription,PLANS } from './billing.mjs';
@@ -247,6 +247,11 @@ const server=http.createServer(async(req,res)=>{
       // An undo changes the underlying financial evidence just like an import.
       ai.onImport(c);
       return reply(res,200,{...result,report:report(c),history:accumulator.history(c)},origin);
+    }
+    if(req.method==='POST'&&url.pathname==='/api/clear-company-data'){
+      const input=await readCompanyJSON(req,c,id);
+      const result=clearAdminCompanyData(db,c,id,input?.confirm);
+      return reply(res,200,{...result,report:report(c)},origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/reset-test-data'){
       if(c.access_role!=='owner')return reply(res,403,{error:'Очистка тестовых данных доступна только владельцу компании.'},origin);
