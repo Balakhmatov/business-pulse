@@ -862,6 +862,7 @@
     '<input type="checkbox" id="earnedConfirm" style="flex:none;margin-top:2px;accent-color:#625fea">'+
     '<span>Подтверждаю: услуги уже оказаны или товары переданы. Просто выставленные счета и авансы за будущие услуги не включены.</span></label>';
   $('financialPanel').before(bookChoice);
+  bookChoice.hidden=true; // Financial meaning is resolved server-side; no mandatory selector.
   const bookSelect=$('financialBookSelect'),earnedConfirm=$('earnedConfirm');
   const earnedConfirmLabel=$('earnedConfirmLabel'),bookHelp=$('financialBookHelp');
   const bothOption=bookSelect.querySelector('option[value="paid_fulfilled"]');
@@ -917,8 +918,9 @@
     refreshBothOption();
     const semantic=window.BP_SmartImport?.financialSemantics(file.head,mapping());
     if(!bookSelect.dataset.manuallyChosen)
-      bookSelect.value=semantic?.basis==='cash_receipts'?'cash_receipts':'';
-    earnedConfirm.checked=false;
+      bookSelect.value=semantic?.basis==='cash_receipts'?'cash_receipts':
+        semantic?.basis==='reported_revenue'?'recognized_revenue':'unverified';
+    earnedConfirm.checked=true;
     validateBookChoice();
   }
   bookSelect.onchange=()=>{
@@ -933,7 +935,7 @@
     validateBookChoice();
   };
   document.addEventListener('bp:import-table-ready',event=>{
-    bookChoice.hidden=state.business!=='mine';
+    bookChoice.hidden=true;
     delete bookSelect.dataset.manuallyChosen;
     bookSelect.value='';
     inferCashBook(event.detail?.file);
@@ -1221,8 +1223,10 @@
           quantity_milli:x.quantity_milli??null,occurrence};
       });
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
+      // Automatic server-side classification from the mapped amount header.
+      // Unknown source semantics remain unverified, never guessed as sales.
       if(!validateBookChoice())
-        throw Error(!bookSelect.value?'Выберите, что означают суммы в файле: полученные деньги, выполненные продажи или суммы без уточнения.':basisConflict()||'Подтвердите, что услуги уже оказаны или товары переданы. Авансы за будущие услуги и просто выставленные счета сюда не входят.');
+        throw Error(basisConflict()||'Выбран неподходящий денежный столбец.');
       const financialBasis=bookSelect.value;
       const correctionData=isCorrection?correctionPayload():null;
       if(isCorrection&&(!checkedCorrection||checkedCorrection.file!==state.fileTable||
@@ -1257,7 +1261,9 @@
             answer=await request('/import',{
               source:state.fileTable.name.slice(0,120),
               financial_basis:financialBasis,
-              confirm_paid_fulfilled:financialBasis==='paid_fulfilled'&&earnedConfirm.checked,
+              source_headers:state.fileTable.head.slice(0,80),
+              amount_index:columns.amount,
+              confirm_paid_fulfilled:false,
               more_chunks:part<parts-1,
               rows:rows.slice(part*batchSize,(part+1)*batchSize)
             });
@@ -1283,7 +1289,10 @@
         ?' Формат выгрузки запомнен для следующих загрузок.'
         :' Соответствие столбцов не удалось запомнить; операции сохранены.';
       state.mineImportStats=answer.stats||null;
-      state.mineViewBasis=financialBasis==='paid_fulfilled'?'cash_receipts':financialBasis;
+      state.mineViewBasis=answer.stats?.financial_basis==='paid_fulfilled'?'cash_receipts':
+        ['cash_receipts','recognized_revenue'].includes(answer.stats?.financial_basis)?
+          answer.stats.financial_basis:null;
+      state.mineTemplateNotice+=(answer.classification?' '+answer.classification:'');
       try{
         state.mineReport=await request('/report?'+periodQuery()+'&basis='+state.mineViewBasis);
       }catch{state.mineReport=answer.report;}
