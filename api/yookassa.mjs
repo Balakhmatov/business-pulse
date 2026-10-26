@@ -47,7 +47,7 @@ export function createPayments({db,shopId=process.env.YOOKASSA_SHOP_ID,secretKey
     if(!row.provider_id){
       // YooKassa retains idempotence keys for 24 hours. Never recreate an uncertain older payment.
       if(now()-row.created_ms>=23*3600000)throw fail('Статус платежа уточняется. Обратитесь в поддержку.',409);
-      const p=await request('',{amount:{value:(row.amount/100).toFixed(2),currency:'RUB'},capture:true,payment_method_data:{type:'sbp'},confirmation:{type:'redirect',return_url:'https://t.me/business_pulse_app_bot?start=payment'},description:'Бизнес Пульс: '+PLANS[row.plan].name,metadata:{product:'business-pulse',bp_payment_id:row.id,company_id:row.company_id,plan:row.plan}},row.id);
+      const p=await request('',{amount:{value:(row.amount/100).toFixed(2),currency:'RUB'},capture:true,payment_method_data:{type:'sbp'},confirmation:{type:'redirect',return_url:row.actor_id.startsWith('web:')?'https://balakhmatov.github.io/business-pulse/index.html':'https://t.me/business_pulse_app_bot?start=payment'},description:'Бизнес Пульс: '+PLANS[row.plan].name,metadata:{product:'business-pulse',bp_payment_id:row.id,company_id:row.company_id,plan:row.plan}},row.id);
       if(typeof p.id!=='string'||!p.id)throw fail('Некорректный ответ ЮKassa.',502);
       const url=p.confirmation?.confirmation_url?checkedPaymentURL(p.confirmation.confirmation_url):null;
       db.prepare('UPDATE billing_payments SET provider_id=?,payment_url=? WHERE id=?').run(p.id,url,row.id);
