@@ -17,7 +17,7 @@ export function lineKey(date, id, item, status, occurrence, basis='unverified') 
   if(basis!=='unverified')parts.push(basis);
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
-export function createAccumulator(db) {
+export function createAccumulator(db,{customerKeyFor=null}={}) {
   const operationColumns = db.prepare('PRAGMA table_info(operations)').all().map(c => c.name);
   const importColumns = db.prepare('PRAGMA table_info(imports)').all().map(c => c.name);
   db.exec('BEGIN IMMEDIATE');
@@ -27,6 +27,8 @@ export function createAccumulator(db) {
     // solely from the old amount column; preserve it as unverified.
     if (!operationColumns.includes('financial_basis'))
       db.exec("ALTER TABLE operations ADD COLUMN financial_basis TEXT NOT NULL DEFAULT 'unverified'");
+    if (!operationColumns.includes('customer_key'))
+      db.exec('ALTER TABLE operations ADD COLUMN customer_key TEXT');
     if (!operationColumns.includes('quantity_milli'))
       db.exec('ALTER TABLE operations ADD COLUMN quantity_milli INTEGER');
     if (!importColumns.includes('last_change_at')) {
@@ -79,6 +81,10 @@ export function createAccumulator(db) {
       db.exec('ALTER TABLE import_batch_changes ADD COLUMN old_quantity_milli INTEGER');
     if(!changeColumns.includes('new_quantity_milli'))
       db.exec('ALTER TABLE import_batch_changes ADD COLUMN new_quantity_milli INTEGER');
+    if(!changeColumns.includes('old_customer_key'))
+      db.exec('ALTER TABLE import_batch_changes ADD COLUMN old_customer_key TEXT');
+    if(!changeColumns.includes('new_customer_key'))
+      db.exec('ALTER TABLE import_batch_changes ADD COLUMN new_customer_key TEXT');
     db.exec(
       'CREATE TABLE IF NOT EXISTS operation_correction_changes ('+
       'batch_id INTEGER NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,'+
@@ -90,14 +96,14 @@ export function createAccumulator(db) {
   } catch(error) {db.exec('ROLLBACK');throw error;}
 
   const insert = db.prepare(
-    'INSERT INTO operations(company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli) ' +
-    'VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(company_id,import_key) DO UPDATE SET ' +
-    'amount_kopecks=excluded.amount_kopecks,source_id=excluded.source_id,item=excluded.item,quantity_milli=excluded.quantity_milli ' +
+    'INSERT INTO operations(company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli,customer_key) ' +
+    'VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(company_id,import_key) DO UPDATE SET ' +
+    'amount_kopecks=excluded.amount_kopecks,source_id=excluded.source_id,item=excluded.item,quantity_milli=excluded.quantity_milli,customer_key=excluded.customer_key ' +
     'WHERE operations.amount_kopecks<>excluded.amount_kopecks ' +
     'OR operations.source_id<>excluded.source_id OR operations.item<>excluded.item ' +
-    'OR operations.quantity_milli IS NOT excluded.quantity_milli'
+    'OR operations.quantity_milli IS NOT excluded.quantity_milli OR operations.customer_key IS NOT excluded.customer_key'
   );
-  const getPrevious = db.prepare('SELECT amount_kopecks,quantity_milli FROM operations WHERE company_id=? AND import_key=?');
+  const getPrevious = db.prepare('SELECT amount_kopecks,quantity_milli,customer_key FROM operations WHERE company_id=? AND import_key=?');
   // A paid/fulfilled export must never overlap independently imported cash
   // or earned revenue for the same receipt line. Otherwise one financial
   // book would count the same purchase twice.
@@ -117,7 +123,7 @@ export function createAccumulator(db) {
     'prev_source,prev_row_count,prev_imported_at,prev_last_change_at,financial_basis) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)'
   );
   const changeInsert = db.prepare(
-    'INSERT INTO import_batch_changes(batch_id,company_id,import_key,old_amount_kopecks,new_amount_kopecks,old_quantity_milli,new_quantity_milli) VALUES(?,?,?,?,?,?,?)'
+    'INSERT INTO import_batch_changes(batch_id,company_id,import_key,old_amount_kopecks,new_amount_kopecks,old_quantity_milli,new_quantity_milli,old_customer_key,new_customer_key) VALUES(?,?,?,?,?,?,?,?,?)'
   );
   const pruneChanges = db.prepare(
     'DELETE FROM import_batch_changes WHERE company_id=? AND batch_id NOT IN ('+
@@ -132,9 +138,9 @@ export function createAccumulator(db) {
     'SELECT id FROM import_batches WHERE company_id=? ORDER BY id DESC LIMIT 100)'
   );
   const newest = db.prepare('SELECT * FROM import_batches WHERE company_id=? AND undone_at IS NULL ORDER BY id DESC LIMIT 1');
-  const undoChanges = db.prepare('SELECT import_key,old_amount_kopecks,new_amount_kopecks,old_quantity_milli,new_quantity_milli FROM import_batch_changes WHERE batch_id=? AND company_id=?');
-  const removeInserted = db.prepare('DELETE FROM operations WHERE company_id=? AND import_key=? AND amount_kopecks=? AND quantity_milli IS ?');
-  const revertUpdated = db.prepare('UPDATE operations SET amount_kopecks=?,quantity_milli=? WHERE company_id=? AND import_key=? AND amount_kopecks=? AND quantity_milli IS ?');
+  const undoChanges = db.prepare('SELECT import_key,old_amount_kopecks,new_amount_kopecks,old_quantity_milli,new_quantity_milli,old_customer_key,new_customer_key FROM import_batch_changes WHERE batch_id=? AND company_id=?');
+  const removeInserted = db.prepare('DELETE FROM operations WHERE company_id=? AND import_key=? AND amount_kopecks=? AND quantity_milli IS ? AND customer_key IS ?');
+  const revertUpdated = db.prepare('UPDATE operations SET amount_kopecks=?,quantity_milli=?,customer_key=? WHERE company_id=? AND import_key=? AND amount_kopecks=? AND quantity_milli IS ? AND customer_key IS ?');
   const markUndone = db.prepare("UPDATE import_batches SET undone_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=? AND undone_at IS NULL");
   const restoreMeta = db.prepare('UPDATE imports SET source=?,row_count=?,imported_at=?,last_change_at=? WHERE company_id=?');
   const deleteMeta = db.prepare('DELETE FROM imports WHERE company_id=?');
@@ -142,11 +148,11 @@ export function createAccumulator(db) {
     'SELECT source_id,before_row,after_row FROM operation_correction_changes WHERE company_id=? AND batch_id=?'
   );
   const findRowId=db.prepare(
-    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli FROM operations WHERE company_id=? AND id=?'
+    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli,customer_key FROM operations WHERE company_id=? AND id=?'
   );
   const deleteExactRow=db.prepare('DELETE FROM operations WHERE company_id=? AND id=?');
   const insertExactRow=db.prepare(
-    'INSERT INTO operations(id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli) VALUES(?,?,?,?,?,?,?,?,?,?)'
+    'INSERT INTO operations(id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli,customer_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
   );
   const createImport = db.prepare(
     'INSERT INTO imports(company_id,source,row_count,last_change_at) VALUES(?,?,?,CURRENT_TIMESTAMP)'
@@ -187,13 +193,14 @@ export function createAccumulator(db) {
           }
         }
         const prev = getPrevious.get(company.id,key);
+        const customerKey=(customerKeyFor?customerKeyFor(company,row):row.customer_key)??prev?.customer_key??null;
         if (!prev) stats.added++;
-        else if (prev.amount_kopecks === row.amount_kopecks && prev.quantity_milli === (row.quantity_milli??null)) stats.unchanged++;
+        else if (prev.amount_kopecks === row.amount_kopecks && prev.quantity_milli === (row.quantity_milli??null) && prev.customer_key === customerKey) stats.unchanged++;
         else stats.updated++;
-        if (!prev || prev.amount_kopecks !== row.amount_kopecks || prev.quantity_milli !== (row.quantity_milli??null)) {
-          insert.run(company.id,row.date,row.id,row.item,row.amount_kopecks,row.status,key,basis,row.quantity_milli??null);
+        if (!prev || prev.amount_kopecks !== row.amount_kopecks || prev.quantity_milli !== (row.quantity_milli??null) || prev.customer_key !== customerKey) {
+          insert.run(company.id,row.date,row.id,row.item,row.amount_kopecks,row.status,key,basis,row.quantity_milli??null,customerKey);
           changedRows.push({key,oldAmount:prev?.amount_kopecks??null,newAmount:row.amount_kopecks,
-            oldQuantity:prev?.quantity_milli??null,newQuantity:row.quantity_milli??null});
+            oldQuantity:prev?.quantity_milli??null,newQuantity:row.quantity_milli??null,oldCustomer:prev?.customer_key??null,newCustomer:customerKey});
         }
       }
       stats.total = count.get(company.id).n;
@@ -209,7 +216,7 @@ export function createAccumulator(db) {
         oldMeta?.imported_at??null,oldMeta?.last_change_at??null,basis);
       const batchId=Number(record.lastInsertRowid);
       for(const row of changedRows){
-        changeInsert.run(batchId,company.id,row.key,row.oldAmount,row.newAmount,row.oldQuantity,row.newQuantity);
+        changeInsert.run(batchId,company.id,row.key,row.oldAmount,row.newAmount,row.oldQuantity,row.newQuantity,row.oldCustomer,row.newCustomer);
       }
       pruneChanges.run(company.id,company.id);
       pruneCorrectionChanges.run(company.id,company.id);
@@ -266,7 +273,7 @@ export function createAccumulator(db) {
           // Schema migrations can append new fields in a different JSON key
           // order. Compare actual column values, not serialization order.
           const snapshotFields=['id','company_id','sold_on','source_id','item',
-            'amount_kopecks','status','import_key','financial_basis','quantity_milli'];
+            'amount_kopecks','status','import_key','financial_basis','quantity_milli','customer_key'];
           if(after&&(!current||snapshotFields.some(key=>
             (current[key]??null)!==(after[key]??null)))){
             const e=Error('Операции изменились после загрузки. Отмена остановлена.');
@@ -286,7 +293,7 @@ export function createAccumulator(db) {
         }
         for(const {before} of parsed)if(before){
           insertExactRow.run(before.id,before.company_id,before.sold_on,before.source_id,
-            before.item,before.amount_kopecks,before.status,before.import_key,before.financial_basis||'unverified',before.quantity_milli??null);
+            before.item,before.amount_kopecks,before.status,before.import_key,before.financial_basis||'unverified',before.quantity_milli??null,before.customer_key??null);
         }
       }else{
         const changes=undoChanges.all(expectedId,company.id);
@@ -296,8 +303,8 @@ export function createAccumulator(db) {
         }
         for(const row of changes){
           const result=row.old_amount_kopecks===null
-            ?removeInserted.run(company.id,row.import_key,row.new_amount_kopecks,row.new_quantity_milli)
-            :revertUpdated.run(row.old_amount_kopecks,row.old_quantity_milli,company.id,row.import_key,row.new_amount_kopecks,row.new_quantity_milli);
+            ?removeInserted.run(company.id,row.import_key,row.new_amount_kopecks,row.new_quantity_milli,row.new_customer_key)
+            :revertUpdated.run(row.old_amount_kopecks,row.old_quantity_milli,row.old_customer_key,company.id,row.import_key,row.new_amount_kopecks,row.new_quantity_milli,row.new_customer_key);
           if(result.changes!==1){
             const e=Error('Операции изменились после загрузки. Отмена остановлена.');
             e.status=409;throw e;

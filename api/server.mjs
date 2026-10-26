@@ -9,6 +9,7 @@ import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {createCustomerIdentity,calculateCustomerAnalytics} from './customer-analytics.mjs';
 import { createAI } from './ai.mjs';
 import { createAccumulator } from './accumulate.mjs';
 import { calculateFinancialSummary } from './finance-summary.mjs';
@@ -52,13 +53,15 @@ const authMail=createAuthMail();
 const paymentTimer=setInterval(()=>void payments.reconcile(),60000);
 paymentTimer.unref();
 void payments.reconcile();
-const accumulator=createAccumulator(db);
-const correctionService=createCorrectionService({db,secret:token});
+const customerIdentity=createCustomerIdentity(db);
+const accumulator=createAccumulator(db,{customerKeyFor:(c,row)=>customerIdentity.key(c.id,row.customer_ref,row.customer_ref_kind)});
+const correctionService=createCorrectionService({db,secret:token,prepareInput:customerInput});
 const importMapper=createImportMapper({db});
 const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),
   rows:db.prepare('SELECT sold_on,source_id,item,amount_kopecks,status,financial_basis,quantity_milli FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
+  customerRows:db.prepare('SELECT sold_on,source_id,amount_kopecks,status,financial_basis,customer_key FROM operations WHERE company_id=? AND sold_on>=? AND sold_on<=?'),
   countBasis:db.prepare('SELECT financial_basis,COUNT(*) AS n FROM operations WHERE company_id=? GROUP BY financial_basis'),
   latest:db.prepare('SELECT imported_at,source,row_count,last_change_at FROM imports WHERE company_id=?'),
   total:db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?')
@@ -134,7 +137,11 @@ function report(c,requestedBasis=null,range=null){
   const counts=Object.fromEntries(st.countBasis.all(c.id).map(x=>[x.financial_basis,x.n]));
   const summary=calculateFinancialSummary(entries,counts,end,requestedBasis,c.industry,range);
   const src=st.latest.get(c.id);
-  return {...summary,company:c,subscription:subscriptionFor(db,c),
+  const subscription=subscriptionFor(db,c);
+  const historyDays=['paid','admin'].includes(subscription.state)?1095:90;
+  const customers=calculateCustomerAnalytics(st.customerRows.all(c.id,shift(end,1-historyDays),end),summary.period,summary.primary_basis);
+  customers.history_window_days=historyDays;
+  return {...summary,customers,company:c,subscription,
     source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,
       last_import_rows:src.row_count,last_change_at:src.last_change_at}:null,
     warning:src?null:'Отчёт ещё не загружен. Здесь пока нет финансовых данных.'
@@ -159,10 +166,16 @@ function normalize(input){
       throw Error('Неверное количество: проверьте столбец «Количество».');
     if(!['sale','refund'].includes(r.status)||(r.status==='sale'&&r.amount_kopecks<0)||(r.status==='refund'&&r.amount_kopecks>0))throw Error('Invalid status');
     if(r.occurrence!==undefined&&(!Number.isSafeInteger(r.occurrence)||r.occurrence<0||r.occurrence>100000))throw Error('Invalid line occurrence');
-    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null,r.occurrence??null].join('\u0000');
-    if(!seen.has(key)){result.push(r);seen.add(key);}
+    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null,r.customer_ref_kind??null,r.customer_ref??null,r.occurrence??null].join('\u0000');
+    if(!seen.has(key)){result.push({...r,customer_key:undefined});seen.add(key);}
   }
   return result;
+}
+function customerInput(c,input){
+  if(!Array.isArray(input?.rows))return input;
+  return {...input,rows:input.rows.map(r=>r&&({...r,
+    customer_key:customerIdentity.key(c.id,r.customer_ref,r.customer_ref_kind),
+    customer_ref:undefined,customer_ref_kind:undefined}))};
 }
 function ingest(c,input){
   const rows=normalize(input);

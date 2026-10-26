@@ -11,6 +11,7 @@ import './ai-insights.test.mjs';
 import './ai-evidence.test.mjs';
 import './ai-cache.test.mjs';
 import './clinic-import.test.mjs';
+import './customer-analytics.test.mjs';
 import './corrections.test.mjs';
 import './finance-summary.test.mjs';
 import excel from '../excel-adapter.js';

@@ -392,3 +392,43 @@ test('Clinic service headers classify on backend, preserve quantity and repeat i
   const a=(await call('101','/analysis?basis=recognized_revenue')).data;
   assert.equal(a.primary_basis,'recognized_revenue');assert.equal(a.status,'disabled');
 });
+
+test('Patient analytics is company-scoped, hashed at ingress, bounded by subscription and stable on reimport',async t=>{
+ const {call,dbPath}=await apiFixture(t);
+ const c=(await call('101','/me')).data.company;await call('101','/company/industry',{industry:'clinic'});
+ const end=(await call('101','/report')).data.as_of;
+ const shift=n=>new Date(Date.parse(end+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+ const contactA='+7 (999) 123-45-67',contactB='user@example.org';
+ const rows=[[-60,'v1',10000,contactA,'phone'],[-20,'v2',20000,'8 999 123 45 67','phone'],[-10,'v3',30000,contactB,'email'],[-200,'old',99999,'old-id','id']]
+   .map(([n,id,amount,customer_ref,customer_ref_kind])=>({date:shift(n),id,item:'Услуга',status:'sale',amount_kopecks:amount,quantity_milli:1000,customer_ref,customer_ref_kind}));
+ const input={source:'clinic.xlsx',financial_basis:'recognized_revenue',rows};
+ const first=await call('101','/import',input);assert.equal(first.status,200);
+ const observed=(await call('101','/report?days=30&basis=recognized_revenue')).data.customers;
+ assert.equal(observed.history_window_days,90);assert.equal(observed.financial.average_ltv_kopecks,30000);
+ assert.equal(observed.financial.patients,2);assert.equal(observed.visits.returning_patients,1);
+ const again=await call('101','/import',input);assert.equal(again.data.stats.unchanged,4);assert.equal(again.data.stats.added,0);
+ assert.deepEqual((await call('101','/report?days=30&basis=recognized_revenue')).data.customers,observed);
+ const db=new DatabaseSync(dbPath);
+ try{
+  const stored=JSON.stringify(db.prepare('SELECT * FROM operations').all())+JSON.stringify(db.prepare('SELECT * FROM import_batch_changes').all());
+  assert.doesNotMatch(stored,/9991234567|999\) 123|user@example|old-id/);
+  assert.doesNotMatch(JSON.stringify(observed),/customer_key|customer_ref|user@example|v1/);
+  const original=db.prepare('SELECT customer_key FROM operations WHERE source_id=?').get('v1').customer_key;
+  assert.equal(original,db.prepare('SELECT customer_key FROM operations WHERE source_id=?').get('v2').customer_key);
+  const injection=await call('101','/import',{source:'client-key.csv',financial_basis:'recognized_revenue',rows:[{date:end,id:'fake',item:'Test',status:'sale',amount_kopecks:100,customer_key:original}]});
+  assert.equal(injection.status,200);
+  assert.equal(db.prepare('SELECT customer_key FROM operations WHERE source_id=?').get('fake').customer_key,null);
+  db.prepare('UPDATE company_billing SET paid_until_ms=? WHERE company_id=?').run(Date.now()+86400000,c.id);
+  const upgraded=(await call('101','/report?days=30&basis=recognized_revenue')).data.customers;
+  assert.equal(upgraded.history_window_days,1095);assert.equal(upgraded.financial.patients,3);
+  const to=shift(-40),from=shift(-46);
+  const historical=(await call('101','/report?from='+from+'&to='+to+'&basis=recognized_revenue')).data.customers;
+  assert.equal(historical.visits.returning_patients,0);assert.equal(historical.visits.patients,2);
+ }finally{db.close();}
+ companyAdmin({dbPath,action:'addmember',ownerId:'101',memberId:'303'});
+ assert.deepEqual((await call('101','/report?days=30')).data.customers,(await call('303','/report?days=30')).data.customers);
+ const other=(await call('202','/me')).data.company;
+ await call('202','/import',{source:'other.csv',financial_basis:'recognized_revenue',rows:[rows[0]]});
+ const keys=new DatabaseSync(dbPath);
+ try{assert.notEqual(keys.prepare('SELECT customer_key FROM operations WHERE company_id=? LIMIT 1').get(c.id).customer_key,keys.prepare('SELECT customer_key FROM operations WHERE company_id=?').get(other.id).customer_key);}finally{keys.close();}
+});

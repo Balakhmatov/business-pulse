@@ -66,6 +66,14 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
     add('receipts', 'За тот же период было ' + currentReceipts + ' операций с уникальными номерами.');
     if(Number.isFinite(r.volume?.value))add('industry_volume',r.volume.label+': '+r.volume.value+' '+r.volume.unit+'. '+r.volume.caption);
     else if(r.volume)add('industry_volume_missing',r.volume.label+': нет данных. '+r.volume.caption);
+    if(Number.isFinite(r.customers?.financial?.average_ltv_kopecks)){
+      const f=r.customers.financial;
+      add('observed_ltv','Средняя сумма на идентифицированного пациента/клиента по доступной истории с '+r.customers.history_from+' по '+r.customers.as_of+': '+money(f.average_ltv_kopecks)+'. Это наблюдаемая сумма выбранного финансового типа, не прогноз полного LTV и не прибыль. ID заполнен у '+f.coverage.identified_rows+' из '+f.coverage.total_rows+' строк.');
+    }
+    if(r.customers?.visits?.available){
+      const v=r.customers.visits;
+      add('returning_patients','В выбранном периоде пациентов с оказанными услугами: '+v.period_patients+'; из них вернувшихся в другой день после первой даты в доступной истории: '+v.returning_patients+'. История может не охватывать начало отношений.');
+    }
     if (r.average_receipt_kopecks !== null) add('average', 'Средний чек: ' + money(r.average_receipt_kopecks) + '.');
     add('data_coverage', 'Операции присутствуют за ' + curDays + ' из '+days+' дней; отсутствие операций не доказывает нулевые продажи.');
     if (comparable) {
@@ -109,6 +117,7 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
     'Чётко различай ФАКТ из чисел, ВОЗМОЖНУЮ ПРИЧИНУ (гипотеза) и ДЕЙСТВИЕ для проверки. Не утверждай причины падения продаж без подтверждений.',
     'Используй только подтверждённые факты. Нельзя выдумывать прибыль, маржу, рентабельность, новые клиенты, рекламу, часы заказа, канал доставки, сезонность или расходы, которых нет во входе.',
     'Поступления — полученные деньги; продажи — стоимость оказанных услуг или переданных товаров; суммы без уточнения не приравнивай ни к тому ни к другому.',
+    'LTV по доступной истории — наблюдаемая накопленная сумма выбранного типа, не прибыль и не прогноз пожизненной ценности. Первое посещение в загруженной истории не доказывает, что пациент новый. Учитывай полноту связи с пациентами; оплаты не подменяют посещения.',
     'Для цифр, дат и процентов используй ТОЛЬКО evidence_ids: сервер покажет соответствующие значения рядом с текстом. В заголовке, explanation, recommendation и summary запрещены любые цифры.',
     'Не делай вывод о нулевых продажах из дня без записей. Долгов, авансов и поступлений другого финансового типа не смешивай.',
     'Выбирай evidence_ids ТОЛЬКО из точного списка существующих ключей facts. Не придумывай свои идентификаторы. Не используй analysis_limits как единственное доказательство.',
@@ -159,10 +168,11 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
       if(!hasImport.get(c.id)){db.exec('COMMIT');return {status:'no_data',analysis:null};}
       r=report(c,basis,range);
       range={...r.period};
-      cacheKey=createHash('sha256').update(JSON.stringify([
-        c.id,revision.get(c.id)?.revision||0,range.from,range.to,
-        r.primary_basis,c.industry
-      ])).digest('hex');
+      const identity=[c.id,revision.get(c.id)?.revision||0,range.from,range.to,r.primary_basis,c.industry];
+      // Preserve existing ready analyses when no patient information was added.
+      // Subscription upgrades change the customer history scope, hence facts.
+      if(r.customers?.available)identity.push('customers-v1',r.customers.history_window_days??null);
+      cacheKey=createHash('sha256').update(JSON.stringify(identity)).digest('hex');
       saved=read.get(c.id,cacheKey);
       if(apiKey&&saved?.status!=='ready'){
         token=randomUUID();

@@ -39,7 +39,7 @@ function canonical(input,nowMs){
     if(ids.has(id))throw error('Для сверки нужен уникальный ID каждой операции. Повторяется: '+id.slice(0,32));
     ids.add(id);
     return {date:row.date,id,item:row.item.trim(),amount_kopecks:row.amount_kopecks,status:row.status,
-      quantity_milli:row.quantity_milli??null};
+      quantity_milli:row.quantity_milli??null,customer_key:row.customer_key??null};
   });
   const cancelled=input.cancelled_ids.map(v=>{
     const id=typeof v==='string'?v.trim():'';
@@ -53,23 +53,23 @@ function canonical(input,nowMs){
 }
 const rowEqual=(a,b)=>a.sold_on===b.sold_on&&a.item===b.item&&
   a.status===b.status&&a.amount_kopecks===b.amount_kopecks&&
-  (a.quantity_milli??null)===(b.quantity_milli??null);
-export function createCorrectionService({db,secret,now=()=>Date.now()}){
+  (a.quantity_milli??null)===(b.quantity_milli??null)&&(a.customer_key??null)===(b.customer_key??null);
+export function createCorrectionService({db,secret,now=()=>Date.now(),prepareInput=(c,input)=>input}){
   if(typeof secret!=='string'||secret.length<20)throw Error('Signed correction confirmation requires an API secret.');
   const existing=db.prepare(
-    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli '+
+    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli,customer_key '+
     'FROM operations WHERE company_id=? AND financial_basis=? AND source_id=? ORDER BY id LIMIT 2'
   );
   const maxBatch=db.prepare('SELECT MAX(id) AS id FROM import_batches WHERE company_id=?');
   const insert=db.prepare(
-    'INSERT INTO operations(company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli) VALUES(?,?,?,?,?,?,?,?,?)'
+    'INSERT INTO operations(company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli,customer_key) VALUES(?,?,?,?,?,?,?,?,?,?)'
   );
   const update=db.prepare(
-    'UPDATE operations SET sold_on=?,item=?,amount_kopecks=?,status=?,import_key=?,quantity_milli=? WHERE company_id=? AND id=?'
+    'UPDATE operations SET sold_on=?,item=?,amount_kopecks=?,status=?,import_key=?,quantity_milli=?,customer_key=? WHERE company_id=? AND id=?'
   );
   const remove=db.prepare('DELETE FROM operations WHERE company_id=? AND id=?');
   const selectById=db.prepare(
-    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli FROM operations WHERE company_id=? AND id=?'
+    'SELECT id,company_id,sold_on,source_id,item,amount_kopecks,status,import_key,financial_basis,quantity_milli,customer_key FROM operations WHERE company_id=? AND id=?'
   );
   const currentTotal=db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=? AND financial_basis=?');
   const importMeta=db.prepare('SELECT source,row_count,imported_at,last_change_at FROM imports WHERE company_id=?');
@@ -99,7 +99,7 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
       const before=hits[0]||null;
       const after={sold_on:row.date,source_id:row.id,item:row.item,amount_kopecks:row.amount_kopecks,
         status:row.status,import_key:lineKey(row.date,row.id,row.item,row.status,0,data.financial_basis),
-        financial_basis:data.financial_basis,quantity_milli:row.quantity_milli};
+        financial_basis:data.financial_basis,quantity_milli:row.quantity_milli,customer_key:row.customer_key??before?.customer_key??null};
       if(!before)totals.added++;
       else if(rowEqual(before,after))totals.unchanged++;
       else{
@@ -131,7 +131,7 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
   const signature=(company,digest,expires)=>
     createHmac('sha256',secret).update(JSON.stringify([company.id,digest,expires])).digest('hex');
   function preview(company,input){
-    const data=canonical(input,now());
+    const data=canonical(prepareInput(company,input),now());
     const result=plan(company,data);
     const expires_at_ms=now()+TOKEN_LIFETIME_MS;
     return {summary:result.totals,examples:result.samples,expires_at_ms,
@@ -143,9 +143,9 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
        input.expires_at_ms>now()+TOKEN_LIFETIME_MS||
        typeof input?.confirm_token!=='string'||!/^[a-f0-9]{64}$/.test(input.confirm_token))
       throw error('Срок предварительной проверки истёк. Проверьте изменения повторно.',409);
-    const data=canonical(input,now());
     db.exec('BEGIN IMMEDIATE');
     try{
+      const data=canonical(prepareInput(company,input),now());
       const result=plan(company,data);
       const valid=signature(company,result.digest,input.expires_at_ms);
       if(!timingSafeEqual(Buffer.from(valid,'hex'),Buffer.from(input.confirm_token,'hex')))
@@ -162,12 +162,12 @@ export function createCorrectionService({db,secret,now=()=>Date.now()}){
           if(remove.run(company.id,action.before.id).changes!==1)throw error('Отмена операции не удалась.',409);
         }else if(action.before){
           const a=action.after;
-          if(update.run(a.sold_on,a.item,a.amount_kopecks,a.status,a.import_key,a.quantity_milli,
+          if(update.run(a.sold_on,a.item,a.amount_kopecks,a.status,a.import_key,a.quantity_milli,a.customer_key,
             company.id,action.before.id).changes!==1)throw error('Исправление операции не выполнено.',409);
           after=selectById.get(company.id,action.before.id);
         }else{
           const a=action.after;
-          const created=insert.run(company.id,a.sold_on,a.source_id,a.item,a.amount_kopecks,a.status,a.import_key,data.financial_basis,a.quantity_milli);
+          const created=insert.run(company.id,a.sold_on,a.source_id,a.item,a.amount_kopecks,a.status,a.import_key,data.financial_basis,a.quantity_milli,a.customer_key);
           after=selectById.get(company.id,Number(created.lastInsertRowid));
         }
         changes.push({id:action.id,before:action.before,after});

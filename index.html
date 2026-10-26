@@ -177,7 +177,7 @@ body.private-workspace .demo-periods{display:none!important}
 <nav aria-label="Юридическая информация" style="display:flex;justify-content:center;text-align:center;flex-wrap:wrap;gap:10px 18px;font-size:12px;line-height:1.6;padding:8px 0 20px"><a href="./legal/offer.html">Оферта и соглашение</a><a href="./legal/privacy.html">Конфиденциальность</a><a href="./legal/tariffs.html">Тарифы</a><a href="./legal/refunds.html">Возвраты</a><a href="./legal/contacts.html">Контакты и реквизиты</a></nav>
 </main></div>
 <div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Импорт отчёта</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите CSV или Excel (.xlsx) со строками продаж. Сопоставьте столбцы и проверьте результат. В деморежиме все данные остаются в браузере.</p><p style="font-size:12px;color:#626c85;line-height:1.6">Можно выбрать обычную выгрузку: исходный файл читается в браузере, неиспользуемые столбцы не сохраняются в истории операций. Если выбранные поля содержат персональные данные, убедитесь, что у вас есть законное основание передать их для аналитики компании. Данные отчётов не используются для рекламы. <a href="./legal/privacy.html" target="_blank" rel="noopener">Как обрабатываются данные</a></p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 32 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Проверьте соответствие столбцов</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Что означают суммы в этом столбце</strong><div id="financialType" style="font-size:14px;font-weight:750;color:#202848;margin-top:8px"></div><div id="financialMessage" style="margin-top:7px;line-height:1.6;white-space:pre-line"></div><label id="financialConfirmLabel" style="align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил авансы, частичные оплаты и возвраты. Эти суммы подходят для выбранного отчёта.</span></label></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><div class="import-action-error" id="importActionError" role="alert" hidden></div><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
-<script src="smart-import.js?v=20261026-stable-clinic-v1"></script>
+<script src="smart-import.js?v=20261026-ltv-v1"></script>
 <script src="excel-adapter.js?v=20261018-smart-v2-fallback"></script>
 <script type="module">
 import { demoSummary, withDemoBooks, demoAnalysis } from './demo-data.mjs?v=20261026-demo90-v1';
@@ -343,7 +343,7 @@ for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(inQuote&&text[i+1]
 row.push(field);if(row.some(x=>x.trim()))table.push(row);if(inQuote)throw Error('Некорректные кавычки в CSV');if(table.length<2)throw Error('В файле нет строк с данными');if(table.length>150001)throw Error('Слишком большой файл (больше 150 000 строк)');
 if(!window.BP_SmartImport)throw Error('Модуль распознавания таблицы не загрузился.');
  return window.BP_SmartImport.detect(table,'');}
-const mappingLabels={date:'Дата операции *',amount:'Сумма в отчёте *',item:'Товар или услуга',id:'ID чека или операции',status:'Статус операции',quantity:'Количество (если есть)'};
+const mappingLabels={date:'Дата операции *',amount:'Сумма в отчёте *',item:'Товар или услуга',id:'ID чека или операции',status:'Статус операции',quantity:'Количество (если есть)',customer:'Пациент / клиент: ID, телефон или email (если есть)'};
 const patterns={date:/дата|date|day|время/i,amount:/^сумма$|sum|amount|выручка|стоимость|value|total|цена/i,item:/товар|услуг|позиц|продукт|номенклат|name|product|item/i,id:/номер чека|чек|визит|id|order|transaction|receipt/i,status:/статус|тип|возврат|status|operation/i,quantity:/^(?:количество(?:\s+(?:товаров|услуг|работ|единиц|штук))?|кол-во|шт\.?|quantity|qty|units?)(?:\s*\([^)]*\))?$/i};
 function mapping(){const m={};Object.keys(mappingLabels).forEach(k=>m[k]=Number($('col_'+k).value));return m}
 function renderMapping(file){
@@ -362,7 +362,7 @@ function renderMapping(file){
    detail.hidden=!hints.length;
  }
 
-$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.mappingGuess?.[key]??file.head.findIndex(t=>patterns[key].test(t));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>{
+$('mappingFields').innerHTML=Object.entries(mappingLabels).map(([key,label])=>{const found=file.mappingGuess?.[key]??(key==='customer'?-1:file.head.findIndex(t=>patterns[key].test(t)));const select='<option value="-1">Не указан</option>'+file.head.map((h,i)=>`<option value="${i}" ${found===i?'selected':''}>${escapeHTML(h)} (${i+1})</option>`).join('');return`<div class="field"><label for="col_${key}">${label}</label><select id="col_${key}">${select}</select></div>`}).join('');Object.keys(mappingLabels).forEach(k=>$('col_'+k).addEventListener('change',()=>{
   if(!file._bpApplying)file._bpUserAdjusted=true;
   preview(file);
 }));preview(file);
@@ -403,6 +403,11 @@ function parseImported(f,m){
   if(m.date===m.amount)throw Error('Дата и сумма не могут быть одним столбцом');
   if(m.quantity>=0&&Object.entries(m).some(([key,col])=>key!=='quantity'&&col===m.quantity))
     throw Error('Для количества выберите отдельный столбец, не дату, сумму или ID.');
+  const customerColumn=Number.isInteger(m.customer)&&m.customer>=0?m.customer:-1;
+  if(customerColumn>=0&&Object.entries(m).some(([key,col])=>key!=='customer'&&col===customerColumn))
+    throw Error('Для пациента выберите отдельный столбец ID, телефона или email.');
+  const customerKind=customerColumn>=0?window.BP_SmartImport?.customerKind(f.head[customerColumn]):null;
+  if(customerColumn>=0&&!customerKind)throw Error('Выберите столбец с постоянным ID пациента, телефоном или email. По одному ФИО нельзя надёжно различить пациентов.');
   const rows=[],seen=new Set();
   const invalidExamples=[];
   const cancelled_ids=[];
@@ -446,12 +451,14 @@ function parseImported(f,m){
       if(invalidExamples.length<5)invalidExamples.push('строка '+rowNumber+': отрицательное количество без возврата');
       return;
     }
+    const customerRef=customerColumn>=0?String(values[customerColumn]??'').trim():'';
     const val=refund?-Math.abs(amount):amount;
-    const key=JSON.stringify([date,identifier,item,val,refund,quantity===null?null:Math.abs(quantity)]);
+    const key=JSON.stringify([date,identifier,item,val,refund,quantity===null?null:Math.abs(quantity),customerRef]);
     if(seen.has(key)){duplicate++;return}
     seen.add(key);
     const operation={date,amount:val,id:identifier,item:item||'Без категории',status:refund?'refund':'sale'};
     if(quantity!==null)operation.quantity_milli=Math.abs(quantity);
+    if(customerRef){operation.customer_ref=customerRef;operation.customer_ref_kind=customerKind;}
     rows.push(operation);
     if(refund)refunds++;
   });
@@ -668,7 +675,7 @@ if(authenticatedShell&&demoRequested){
 })();
 </script>
 <script src="web-access.js?v=20261026-public-signup-v2"></script>
-<script type="module" src="personal.js?v=20261026-import-privacy-v1"></script>
+<script type="module" src="personal.js?v=20261026-ltv-v1"></script>
 <script src="payments.js?v=20261026-website-access-v1" defer></script>
 </body>
 </html>
