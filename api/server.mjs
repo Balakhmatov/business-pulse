@@ -125,14 +125,15 @@ function normalize(input){
   if(typeof input.source!=='string'||!input.source.trim()||input.source.length>120)throw Error('Invalid source');
   const today=mskToday(),result=[],seen=new Set();
   for(const r of input.rows){
-    if(!r||typeof r.date!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(r.date)||Number.isNaN(Date.parse(r.date+'T00:00:00Z'))||new Date(r.date+'T00:00:00Z').toISOString().slice(0,10)!==r.date||r.date>today||r.date<shift(today,-730))throw Error('Invalid date');
+    if(!r||typeof r.date!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(r.date)||Number.isNaN(Date.parse(r.date+'T00:00:00Z'))||new Date(r.date+'T00:00:00Z').toISOString().slice(0,10)!==r.date||r.date>today||r.date<shift(today,-3650))throw Error('Invalid date');
     if(typeof r.id!=='string'||!r.id.trim()||r.id.length>100||typeof r.item!=='string'||!r.item.trim()||r.item.length>140)throw Error('Invalid ID or item');
     if(!Number.isSafeInteger(r.amount_kopecks)||Math.abs(r.amount_kopecks)>1e12||r.amount_kopecks===0)throw Error('Invalid amount');
     if(!(r.quantity_milli===undefined||r.quantity_milli===null||
       (Number.isSafeInteger(r.quantity_milli)&&r.quantity_milli>0&&r.quantity_milli<=1000000000)))
       throw Error('Неверное количество: проверьте столбец «Количество».');
     if(!['sale','refund'].includes(r.status)||(r.status==='sale'&&r.amount_kopecks<0)||(r.status==='refund'&&r.amount_kopecks>0))throw Error('Invalid status');
-    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null].join('\u0000');
+    if(r.occurrence!==undefined&&(!Number.isSafeInteger(r.occurrence)||r.occurrence<0||r.occurrence>100000))throw Error('Invalid line occurrence');
+    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null,r.occurrence??null].join('\u0000');
     if(!seen.has(key)){result.push(r);seen.add(key);}
   }
   return result;
@@ -332,7 +333,10 @@ const server=http.createServer(async(req,res)=>{
       const input=await readCompanyJSON(req,c,id);
       const stats=ingest(c,input);
       const updated=report(c);
-      if(stats.added || stats.updated) ai.onImport(c); // no redundant paid analysis
+      if(stats.added || stats.updated){
+        if(input.more_chunks===true)db.prepare('DELETE FROM ai_analyses WHERE company_id=?').run(c.id);
+        else ai.onImport(c); // generate once after the last upload chunk
+      }
       return reply(res,200,{saved:stats.received,stats,report:updated},origin);
     }
     return reply(res,404,{error:'Unknown API route'},origin);
