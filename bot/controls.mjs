@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes,randomInt,randomUUID,createHash } from 'node:crypto';
 import { ensureCompanyMembers,companyForUser,addCompanyMember } from '../api/company-members.mjs';
 import { companyAdmin } from '../api/company-admin.mjs';
+import { setCompanyIndustry } from '../api/company-industry.mjs';
 import { INDUSTRIES } from '../api/finance-summary.mjs';
 import { validNotificationHour } from './notification-schedule.mjs';
 import { createChatCleanup } from './chat-cleanup.mjs';
@@ -124,6 +125,7 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
       [{text:'Моя сводка',callback_data:'bp:report'},button('Уведомления','notify')]]:
       [[{text:'Перейти к оплате',web_app:{url:paymentUrl()}}]];
     rows.push([{text:'Открыть сайт',url:siteUrl}]);
+    if(c.access_role==='owner')rows.push([button('Тип бизнеса','business')]);
     if(subscription.access&&c.access_role==='owner')rows.push([button('Сотрудники','m:'+c.owner_id)]);
     rows.push([button('Мой профиль и ID','id')]);
     if(adminIds.has(actor)){
@@ -152,6 +154,15 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
     return sent;
   }
 
+  async function businessTypes(actor,prefix='') {
+    const c=companyForUser(db,actor);
+    if(!c||c.access_role!=='owner')throw Error('Тип бизнеса может изменить только владелец компании.');
+    const rows=Object.entries(INDUSTRIES).map(([key,value])=>
+      [button((c.industry===key?'• ':'')+value.name,'business-type:'+key)]);
+    rows.push([button('В меню','home')]);
+    return send(actor,prefix+'Тип бизнеса: '+(INDUSTRIES[c.industry]?.name||'Универсальный')+
+      '\n\nВыберите направление. Данные и подписка сохранятся, показатели пересчитаются.',rows);
+  }
   function members(actor,owner,offset=0){
     if(!Number.isSafeInteger(offset)||offset<0)throw Error('Откройте список сотрудников заново.');
     const c=access(actor,owner);
@@ -425,6 +436,11 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
       else if(action==='support')await support(actor);
       else if(action==='supportcancel')await home(actor);
       else if(action==='prices')await prices(actor);
+      else if(action==='business')await businessTypes(actor);
+      else if(action==='business-type'){
+        const result=setCompanyIndustry(db,actor,a);
+        await businessTypes(actor,result.changed?'Тип бизнеса сохранён.\n\n':'Тип бизнеса уже выбран.\n\n');
+      }
       else if(action==='testnotices')await testNotices(actor);
       else if(action==='testnotice'){
         if(!adminIds.has(actor))throw Error('Доступно только администратору.');
