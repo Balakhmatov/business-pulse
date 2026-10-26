@@ -186,9 +186,35 @@
     buttons.append(entry);
   }
   window.BP_WebAuth = { open, token:session };
-  const query = new URLSearchParams(location.search);
-  if (query.get('login') === '1' && !validToken(session())) open(false);
-  if (query.get('register') === '1' && !validToken(session())) open(true);
+  const query=new URLSearchParams(location.search);
+  const fragment=new URLSearchParams(location.hash.slice(1));
+  if(fragment.has('verify')||fragment.has('reset')){
+    const verifying=fragment.has('verify');
+    linkToken=fragment.get(verifying?'verify':'reset')||'';
+    // Remove the secret from the browser URL before loading any more resources.
+    history.replaceState(null,'',location.pathname);
+    if(!validToken(linkToken)){
+      open(verifying?'signup':'forgot');
+      message.textContent='Ссылка недействительна. Запросите новую.';
+    }else if(verifying){
+      open('verify');
+      message.textContent='Проверяем ссылку…';
+      void post('/web-auth/verify',{token:linkToken})
+        .then(data=>enter(data.token))
+        .catch(error=>{open('signup');message.textContent=error.message;});
+    }else open('reset');
+  }else if(query.get('login')==='1'&&!validToken(session()))open('login');
+  else if(query.get('register')==='1'&&!validToken(session()))open('signup');
+  else if(query.get('invite')==='1'&&!validToken(session()))open('invite');
+  void fetch(root+'/web-auth/config',{cache:'no-store',signal:AbortSignal.timeout(10000)})
+    .then(r=>r.json()).then(data=>{
+      mailEnabled=data.registration_available===true;
+      if(dialog.open&&['signup','forgot'].includes(mode)){
+        const prior=message.textContent;
+        setMode(mode);
+        if(prior&&!form.querySelector('[type=submit]').disabled)message.textContent=prior;
+      }
+    }).catch(()=>{});
   window.addEventListener('bp:web-session-expired',()=>{
     sessionStorage.removeItem(storeKey);
     open(false);
