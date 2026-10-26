@@ -65,6 +65,10 @@
     body.private-workspace .private-settings-fields{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
     body.private-workspace .private-settings-fields select{flex:1;min-width:160px;max-width:360px;
       font:inherit;font-size:13px;padding:11px;border:1px solid #dfe3ed;border-radius:9px;background:white;color:#252d46}
+    body.private-workspace .private-telegram-link{margin-top:18px;border-top:1px solid #eaedf3;padding-top:17px}
+    body.private-workspace .private-telegram-link strong{font-size:13px}
+    body.private-workspace .private-telegram-link[hidden]{display:none!important}
+    body.private-workspace .private-telegram-link [hidden]{display:none!important}
     body.private-workspace .private-settings-note,body.private-workspace #privateIndustryStatus{
       font-size:12px;line-height:1.55;color:#707d95;margin:11px 0 0}
     body.private-workspace .topbar .eyebrow{color:#625dca}
@@ -135,6 +139,50 @@
       industryStatus.textContent=error.message||'Не удалось сохранить тип бизнеса.';
     }finally{industrySaving=false;industrySave.disabled=false;}
   };
+
+  // Linking is initiated only from a verified email session; Telegram
+  // confirms the same one-time request using its signed bot identity.
+  const linkSection=document.createElement('div');
+  linkSection.className='private-telegram-link';
+  linkSection.hidden=!!tg.initData;
+  linkSection.innerHTML='<strong>Telegram и сайт</strong>'+
+    '<p class="private-settings-note">Свяжите аккаунты, чтобы работать с одними отчётами, показателями и подпиской в приложении и браузере.</p>'+
+    '<div class="private-settings-fields">'+
+    '<button type="button" class="ghost-btn" id="privateLinkTelegram">Связать Telegram</button>'+
+    '<a id="privateOpenLink" target="_blank" rel="noopener noreferrer" hidden>Подтвердить в Telegram</a>'+
+    '<button type="button" class="ghost-btn" id="privateLinkRefresh" hidden>Проверить привязку</button></div>'+
+    '<p id="privateLinkStatus" class="private-settings-note" role="status"></p>';
+  companySettings.querySelector('.private-settings-body').append(linkSection);
+  const linkButton=$('privateLinkTelegram'),linkOpen=$('privateOpenLink');
+  const linkRefresh=$('privateLinkRefresh'),linkStatus=$('privateLinkStatus');
+  const showLinkStatus=async()=>{
+    if(tg.initData)return;
+    try{
+      const data=await request('/account-link/status');
+      if(data.linked){
+        linkButton.hidden=true;linkOpen.hidden=true;linkRefresh.hidden=true;
+        linkStatus.textContent='Telegram привязан. В приложении и на сайте используются одни данные компании.';
+        if(state.mineReport?.company?.id!==data.company_id)void loadMine();
+      }else{
+        linkButton.hidden=false;
+        linkStatus.textContent='Telegram пока не привязан.';
+      }
+    }catch(e){linkStatus.textContent=e.message||'Не удалось проверить связь аккаунтов.';}
+  };
+  linkButton.onclick=async()=>{
+    linkButton.disabled=true;
+    linkStatus.textContent='Создаём защищённую ссылку…';
+    try{
+      const result=await request('/account-link/start',{confirm:true});
+      linkOpen.href=result.url;
+      linkOpen.hidden=false;
+      linkOpen.style.cssText='display:inline-flex;align-items:center;color:#605ad0;font-weight:700;font-size:13px;';
+      linkRefresh.hidden=false;
+      linkStatus.textContent='Нажмите «Подтвердить в Telegram» и подтвердите привязку в боте. Ссылка действует 10 минут.';
+    }catch(e){linkStatus.textContent=e.message||'Не удалось создать ссылку.';}
+    finally{linkButton.disabled=false;}
+  };
+  linkRefresh.onclick=()=>{void showLinkStatus();};
 
   // A reliable sample link, with headers Telegram's native downloader expects.
   const originalSampleDownload=$('downloadSample').onclick;
@@ -594,7 +642,7 @@
         }catch{}
       }
     }
-    finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
+    finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();if(!tg.initData)void showLinkStatus();}
   }
 
   const intro=document.querySelector('.modal-intro');
