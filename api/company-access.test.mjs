@@ -114,7 +114,7 @@ test('Only the real company owner can update business type without altering oper
   assert.equal((await call('101','/import',{source:'cafe.csv',financial_basis:'cash_receipts',rows})).status,200);
   const beforeOps=db.prepare('SELECT * FROM operations WHERE company_id=?').all(owner.id);
   const billingBefore=db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(owner.id);
-  db.prepare('INSERT INTO ai_analyses(company_id,version,status,payload,updated_ms) VALUES(?,?,?,?,?)')
+  db.prepare('INSERT OR REPLACE INTO ai_analyses(company_id,version,status,payload,updated_ms) VALUES(?,?,?,?,?)')
     .run(owner.id,'fake-old','ready','{}',Date.now());
   assert.equal((await call('101','/company/industry',{industry:'unknown'})).status,400);
   assert.equal((await call('101','/company/industry',{industry:42})).status,400);
