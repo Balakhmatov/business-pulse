@@ -164,7 +164,7 @@ test('A normal owner can clear own data, even after trial expiration, without de
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?').get(other.id).n,1);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM companies WHERE id=?').get(owner.id).n,1);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM imports WHERE company_id=?').get(owner.id).n,0);
-    assert.deepEqual(db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(owner.id),
+    assert.deepEqual({...db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(owner.id)},
       {...original,trial_ends_ms:1});
     assert.equal((await call('101','/clear-company-data',{confirm:'INVALID'})).status,400);
   }finally{db.close();}
