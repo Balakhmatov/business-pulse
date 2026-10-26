@@ -65,6 +65,21 @@ test('Bot statistics are admin-only and synthetic legacy callback dispatch is no
   f.restart();await f.msg('999','/stats');assert.match(f.last().text,/Всего посетителей: 2/);
 });
 
+test('Open website button is visible in main menu regardless of subscription status',async t=>{
+  const f=fixture(t,'https://example.org/miniapp',false);
+  await f.msg('101','/start');
+  const disabled=f.last().reply_markup.inline_keyboard.flat().find(x=>x.text==='Открыть сайт');
+  assert.equal(disabled?.url,'https://balakhmatov.github.io/business-pulse/index.html?login=1');
+  assert.equal(disabled.web_app,undefined,'Website link should open regular browser rather than Telegram Mini App');
+  await f.click('999','trial:101').catch(()=>{});
+  f.db.prepare('UPDATE company_billing SET trial_granted_by=?,trial_started_ms=?,trial_ends_ms=? WHERE company_id=?')
+    .run('999',Date.parse('2026-10-19T08:00:00Z'),Date.parse('2026-10-21T08:00:00Z'),'a');
+  await f.msg('101','/start');
+  const menu=f.last().reply_markup.inline_keyboard.flat();
+  assert.equal(menu.find(x=>x.text==='Открыть сайт')?.url,'https://balakhmatov.github.io/business-pulse/index.html?login=1');
+  assert.equal(menu.find(x=>x.text==='Открыть Бизнес Пульс')?.web_app?.url,'https://example.org/miniapp');
+});
+
 test('Trial activation is admin only, lasts 48 hours, survives restart and cannot be reset',async t=>{
   const f=fixture(t,'https://example.org/',false);
   await f.msg('101','/start');assert.match(f.last().text,/не активирован/);
