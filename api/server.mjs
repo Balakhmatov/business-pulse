@@ -16,6 +16,7 @@ import { createCorrectionService } from './corrections.mjs';
 import { resetTestData,clearAdminCompanyData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
+import { setCompanyIndustry } from './company-industry.mjs';
 import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,assertSubscription,PLANS } from './billing.mjs';
 
 // Localhost-only service. Nginx provides HTTPS. Telegram initData is ALWAYS signed and verified.
@@ -266,6 +267,16 @@ const server=http.createServer(async(req,res)=>{
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
     if(req.method==='GET'&&url.pathname==='/api/subscription')return reply(res,200,{company:c,subscription:subscriptionFor(db,c),plans:PLANS},origin);
+    if(req.method==='POST'&&url.pathname==='/api/company/industry'){
+      // Available to the owner even outside an active subscription.
+      if(c.access_role!=='owner')return reply(res,403,{error:'Тип бизнеса может изменить только владелец компании.'},origin);
+      const input=await readJSON(req);
+      // Re-resolve ownership on the same DB connection and atomically
+      // invalidate old AI interpretations if the industry changed.
+      const updated=setCompanyIndustry(db,id,input?.industry);
+      const sub=subscriptionFor(db,updated.company);
+      return reply(res,200,{...updated,subscription:sub,report:sub.access?report(updated.company):null},origin);
+    }
     if(req.method==='POST'&&url.pathname==='/api/payments'){
       const input=await readJSON(req);
       if(companyForUser(db,id)?.id!==c.id)return reply(res,403,{error:'Доступ к компании изменился.'},origin);
