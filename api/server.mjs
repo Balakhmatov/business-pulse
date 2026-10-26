@@ -123,8 +123,8 @@ function resolveRange(c,params){
     Math.round((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000)+1:0;
   if(days<1||days>1095||to>yesterday||from<shift(yesterday,-3650))
     throw Object.assign(Error('Допустимый диапазон — завершённые дни за последние 10 лет, максимум три года.'),{status:400});
-  if(!upgraded&&days>30)
-    throw Object.assign(Error('Анализ более 30 дней доступен в платной подписке.'),{status:403,code:'HISTORY_PREMIUM_REQUIRED'});
+  if(!upgraded&&days>90)
+    throw Object.assign(Error('Анализ более 90 дней доступен в платной подписке.'),{status:403,code:'HISTORY_PREMIUM_REQUIRED'});
   return {from,to,days};
 }
 function report(c,requestedBasis=null,range=null){
