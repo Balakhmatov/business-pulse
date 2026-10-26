@@ -71,7 +71,6 @@ test('Open website button is visible in main menu regardless of subscription sta
   const disabled=f.last().reply_markup.inline_keyboard.flat().find(x=>x.text==='Открыть сайт');
   assert.equal(disabled?.url,'https://balakhmatov.github.io/business-pulse/index.html?login=1');
   assert.equal(disabled.web_app,undefined,'Website link should open regular browser rather than Telegram Mini App');
-  await f.click('999','trial:101').catch(()=>{});
   f.db.prepare('UPDATE company_billing SET trial_granted_by=?,trial_started_ms=?,trial_ends_ms=? WHERE company_id=?')
     .run('999',Date.parse('2026-10-19T08:00:00Z'),Date.parse('2026-10-21T08:00:00Z'),'a');
   await f.msg('101','/start');
