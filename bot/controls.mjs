@@ -16,7 +16,8 @@ const profileText=user=>[clean([user.last_name,user.first_name].filter(Boolean).
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const clean=value=>String(value||'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,100);
 
-export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now,defaultHour=9,timeZone='Europe/Moscow',isSubscribed=()=>false,supportId=process.env.BP_SUPPORT_ID||'1296951270'}){
+export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https://balakhmatov.github.io/business-pulse/index.html?login=1',botUsername,dbPath=process.env.BP_DB_FILE||'/var/lib/business-pulse/pulse.db',now=Date.now,defaultHour=9,timeZone='Europe/Moscow',isSubscribed=()=>false,supportId=process.env.BP_SUPPORT_ID||'1296951270'}){
+  if(!/^https:\/\//.test(siteUrl))throw Error('BP_SITE_URL must be HTTPS.');
   supportId=String(supportId);
   if(!idOK(supportId))throw Error('Некорректный аккаунт поддержки.');
   if(!validNotificationHour(defaultHour))throw Error('Некорректное время уведомлений.');
@@ -122,6 +123,7 @@ export function createBotControls({api:transport,adminIds,appUrl,botUsername,dbP
     const rows=subscription.access?[[{text:'Открыть Бизнес Пульс',web_app:{url:appUrl}}],
       [{text:'Моя сводка',callback_data:'bp:report'},button('Уведомления','notify')]]:
       [[{text:'Перейти к оплате',web_app:{url:paymentUrl()}}]];
+    rows.push([{text:'Открыть сайт',url:siteUrl}]);
     if(subscription.access&&c.access_role==='owner')rows.push([button('Сотрудники','m:'+c.owner_id)]);
     rows.push([button('Мой профиль и ID','id')]);
     if(adminIds.has(actor)){
