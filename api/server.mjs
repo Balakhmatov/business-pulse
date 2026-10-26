@@ -150,7 +150,7 @@ const ai=createAI({db,report,listOperations:c=>{
   const r=report(c);
   // Keep normal dashboard lightweight (60 days); AI may inspect six 30-day windows.
   return st.rows.all(c.id,shift(r.as_of,-179),r.as_of)
-    .filter(x=>x.financial_basis===r.primary_basis);
+    .filter(x=>x.financial_basis===r.primary_basis||x.financial_basis==='paid_fulfilled');
 }});
 
 const sampleCatalog={
@@ -341,6 +341,10 @@ const server=http.createServer(async(req,res)=>{
     }
     if(req.method==='POST'&&url.pathname==='/api/import'){
       const input=await readCompanyJSON(req,c,id);
+      if(input.financial_basis==='paid_fulfilled'&&
+        (!['cafe','store'].includes(c.industry)||input.confirm_paid_fulfilled!==true)){
+        return reply(res,400,{error:'Совмещённые продажи и оплаты разрешены только для кафе и магазинов при явном подтверждении, что заказы оплачены и выданы без авансов.'},origin);
+      }
       const stats=ingest(c,input);
       const updated=report(c);
       if(stats.added || stats.updated){
