@@ -5,6 +5,7 @@ import { createHmac } from 'node:crypto';
 import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 import { once } from 'node:events';
 import { companyAdmin } from './company-admin.mjs';
@@ -17,10 +18,10 @@ async function apiFixture(t,trial=true){
   const reservation=net.createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');
   const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
   const token='local-test-token-for-company-access-only';
-  const child=spawn(process.execPath,[new URL('./server.mjs',import.meta.url).pathname],{
+  const child=spawn(process.execPath,[fileURLToPath(new URL('./server.mjs',import.meta.url))],{
     env:{...process.env,BP_API_PORT:String(port),BP_BOT_TOKEN:token,BP_DB_FILE:dbPath,BP_OPENAI_API_KEY:'',YOOKASSA_SHOP_ID:'',YOOKASSA_SECRET_KEY:''},stdio:['ignore','pipe','pipe']
   });
-  t.after(async()=>{if(child.exitCode===null){const ended=once(child,'exit');child.kill();await ended;}rmSync(folder,{recursive:true,force:true});});
+  t.after(async()=>{if(child.exitCode===null){const ended=once(child,'close');child.kill();await ended;}rmSync(folder,{recursive:true,force:true,maxRetries:10,retryDelay:50});});
   let logs='';child.stdout.on('data',x=>logs+=x);child.stderr.on('data',x=>logs+=x);
   const base='http://127.0.0.1:'+port;
   let ready=false;
@@ -100,7 +101,8 @@ test('Company owner may clear own data; operation history, AI and mappings disap
   assert.equal((await call('303','/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'})).status,403);
   const db=new DatabaseSync(dbPath);
   try{
-    const tables=['operations','imports','import_batches','import_batch_changes','ai_analyses'];
+    db.prepare("INSERT INTO ai_analysis_cache(company_id,cache_key,status,payload,model,token,updated_ms) VALUES(?,'test','ready','{}','test','test',0)").run(own.id);
+    const tables=['operations','imports','import_batches','import_batch_changes','ai_analysis_cache'];
     for(const table of tables)assert.ok(db.prepare('SELECT COUNT(*) n FROM '+table+' WHERE company_id=?').get(own.id).n>0,table);
     const before=db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(own.id);
     const cleared=await call(admin,'/clear-company-data',{confirm:'DELETE_ALL_COMPANY_DATA'});
@@ -129,7 +131,7 @@ test('Unpaid owner and employee are blocked on all business endpoints; admin tri
     assert.equal((await call(actor,'/payments/refresh',{})).status,200);
     assert.equal((await call(actor,'/trial',{})).status,402);
   }
-  const db=new DatabaseSync(dbPath);t.after(()=>db.close());
+  const db=new DatabaseSync(dbPath);try{
   startCompanyTrial(db,c,'1296951270');
   assert.equal((await call('303','/report')).status,200);
   db.prepare('UPDATE company_billing SET trial_ends_ms=? WHERE company_id=?').run(Date.now()-1,c.id);
@@ -140,6 +142,7 @@ test('Unpaid owner and employee are blocked on all business endpoints; admin tri
   db.prepare('UPDATE company_billing SET paid_until_ms=? WHERE company_id=?').run(Date.now()-1,c.id);
   assert.equal((await call('101','/report')).status,402);
   assert.equal((await call('303','/report')).status,402);
+  }finally{db.close();}
 });
 
 test('A normal owner can clear own data, even after trial expiration, without deleting other companies or billing',async t=>{
@@ -173,7 +176,7 @@ test('Only the real company owner can update business type without altering oper
   const {call,dbPath}=await apiFixture(t);
   const owner=(await call('101','/me')).data.company;
   const db=new DatabaseSync(dbPath);
-  t.after(()=>db.close());
+  try{
   // apiFixture grants a trial when /me is opened.
   const day=(await call('101','/report')).data.as_of;
   const rows=[{date:day,id:'CHECK-1',item:'Пицца Пепперони',amount_kopecks:78000,status:'sale'}];
@@ -199,6 +202,7 @@ test('Only the real company owner can update business type without altering oper
   const noChange=await call('101','/company/industry',{industry:'cafe'});
   assert.equal(noChange.status,200);assert.equal(noChange.data.changed,false);
   assert.equal((await call('303','/report')).data.company.industry,'cafe');
+  }finally{db.close();}
 });
 test('A company owner may correct type before activating a subscription',async t=>{
   const {call}=await apiFixture(t,false);
@@ -267,7 +271,7 @@ test('Expired company is blocked on API for owner and staff, retains data, and v
   const date=(await call('101','/report')).data.as_of;
   const input={source:'report.csv',financial_basis:'cash_receipts',rows:[{date,id:'paid',item:'Услуга',amount_kopecks:10000,status:'sale'}]};
   assert.equal((await call('303','/import',input)).status,200);
-  const db=new DatabaseSync(dbPath);t.after(()=>db.close());
+  const db=new DatabaseSync(dbPath);try{
   db.prepare('UPDATE company_billing SET trial_ends_ms=? WHERE company_id=?').run(Date.now()-1,c.id);
   assert.equal((await call('101','/report')).status,402);
   assert.equal((await call('303','/report')).status,402);
@@ -278,6 +282,7 @@ test('Expired company is blocked on API for owner and staff, retains data, and v
   assert.equal((await call('101','/report')).data.revenue30_kopecks,10000);
   assert.equal((await call('303','/report')).data.revenue30_kopecks,10000);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations WHERE company_id=?').get(c.id).n,1);
+  }finally{db.close();}
 });
 
 test('Payment catalog is public for website checkout but cannot modify links or access company reports',async t=>{
@@ -307,7 +312,7 @@ test('Website login grants payment access only after bot confirmation and cannot
   assert.equal(start.status,200);
   const poll=()=>fetch(f.base+'/api/web-login/poll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)});
   assert.deepEqual(await (await poll()).json(),{pending:true});
-  const {createWebLogin}=await import('./web-login.mjs');const db=new DatabaseSync(f.dbPath);t.after(()=>db.close());
+  const {createWebLogin}=await import('./web-login.mjs');const db=new DatabaseSync(f.dbPath);try{
   createWebLogin(db).approve(a.challenge,'101');
   const {token}=await (await poll()).json();assert.ok(token);
   const headers={'X-BP-Web-Session':token,'Content-Type':'application/json'};
@@ -316,6 +321,7 @@ test('Website login grants payment access only after bot confirmation and cannot
   assert.equal((await fetch(f.base+'/api/report',{headers})).status,401);
   assert.equal((await fetch(f.base+'/api/payments',{method:'POST',headers,body:JSON.stringify({plan:'month'})})).status,400);
   assert.equal((await poll()).status,400);
+  }finally{db.close();}
 });
 
 
@@ -368,4 +374,21 @@ test('API automatically detects financial type from mapped amount column, withou
   try{
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations').get().n,3);
   }finally{db.close();}
+});
+
+test('Clinic service headers classify on backend, preserve quantity and repeat import without duplicates',async t=>{
+  const {call}=await apiFixture(t);
+  await call('101','/me');
+  await call('101','/company/industry',{industry:'clinic'});
+  const day=(await call('101','/report')).data.as_of;
+  const input={source:'clinic.xlsx',source_headers:['дата оказания','Номер визита','наименование услуги','количество','стоимость'],amount_index:4,
+    financial_basis:'unverified',rows:[{date:day,id:'visit-1',item:'УЗИ',status:'sale',amount_kopecks:750000,quantity_milli:5000}]};
+  const first=await call('101','/import',input);
+  assert.equal(first.status,200);assert.equal(first.data.stats.financial_basis,'recognized_revenue');
+  assert.equal(first.data.report.volume.value,5);
+  const repeated=await call('101','/import',input);
+  assert.equal(repeated.data.stats.unchanged,1);assert.equal(repeated.data.stats.added,0);
+  assert.equal(repeated.data.report.volume.value,5);
+  const a=(await call('101','/analysis?basis=recognized_revenue')).data;
+  assert.equal(a.primary_basis,'recognized_revenue');assert.equal(a.status,'disabled');
 });

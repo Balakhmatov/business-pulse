@@ -515,7 +515,7 @@
     if(state.business==='mine')renderMine();
     for(let attempt=0;attempt<18;attempt++){
       try{
-        const result=await request('/analysis?'+periodQuery());
+        const result=await request('/analysis?'+periodQuery()+(state.mineViewBasis?'&basis='+state.mineViewBasis:''));
         if(current!==analysisSeq)return;
         state.mineAI=result;
         if(state.business==='mine')renderMine();

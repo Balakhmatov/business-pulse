@@ -59,9 +59,10 @@ test('Bot statistics are admin-only and synthetic legacy callback dispatch is no
   const actions=f.db.prepare('SELECT SUM(actions) AS n FROM bot_visit_days').get().n;
   // index.mjs forwards bp:report as a synthetic message with track:false.
   const controls=createBotControls({dbPath:f.dbPath,api:async()=>({message_id:999}),adminIds:f.admins,supportId:'999',appUrl:'https://example.org/',botUsername:'business_pulse_app_bot'});
-  t.after(()=>controls.close());
+  try{
   await controls.handle({message:{from:{id:101},chat:{id:101,type:'private'},text:'/report'}},{track:false});
   assert.equal(f.db.prepare('SELECT SUM(actions) AS n FROM bot_visit_days').get().n,actions);
+  }finally{controls.close();}
   f.restart();await f.msg('999','/stats');assert.match(f.last().text,/Всего посетителей: 2/);
 });
 

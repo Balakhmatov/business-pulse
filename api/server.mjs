@@ -31,7 +31,7 @@ if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid API port'
 fs.mkdirSync(path.dirname(dbFile),{recursive:true,mode:0o700});
 const db=new DatabaseSync(dbFile);
 db.exec(
-  'PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;' +
+  'PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;' +
   'CREATE TABLE IF NOT EXISTS users (telegram_id TEXT PRIMARY KEY,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);' +
   "CREATE TABLE IF NOT EXISTS companies (id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(telegram_id),name TEXT NOT NULL,industry TEXT NOT NULL DEFAULT 'other',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);" +
   'CREATE INDEX IF NOT EXISTS ix_companies_owner ON companies(owner_id);' +
@@ -170,8 +170,8 @@ function ingest(c,input){
 }
 
 // The interpreter receives ONLY aggregates, never rows or user identity.
-const ai=createAI({db,report,listOperations:(c,range)=>{
-  const r=report(c,null,range);
+const ai=createAI({db,report,listOperations:(c,range,basis)=>{
+  const r=report(c,basis,range);
   const from=range?.from||shift(r.as_of,-179);
   const compareStart=range?shift(from,-range.days):from;
   return st.rows.all(c.id,compareStart,r.as_of)
@@ -333,7 +333,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/report')
       return reply(res,200,report(c,url.searchParams.get('basis'),resolveRange(c,url.searchParams)),origin);
     if(req.method==='GET'&&url.pathname==='/api/analysis')
-      return reply(res,200,ai.get(c,resolveRange(c,url.searchParams)),origin);
+      return reply(res,200,ai.get(c,resolveRange(c,url.searchParams),url.searchParams.get('basis')),origin);
     if(req.method==='POST'&&url.pathname==='/api/import/mapping/resolve'){
       const input=await readCompanyJSON(req,c,id);
       return reply(res,200,await importMapper.resolve(c,input),origin);
