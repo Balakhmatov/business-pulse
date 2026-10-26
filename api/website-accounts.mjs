@@ -26,7 +26,7 @@ export function createWebsiteAccounts(db, now = Date.now) {
       email TEXT PRIMARY KEY, actor_id TEXT NOT NULL UNIQUE REFERENCES users(telegram_id),
       password_salt TEXT NOT NULL, password_hash TEXT NOT NULL, created_ms INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS web_invitations (
-      code_hash TEXT PRIMARY KEY, company_name TEXT NOT NULL,
+      code_hash TEXT PRIMARY KEY, company_name TEXT NOT NULL, industry TEXT NOT NULL DEFAULT 'other',
       expires_ms INTEGER NOT NULL, used_ms INTEGER);
     CREATE TABLE IF NOT EXISTS web_sessions (
       token_hash TEXT PRIMARY KEY, actor_id TEXT NOT NULL, expires_ms INTEGER NOT NULL);
@@ -40,13 +40,14 @@ export function createWebsiteAccounts(db, now = Date.now) {
       .run(hash(token), actor, now() + 30 * 86400000);
     return token;
   }
-  function createInvite(companyName) {
+  function createInvite(companyName, industry = 'other') {
+    if (!['other','clinic','store','cafe'].includes(industry)) throw Error('Недопустимая отрасль.');
     const name = typeof companyName === 'string' ? companyName.trim() : '';
     if (name.length < 2 || name.length > 120) throw Error('Укажите название компании (2–120 символов).');
     const code = randomBytes(24).toString('hex');
     db.prepare('DELETE FROM web_invitations WHERE expires_ms <= ? OR used_ms IS NOT NULL').run(now());
-    db.prepare('INSERT INTO web_invitations(code_hash,company_name,expires_ms,used_ms) VALUES(?,?,?,NULL)')
-      .run(hash(code), name, now() + 7 * 86400000);
+    db.prepare('INSERT INTO web_invitations(code_hash,company_name,industry,expires_ms,used_ms) VALUES(?,?,?,?,NULL)')
+      .run(hash(code), name, industry, now() + 7 * 86400000);
     return { code, expires_ms: now() + 7 * 86400000 };
   }
   function register({ email: rawEmail, password, invite, accepted_terms } = {}) {
@@ -69,7 +70,7 @@ export function createWebsiteAccounts(db, now = Date.now) {
       const actor = 'web:' + randomUUID(), companyId = randomUUID();
       db.prepare('INSERT INTO users(telegram_id) VALUES(?)').run(actor);
       db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)')
-        .run(companyId, actor, invitation.company_name, 'other');
+        .run(companyId, actor, invitation.company_name, invitation.industry);
       db.prepare('INSERT INTO web_accounts(email,actor_id,password_salt,password_hash,created_ms) VALUES(?,?,?,?,?)')
         .run(email, actor, salt, passwordHash, now());
       db.prepare('UPDATE web_invitations SET used_ms=? WHERE code_hash=? AND used_ms IS NULL').run(now(), codeHash);
