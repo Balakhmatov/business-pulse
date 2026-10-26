@@ -191,14 +191,19 @@ function demo(c){const random=rng(c.seed),rows=[],special={};let seq=0;for(let i
  for(let j=0;j<n;j++){const id='D'+c.seed+'-'+(++seq),parts=random()>.72?2:1;for(let p=0;p<parts;p++){const item=c.items[Math.floor(random()*c.items.length)],amount=Math.round(item[1]*(.92+random()*.16));rows.push({date:dt,amount,item:item[0],id,status:'sale'});}if(c!==configs.clinic&&random()<.021){const refund=c.items[Math.floor(random()*c.items.length)];rows.push({date:dt,amount:-refund[1],item:refund[0],id:'R'+(++seq),status:'refund'});}}
  if(c===configs.clinic)special[dt]={noShows:Math.round(n*(.045+random()*.055)),cancellations:Math.round(n*(.03+random()*.045)),plans:Math.round(35+random()*28)};
 }return {rows:withDemoBooks(rows),special,imported:false,meta:{source:'Синтетические данные, 90 полных дней'}}}
-const state={business:'clinic',datasets:{},fileTable:null};Object.keys(configs).forEach(k=>state.datasets[k]=demo(configs[k]));
-// Telegram is only an optional application shell. Financial data remain local demo data.
+// Real authenticated workspaces never create synthetic demo operations.
 const telegramApp=window.Telegram&&window.Telegram.WebApp;
+const demoRequested=new URLSearchParams(location.search).get('demo')==='1';
+const webSessionReady=/^[a-f0-9]{48}$/.test(sessionStorage.getItem('bp-web-session')||'');
+const authenticatedShell=Boolean(telegramApp?.initData||webSessionReady);
+const showPublicDemo=!authenticatedShell||demoRequested;
+const state={business:showPublicDemo?'clinic':'mine',datasets:{},fileTable:null};
+if(showPublicDemo)Object.keys(configs).forEach(k=>state.datasets[k]=demo(configs[k]));
 if(telegramApp&&telegramApp.initData){
  document.documentElement.classList.add('in-telegram');
  try{telegramApp.ready();telegramApp.expand()}catch(error){console.warn('Telegram Mini App initialization:',error)}
  const selection=telegramApp.initDataUnsafe&&telegramApp.initDataUnsafe.start_param;
- if(selection&&Object.prototype.hasOwnProperty.call(configs,selection))state.business=selection;
+ if(showPublicDemo&&selection&&Object.prototype.hasOwnProperty.call(configs,selection))state.business=selection;
 }
 const sum=arr=>arr.reduce((s,r)=>s+r.amount,0);
 const start30=dateShift(yesterday,-29),previousStart=dateShift(yesterday,-59),previousEnd=dateShift(yesterday,-30);
@@ -626,11 +631,20 @@ async function readFile(file){
 $('fileInput').onchange=e=>readFile(e.target.files[0]);const zone=$('dropZone');zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag')});zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');readFile(e.dataTransfer.files[0])});
 $('confirmImport').onclick=()=>{try{const m=mapping(),res=parseImported(state.fileTable,m);state.datasets[state.business]={rows:res.rows.map(row=>({...row,financial_basis:state.fileTable._bpFinancialReview?.type==='cash_receipts'?'cash_receipts':state.fileTable._bpFinancialReview?.type==='reported_revenue'?'recognized_revenue':'unverified'})),imported:true,special:{},meta:{name:state.fileTable.name,hasOrderId:m.id>=0}};showModal(false);render()}catch(e){$('importAlert').textContent=e.message}};
 window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday};
-render();
+if(showPublicDemo)render();
+if(authenticatedShell&&demoRequested){
+  // Explicit demo is separate and has a visible way back on desktop and mobile.
+  const returnLink=document.createElement('a');
+  returnLink.className='ghost-btn';
+  returnLink.href='./index.html';
+  returnLink.textContent='К моим показателям';
+  returnLink.style.cssText='display:inline-flex;align-items:center;text-decoration:none;justify-content:center;white-space:normal;min-height:42px;';
+  document.querySelector('.topbar').append(returnLink);
+}
 })();
 </script>
 <script src="web-access.js?v=20261026-public-signup-v2"></script>
-<script type="module" src="personal.js?v=20261026-website-access-v1"></script>
+<script type="module" src="personal.js?v=20261026-private-dashboard-v1"></script>
 <script src="payments.js?v=20261026-website-access-v1" defer></script>
 </body>
 </html>

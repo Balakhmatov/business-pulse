@@ -5,7 +5,9 @@
   const demo=window.BP_Demo;
   const tg=window.Telegram?.WebApp||{};
   const webSession=()=>sessionStorage.getItem('bp-web-session')||'';
-  if(!demo||(!tg.initData&&!webSession()))return;
+  if(!demo||(!tg.initData&&!/^[a-f0-9]{48}$/.test(webSession())))return;
+  // The public demo is a separate view, even for authenticated users.
+  if(new URLSearchParams(location.search).get('demo')==='1')return;
   const {state,parseImported,mapping,showModal,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday}=demo;
   const $=id=>document.getElementById(id);
   const accessStyle=document.createElement('style');
@@ -27,18 +29,63 @@
     throw Error(accessMessage());
   }
 
+  // Real workspaces do not expose sample companies or a mode selector.
   const style=document.createElement('style');
-  style.textContent='@media(max-width:680px){.in-telegram .company-switch{grid-template-columns:repeat(2,minmax(0,1fr))}} #quickDemoImport[hidden]{display:none!important}';
-  document.head.appendChild(style);
-  const tab=document.createElement('button');
-  tab.type='button';
-  tab.className='company-tab';
-  tab.dataset.business='mine';
-  tab.innerHTML='<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-wallet"/></svg> Моя компания';
-  const bar=document.querySelector('.company-switch');
-  bar.insertBefore(tab,bar.firstChild);
-  bar.setAttribute('aria-label','Выбор компании');
-
+  style.textContent=`
+    body.private-workspace .switchbar{display:none!important}
+    body.private-workspace #demoAiPanel{display:none!important}
+    body.private-workspace #downloadSample{display:none!important}
+    body.private-workspace .calculation-guide{display:none!important}
+    body.private-workspace.private-empty-view .kpi-grid,
+    body.private-workspace.private-empty-view .two-col,
+    body.private-workspace.private-empty-view .bottom-grid,
+    body.private-workspace.private-empty-view .data-bar,
+    body.private-workspace.private-empty-view .source-note,
+    body.private-workspace.private-empty-view #financeBooks,
+    body.private-workspace.private-empty-view #unverifiedReview,
+    body.private-workspace.private-empty-view #debtInfo{display:none!important}
+    body.private-workspace .private-empty[hidden]{display:none!important}
+    body.private-workspace .private-empty{background:linear-gradient(125deg,#fff 0%,#f8f8ff 100%);
+      border:1px solid #e7e9f5;border-radius:21px;padding:clamp(21px,3vw,34px);
+      margin:12px 0 20px;display:flex;align-items:center;gap:28px;justify-content:space-between}
+    body.private-workspace .private-empty h2{font-size:clamp(19px,2vw,25px);color:#1c2440;margin:0 0 10px;letter-spacing:-.5px}
+    body.private-workspace .private-empty p{color:#727c93;font-size:13px;line-height:1.65;max-width:550px;margin:0}
+    body.private-workspace .private-empty .private-empty-actions{display:flex;gap:9px;flex-wrap:wrap}
+    body.private-workspace .private-empty .private-empty-actions button{min-height:44px}
+    body.private-workspace .private-sidelink{display:flex;align-items:center;gap:8px;color:#a7b1d1;
+      text-decoration:none;font-size:12px;padding:12px;border-radius:10px}
+    body.private-workspace .private-sidelink:hover{background:#252c49;color:white}
+    body.private-workspace .topbar .eyebrow{color:#625dca}
+    body.private-workspace .data-bar{background:#f9faff}
+    @media(max-width:680px){
+      body.private-workspace .private-empty{flex-direction:column;align-items:stretch;gap:17px}
+      body.private-workspace .private-empty .private-empty-actions button{flex:1}
+    }
+  `;
+  document.head.append(style);
+  document.body.classList.add('private-workspace');
+  const pageHeading=document.querySelector('.topbar .heading');
+  const pageEyebrow=document.querySelector('.topbar .eyebrow');
+  const sideHeading=document.querySelector('.sidebar .nav-heading');
+  const sideOverview=document.querySelector('.sidebar .nav-item.active');
+  pageHeading.textContent='Моя компания';
+  pageEyebrow.textContent='Личный кабинет';
+  if(sideHeading)sideHeading.textContent='ЛИЧНЫЙ КАБИНЕТ';
+  if(sideOverview)sideOverview.lastChild.textContent=' Мои показатели';
+  const demoLink=document.createElement('a');
+  demoLink.className='private-sidelink';
+  demoLink.href='./index.html?demo=1';
+  demoLink.textContent='Посмотреть демо отдельно';
+  document.querySelector('.sidebar .side-note')?.before(demoLink);
+  const empty=document.createElement('section');
+  empty.className='private-empty';
+  empty.hidden=true;
+  empty.setAttribute('aria-label','Начало работы с данными компании');
+  empty.innerHTML='<div><h2>Начните с отчёта вашей компании</h2>'+
+    '<p>Загрузите CSV или Excel из вашей учётной системы. Мы сохраним историю операций, рассчитаем показатели и покажем выводы ИИ. Никаких демонстрационных цифр.</p></div>'+
+    '<div class="private-empty-actions"><button type="button" class="primary-btn" id="privateFirstImport">Загрузить первый отчёт</button></div>';
+  $('subscriptionInfo').after(empty);
+  $('privateFirstImport').onclick=()=>$('openImport').click();
 
   // A reliable sample link, with headers Telegram's native downloader expects.
   const originalSampleDownload=$('downloadSample').onclick;
@@ -58,15 +105,6 @@
     try{window.open(fileURL,'_blank','noopener,noreferrer')}catch{originalSampleDownload();}
   };
 
-  // No file download is needed to test saving KPI data.
-  // This action is offered only for an empty personal workspace.
-  const quick=document.createElement('button');
-  quick.type='button';
-  quick.id='quickDemoImport';
-  quick.className='ghost-btn';
-  quick.textContent='Загрузить тестовые данные';
-  quick.hidden=true;
-  $('importUtilities').appendChild(quick);
   const retryLoad=document.createElement('button');
   retryLoad.type='button';
   retryLoad.className='ghost-btn';
@@ -163,18 +201,16 @@
     if(!importHistoryPanel.hidden)void refreshImportHistory();
   };
   function updateQuickButton(){
-    const busy=!!(state.mineLoading||state.mineSaving||state.mineQuickSaving||state.mineClearing);
+    const busy=!!(state.mineLoading||state.mineSaving||state.mineClearing);
     const operator=state.mineReport?.subscription?.state==='admin'&&state.mineReport?.company?.access_role==='owner';
-    quick.hidden=!operator||state.business!=='mine'||!!state.mineReport?.source||!!state.mineError;
-    quick.disabled=busy;
     importHistoryButton.hidden=state.business!=='mine';
     if(state.business!=='mine'){importHistoryPanel.hidden=true;importHistoryButton.textContent='История загрузок';}
     retryLoad.hidden=state.business!=='mine'||!state.mineError;
     retryLoad.disabled=busy;
     const src=state.mineReport?.source;
     clearTests.textContent=state.mineClearing?'Удаляем…':operator?'Очистить данные':'Очистить тестовые данные';
-    clearTests.hidden=state.business!=='mine'||(!operator&&(!src||!src.rows||
-      !/синтетич|тестов|demo|sample|пример/i.test(src.name)));
+    clearTests.hidden=state.business!=='mine'||!src||!src.rows||(!operator&&
+      !/синтетич|тестов|demo|sample|пример/i.test(src.name));
     clearTests.disabled=busy;
   }
   clearTests.onclick=async()=>{
@@ -215,45 +251,6 @@
       updateQuickButton();
     }
   };
-  function sampleRows(){
-    const end=yesterday;
-    const goods=[['Консультация терапевта',2800],['УЗИ',3500],['Анализы',1500],['Профилактический чек-ап',6200],['Консультация невролога',3200]];
-    const rows=[];
-    for(let day=59;day>=0;day--){
-      const date=dateShift(end,-day);
-      const dayNumber=Math.floor(Date.parse(date+'T00:00:00Z')/86400000);
-      for(let i=0;i<7;i++){
-        const [item,price]=goods[((dayNumber*7+i*3)%goods.length+goods.length)%goods.length];
-        const amount=Math.max(1,price+((((dayNumber*17+i*31)%9+9)%9)-4)*30);
-        rows.push({date,id:'DEMO-'+date+'-'+i,item,amount_kopecks:amount*100,status:'sale'});
-      }
-      if(dayNumber%12===0)rows.push({date,id:'REF-'+date,item:goods[0][0],amount_kopecks:-goods[0][1]*100,status:'refund'});
-    }
-    return rows;
-  }
-  quick.onclick=async()=>{
-    if(state.business!=='mine'||state.mineReport?.source||state.mineQuickSaving)return;
-    state.mineQuickSaving=true;
-    state.mineError='';
-    quick.disabled=true;
-    quick.textContent='Загружаем…';
-    try{
-      const answer=await request('/import',{source:'Синтетический тестовый отчёт',rows:sampleRows()});
-      state.mineReport=answer.report;
-      state.mineImportStats=answer.stats||null;
-      state.mineAI=null;
-      renderMine();
-      void loadAI();
-    }catch(e){
-      state.mineError=e.message||'Не удалось загрузить тестовый отчёт.';
-      renderMine();
-    }finally{
-      state.mineQuickSaving=false;
-      quick.textContent='Загрузить тестовые данные';
-      updateQuickButton();
-    }
-  };
-
   // Cached OpenAI analysis. The browser never accesses OpenAI or any API key.
   state.mineAI=null;
   let analysisSeq=0;
@@ -404,7 +401,7 @@
     $('sideImport').disabled=locked||!!state.mineLoading;
     const operator=subscription?.state==='admin'&&r?.company?.access_role==='owner';
     window.dispatchEvent(new CustomEvent('bp:workspace-access',{detail:{admin:operator,pending:!subscription&&!!state.mineLoading}}));
-    document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(el=>{el.hidden=!operator;});
+
     const subscriptionBox=$('subscriptionInfo');
     subscriptionBox.hidden=false;
     if(subscription?.state==='admin'){
@@ -419,12 +416,15 @@
     }
 
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
+    const noData=!imported&&!loading;
+    document.body.classList.toggle('private-empty-view',noData);
+    empty.hidden=imported||locked||loading||!!state.mineError;
     const end=r&&r.as_of?r.as_of:yesterday;
     const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
     const change=imported&&r.primary_basis!=='unverified'?r.change_percent:null;
-    $('businessDesc').textContent='Ваши показатели · полученные оплаты и выполненная работа';
+    $('businessDesc').textContent=r?.company?.name?'Финансовый обзор · '+r.company.name:'Отчёты и аналитика вашей компании';
     renderFinanceBooks(r);
     const financialLabel=financialTitles[r?.primary_basis]||financialTitles.unverified;
     const shortMetric=r?.primary_basis==='cash_receipts'?'Поступления':
@@ -530,32 +530,6 @@
     }
     finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }
-
-  tab.onclick=()=>{
-    state.business='mine';
-    renderMine();
-    if(!state.mineReport)loadMine();
-  };
-  // Existing demo tab handlers are installed by index.html before this module.
-  document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      document.querySelector('.side-foot').textContent='Данные демонстрационные';
-      $('subscriptionInfo').hidden=true;
-      $('financeBooks').hidden=true;
-      $('unverifiedReview').hidden=true;
-      $('debtInfo').hidden=true;
-      document.querySelector('.revenue-panel .kpi-name').textContent='Продажи за 30 дней';
-      $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent='Продажи за вчера';
-      $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика продаж';
-      $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent='Продажи по дням';
-      const concernsChip=$('concerns').closest('.panel')?.querySelector('.subtle-chip');
-      const positivesChip=$('positives').closest('.panel')?.querySelector('.subtle-chip');
-      if(concernsChip)concernsChip.textContent='Анализ';
-      if(positivesChip)positivesChip.textContent='Позитив';
-      updateQuickButton();
-      demo.render();
-    });
-  });
 
   const intro=document.querySelector('.modal-intro');
   const localIntro=intro.textContent;
@@ -1006,7 +980,7 @@
   };
 
   window.addEventListener('bp:payment-confirmed',()=>void loadMine());
-  // Signed users enter their workspace; demo tabs are shown only to its administrator.
+  // Signed users enter their own workspace; demo is explicitly separate.
   state.business='mine';
   renderMine();
   loadMine();
