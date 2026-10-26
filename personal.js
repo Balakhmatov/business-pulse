@@ -75,7 +75,7 @@
     body.private-workspace .private-settings-note,body.private-workspace #privateIndustryStatus{
       font-size:12px;line-height:1.55;color:#707d95;margin:11px 0 0}
     body.private-workspace.bp-access-locked .main > #importUtilities{display:flex!important}
-    body.private-workspace.bp-access-locked .main > .clear-data-feedback:not([hidden]){display:block!important}
+    body.private-workspace.bp-access-locked .main > #clearCompanyFeedback:not([hidden]){display:block!important}
     body.private-workspace .clear-data-dialog[hidden]{display:none!important}
     body.private-workspace .clear-data-dialog{position:fixed;inset:0;z-index:100;
       background:#10163099;display:flex;justify-content:center;align-items:center;padding:16px}
@@ -242,6 +242,7 @@
   $('importUtilities').appendChild(clearTests);
   const clearFeedback=document.createElement('p');
   clearFeedback.className='clear-data-feedback';
+  clearFeedback.id='clearCompanyFeedback';
   clearFeedback.hidden=true;
   clearFeedback.setAttribute('role','status');
   clearFeedback.setAttribute('aria-live','polite');
