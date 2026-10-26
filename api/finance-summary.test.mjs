@@ -179,8 +179,8 @@ test('Custom 90-day and full-year summaries calculate all dates and equal prior 
   assert.ok(history.chart7.length>=12);
   assert.equal(history.chart7.reduce((v,x)=>v+x.amount_kopecks,0),history.revenue30_kopecks);
 });
-test('Default summary still has exactly seven daily data points',()=>{
+test('Default summary now supports a full month of daily data points',()=>{
   const r=calculateFinancialSummary([entry('cash_receipts','A',15000)],{cash_receipts:1},END);
   assert.equal(r.period.days,30);
-  assert.equal(r.chart7.length,7);
+  assert.equal(r.chart7.length,30);
 });
