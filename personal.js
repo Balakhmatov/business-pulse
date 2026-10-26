@@ -470,8 +470,8 @@
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
     if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
-    if(imported&&top.length)good.push({title:'Больше всего по сумме — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'.'});
-    if(imported)bad.push({title:'Проверьте, все ли данные загружены',desc:'Дни без записей могут быть пропусками в отчёте. Это влияет на сравнение с прошлым месяцем.'});
+    if(imported&&top.length&&!good.length)good.push({title:'Лидер по объёму — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'. Лидер по выручке не обязательно самый прибыльный. Для рекомендаций нужен анализ ИИ.'});
+    if(imported&&r.coverage&&(r.coverage.current_days<25||r.coverage.previous_days<25))bad.push({title:'Недостаточно дней для сравнения',desc:'Дни без записей могут быть пропусками выгрузки. Сначала проверьте полноту периодов.'});
     if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV или Excel (.xlsx) с датой, суммой и названиями товаров или услуг.'});
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
@@ -480,7 +480,8 @@
     if(ready){
       const asItem=x=>({
         title:x.title,
-        desc:[x.explanation,...(x.evidence||[]),'Рекомендация: '+x.recommendation].join(' ')
+        desc:[x.explanation,...(x.evidence||[])].join(' '),
+        recommendation:x.recommendation
       });
       bad.splice(0,bad.length,...ai.analysis.issues.map(asItem));
       good.splice(0,good.length,...ai.analysis.positives.map(asItem));
@@ -488,7 +489,7 @@
     }
     for(const [id] of [['concerns'],['positives']]){
       const chip=$(id).closest('.panel')?.querySelector('.subtle-chip');
-      if(chip)chip.textContent=ready?'Выводы по данным':imported&&ai?.status==='pending'?'Готовим выводы':'Показатели и выводы';
+      if(chip)chip.textContent=ready?'Анализ OpenAI':imported&&ai?.status==='pending'?'OpenAI анализирует':imported&&ai?.status==='disabled'?'OpenAI не подключён':imported&&ai?.status==='error'?'Ошибка анализа OpenAI':'Базовые показатели';
     }
     $('concerns').innerHTML=insightHTML(bad.slice(0,3),true);
     $('positives').innerHTML=insightHTML(good.slice(0,2),false);

@@ -126,7 +126,7 @@ const jsonSchema={
   },
   required:['report_type','mapping','financial']
 };
-export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',model=process.env.BP_OPENAI_MODEL||'gpt-6-luna',fetchFn=globalThis.fetch,now=()=>Date.now()}){
+export function createImportMapper({db,apiKey=process.env.BP_OPENAI_API_KEY||'',model=process.env.BP_OPENAI_MODEL||'gpt-5.4-mini',fetchFn=globalThis.fetch,now=()=>Date.now()}){
   db.exec('CREATE TABLE IF NOT EXISTS import_mapping_templates ('+
     'company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,'+
     'signature TEXT NOT NULL,mapping TEXT NOT NULL,updated_ms INTEGER NOT NULL,'+
