@@ -49,7 +49,8 @@ export function createWebsiteAccounts(db, now = Date.now) {
       .run(hash(code), name, now() + 7 * 86400000);
     return { code, expires_ms: now() + 7 * 86400000 };
   }
-  function register({ email: rawEmail, password, invite } = {}) {
+  function register({ email: rawEmail, password, invite, accepted_terms } = {}) {
+    if (accepted_terms !== true) throw Object.assign(Error('Примите условия использования.'), { status: 400 });
     const email = normalizeEmail(rawEmail);
     checkPassword(password);
     if (typeof invite !== 'string' || !tokenShape.test(invite)) {
