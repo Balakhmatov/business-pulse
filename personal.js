@@ -65,6 +65,10 @@
     body.private-workspace .private-settings-fields{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
     body.private-workspace .private-settings-fields select{flex:1;min-width:160px;max-width:360px;
       font:inherit;font-size:13px;padding:11px;border:1px solid #dfe3ed;border-radius:9px;background:white;color:#252d46}
+    body.private-workspace .private-telegram-link{margin-top:18px;border-top:1px solid #eaedf3;padding-top:17px}
+    body.private-workspace .private-telegram-link strong{font-size:13px}
+    body.private-workspace .private-telegram-link[hidden]{display:none!important}
+    body.private-workspace .private-telegram-link [hidden]{display:none!important}
     body.private-workspace .private-settings-note,body.private-workspace #privateIndustryStatus{
       font-size:12px;line-height:1.55;color:#707d95;margin:11px 0 0}
     body.private-workspace .topbar .eyebrow{color:#625dca}
@@ -135,6 +139,50 @@
       industryStatus.textContent=error.message||'Не удалось сохранить тип бизнеса.';
     }finally{industrySaving=false;industrySave.disabled=false;}
   };
+
+  // Linking is initiated only from a verified email session; Telegram
+  // confirms the same one-time request using its signed bot identity.
+  const linkSection=document.createElement('div');
+  linkSection.className='private-telegram-link';
+  linkSection.hidden=!!tg.initData;
+  linkSection.innerHTML='<strong>Telegram и сайт</strong>'+
+    '<p class="private-settings-note">Свяжите аккаунты, чтобы работать с одними отчётами, показателями и подпиской в приложении и браузере.</p>'+
+    '<div class="private-settings-fields">'+
+    '<button type="button" class="ghost-btn" id="privateLinkTelegram">Связать Telegram</button>'+
+    '<a id="privateOpenLink" target="_blank" rel="noopener noreferrer" hidden>Подтвердить в Telegram</a>'+
+    '<button type="button" class="ghost-btn" id="privateLinkRefresh" hidden>Проверить привязку</button></div>'+
+    '<p id="privateLinkStatus" class="private-settings-note" role="status"></p>';
+  companySettings.querySelector('.private-settings-body').append(linkSection);
+  const linkButton=$('privateLinkTelegram'),linkOpen=$('privateOpenLink');
+  const linkRefresh=$('privateLinkRefresh'),linkStatus=$('privateLinkStatus');
+  const showLinkStatus=async()=>{
+    if(tg.initData)return;
+    try{
+      const data=await request('/account-link/status');
+      if(data.linked){
+        linkButton.hidden=true;linkOpen.hidden=true;linkRefresh.hidden=true;
+        linkStatus.textContent='Telegram привязан. В приложении и на сайте используются одни данные компании.';
+        if(state.mineReport?.company?.id!==data.company_id)void loadMine();
+      }else{
+        linkButton.hidden=false;
+        linkStatus.textContent='Telegram пока не привязан.';
+      }
+    }catch(e){linkStatus.textContent=e.message||'Не удалось проверить связь аккаунтов.';}
+  };
+  linkButton.onclick=async()=>{
+    linkButton.disabled=true;
+    linkStatus.textContent='Создаём защищённую ссылку…';
+    try{
+      const result=await request('/account-link/start',{confirm:true});
+      linkOpen.href=result.url;
+      linkOpen.hidden=false;
+      linkOpen.style.cssText='display:inline-flex;align-items:center;color:#605ad0;font-weight:700;font-size:13px;';
+      linkRefresh.hidden=false;
+      linkStatus.textContent='Нажмите «Подтвердить в Telegram» и подтвердите привязку в боте. Ссылка действует 10 минут.';
+    }catch(e){linkStatus.textContent=e.message||'Не удалось создать ссылку.';}
+    finally{linkButton.disabled=false;}
+  };
+  linkRefresh.onclick=()=>{void showLinkStatus();};
 
   // A reliable sample link, with headers Telegram's native downloader expects.
   const originalSampleDownload=$('downloadSample').onclick;
@@ -594,7 +642,7 @@
         }catch{}
       }
     }
-    finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
+    finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();if(!tg.initData)void showLinkStatus();}
   }
 
   const intro=document.querySelector('.modal-intro');
@@ -969,11 +1017,16 @@
       if(result.invalid>0)throw Error('Обнаружено '+result.invalid+' строк с ошибками: '+result.invalidExamples.join('; ')+'. Исправьте данные перед загрузкой.');
       if(!result.rows.length&&!(isCorrection&&result.cancelled_ids.length))
         throw Error('Нет корректных оплаченных операций для импорта.');
-      if(result.rows.length>10000)throw Error('Сервер принимает до 10 000 операций за одну загрузку.');
-      const rows=result.rows.map(x=>({
-        date:x.date,id:String(x.id),item:String(x.item),
-        amount_kopecks:Math.round(x.amount*100),status:x.status,quantity_milli:x.quantity_milli??null
-      }));
+      if(result.rows.length>100000)throw Error('В одном файле можно загрузить до 100 000 операций. Разделите отчёт на несколько файлов.');
+      const occurrenceCounts=new Map();
+      const rows=result.rows.map(x=>{
+        const date=x.date,id=String(x.id),item=String(x.item),status=x.status;
+        const group=JSON.stringify([date,id.trim(),item.trim(),status]);
+        const occurrence=occurrenceCounts.get(group)||0;
+        occurrenceCounts.set(group,occurrence+1);
+        return {date,id,item,amount_kopecks:Math.round(x.amount*100),status,
+          quantity_milli:x.quantity_milli??null,occurrence};
+      });
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
       if(!validateBookChoice())
         throw Error(!bookSelect.value?'Выберите, что означают суммы в файле: полученные деньги, выполненные продажи или суммы без уточнения.':basisConflict()||'Подтвердите, что услуги уже оказаны или товары переданы. Авансы за будущие услуги и просто выставленные счета сюда не входят.');
@@ -995,13 +1048,36 @@
         financial:state.fileTable._bpAiMappingAmount===columns.amount
           ?state.fileTable._bpAiFinancial||null:null
       };
-      const answer=isCorrection
-        ?await request('/import/corrections/apply',{
+      let answer;
+      if(isCorrection){
+        answer=await request('/import/corrections/apply',{
           ...correctionData,confirm_token:checkedCorrection.confirm_token,
           expires_at_ms:checkedCorrection.expires_at_ms
-        })
-        :await request('/import',{source:state.fileTable.name.slice(0,120),
-          financial_basis:financialBasis,rows});
+        });
+      }else{
+        const batchSize=5000,parts=Math.ceil(rows.length/batchSize);
+        const combined={received:0,added:0,updated:0,unchanged:0,deleted:0,total:0};
+        for(let part=0;part<parts;part++){
+          $('importAlert').textContent='Сохраняем отчёт: пакет '+(part+1)+' из '+parts+
+            ' · '+Math.min(rows.length,(part+1)*batchSize)+' / '+rows.length+' строк.';
+          try{
+            answer=await request('/import',{
+              source:state.fileTable.name.slice(0,120),
+              financial_basis:financialBasis,
+              more_chunks:part<parts-1,
+              rows:rows.slice(part*batchSize,(part+1)*batchSize)
+            });
+          }catch(error){
+            const saved=combined.received;
+            throw Error((saved?'Сохранено '+saved+' строк, дальнейшая загрузка остановлена. ':'')+
+              error.message+' Повторно загрузите этот же файл: уже записанные операции не задвоятся.');
+          }
+          const stats=answer.stats||{};
+          for(const key of ['received','added','updated','unchanged','deleted'])combined[key]+=Number(stats[key]||0);
+          combined.total=stats.total||combined.total;
+        }
+        answer.stats=combined;
+      }
       // Saving the mapping is independent of successful accounting: a template
       // API outage must not undo or retry a completed transaction import.
       let savedTemplate=false;

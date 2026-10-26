@@ -16,6 +16,7 @@ import { createCorrectionService } from './corrections.mjs';
 import { resetTestData,clearAdminCompanyData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
+import { createAccountLink } from './account-link.mjs';
 import { setCompanyIndustry } from './company-industry.mjs';
 import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,assertSubscription,PLANS } from './billing.mjs';
 
@@ -44,6 +45,7 @@ ensurePaymentLinks(db);
 const payments=createPayments({db});
 const webLogin=createWebLogin(db);
 const websiteAccounts=createWebsiteAccounts(db);
+const accountLink=createAccountLink(db);
 const websiteSelfService=createWebsiteSelfService(db);
 const authMail=createAuthMail();
 const paymentTimer=setInterval(()=>void payments.reconcile(),60000);
@@ -125,14 +127,15 @@ function normalize(input){
   if(typeof input.source!=='string'||!input.source.trim()||input.source.length>120)throw Error('Invalid source');
   const today=mskToday(),result=[],seen=new Set();
   for(const r of input.rows){
-    if(!r||typeof r.date!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(r.date)||Number.isNaN(Date.parse(r.date+'T00:00:00Z'))||new Date(r.date+'T00:00:00Z').toISOString().slice(0,10)!==r.date||r.date>today||r.date<shift(today,-730))throw Error('Invalid date');
+    if(!r||typeof r.date!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(r.date)||Number.isNaN(Date.parse(r.date+'T00:00:00Z'))||new Date(r.date+'T00:00:00Z').toISOString().slice(0,10)!==r.date||r.date>today||r.date<shift(today,-3650))throw Error('Invalid date');
     if(typeof r.id!=='string'||!r.id.trim()||r.id.length>100||typeof r.item!=='string'||!r.item.trim()||r.item.length>140)throw Error('Invalid ID or item');
     if(!Number.isSafeInteger(r.amount_kopecks)||Math.abs(r.amount_kopecks)>1e12||r.amount_kopecks===0)throw Error('Invalid amount');
     if(!(r.quantity_milli===undefined||r.quantity_milli===null||
       (Number.isSafeInteger(r.quantity_milli)&&r.quantity_milli>0&&r.quantity_milli<=1000000000)))
       throw Error('Неверное количество: проверьте столбец «Количество».');
     if(!['sale','refund'].includes(r.status)||(r.status==='sale'&&r.amount_kopecks<0)||(r.status==='refund'&&r.amount_kopecks>0))throw Error('Invalid status');
-    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null].join('\u0000');
+    if(r.occurrence!==undefined&&(!Number.isSafeInteger(r.occurrence)||r.occurrence<0||r.occurrence>100000))throw Error('Invalid line occurrence');
+    const key=[r.date,r.id,r.item,r.amount_kopecks,r.status,r.quantity_milli??null,r.occurrence??null].join('\u0000');
     if(!seen.has(key)){result.push(r);seen.add(key);}
   }
   return result;
@@ -264,6 +267,14 @@ const server=http.createServer(async(req,res)=>{
   try{id=websiteActor||(paymentOnlyActor&&webPaymentRoute?paymentOnlyActor:telegramID(req.headers['x-telegram-init-data']));}
   catch{return reply(res,401,{error:'Войдите в личный кабинет или откройте приложение через Telegram.'},origin);}
   try{
+    if(url.pathname==='/api/account-link/status'&&req.method==='GET'){
+      if(!websiteActor)return reply(res,403,{error:'Войдите на сайт по email для привязки.'},origin);
+      return reply(res,200,accountLink.linked(websiteActor),origin);
+    }
+    if(url.pathname==='/api/account-link/start'&&req.method==='POST'){
+      if(!websiteActor)return reply(res,403,{error:'Войдите на сайт по email для привязки.'},origin);
+      return reply(res,200,accountLink.start(websiteActor),origin);
+    }
     const c=companyFor(id);
     if(req.method==='GET'&&url.pathname==='/api/me')return reply(res,200,{authenticated:true,company:c,subscription:subscriptionFor(db,c)},origin);
     if(req.method==='GET'&&url.pathname==='/api/subscription')return reply(res,200,{company:c,subscription:subscriptionFor(db,c),plans:PLANS},origin);
@@ -332,7 +343,10 @@ const server=http.createServer(async(req,res)=>{
       const input=await readCompanyJSON(req,c,id);
       const stats=ingest(c,input);
       const updated=report(c);
-      if(stats.added || stats.updated) ai.onImport(c); // no redundant paid analysis
+      if(stats.added || stats.updated){
+        if(input.more_chunks===true)db.prepare('DELETE FROM ai_analyses WHERE company_id=?').run(c.id);
+        else ai.onImport(c); // generate once after the last upload chunk
+      }
       return reply(res,200,{saved:stats.received,stats,report:updated},origin);
     }
     return reply(res,404,{error:'Unknown API route'},origin);

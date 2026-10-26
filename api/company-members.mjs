@@ -9,6 +9,15 @@ export function ensureCompanyMembers(db){
 }
 
 export function companyForUser(db,telegramId){
+  const actor=String(telegramId);
+  // Linked email/password and Telegram credentials resolve to the SAME
+  // company, with full owner privileges and shared data/billing.
+  const hasLinks=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='account_links'").get();
+  if(hasLinks){
+    const linked=db.prepare('SELECT c.* FROM account_links l JOIN companies c ON c.id=l.company_id '+
+      'WHERE l.web_actor_id=? OR l.telegram_id=?').get(actor,actor);
+    if(linked)return {...linked,access_role:'owner'};
+  }
   let row;
   const hasMembers=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='company_members'").get();
   if(hasMembers)row=db.prepare('SELECT c.* FROM companies c JOIN company_members m ON m.company_id=c.id WHERE m.telegram_id=?').get(String(telegramId));

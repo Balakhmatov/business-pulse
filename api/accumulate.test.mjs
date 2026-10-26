@@ -78,6 +78,21 @@ test('Migrate legacy rows in place without destroying history',t=>{
   const same=f.run(engine,[f.row('2026-10-15','old-1',50000)]);
   assert.deepEqual([same.added,same.updated,same.unchanged,same.total],[0,0,1,1]);
 });
+test('Globally stable occurrence prevents repeated receipt lines from disappearing across batches',t=>{
+  const f=makeFixture();t.after(f.close);const engine=f.importer();
+  const shared={date:'2023-05-08',id:'ORDER-23-1',item:'Капучино',status:'sale',amount_kopecks:23000};
+  const oldRows=[{...shared,occurrence:0},{date:'2025-11-08',id:'ORDER-25-1',item:'Чизкейк',status:'sale',amount_kopecks:35000}];
+  const newRows=[{...shared,occurrence:1},{date:'2026-10-20',id:'ORDER-26-1',item:'Латте',status:'sale',amount_kopecks:29000}];
+  const first=engine.ingest({id:'a'},{source:'history.csv',financial_basis:'cash_receipts'},oldRows);
+  const second=engine.ingest({id:'a'},{source:'history.csv',financial_basis:'cash_receipts'},newRows);
+  assert.equal(first.added,2);assert.equal(second.added,2);
+  assert.equal(second.total,4);
+  assert.equal(engine.ingest({id:'a'},{source:'history.csv',financial_basis:'cash_receipts'},oldRows).unchanged,2);
+  assert.equal(engine.ingest({id:'a'},{source:'history.csv',financial_basis:'cash_receipts'},newRows).unchanged,2);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM operations WHERE company_id=?').get('a').n,4);
+  assert.equal(f.amount(),110000);
+});
+
 test('Accumulate daily deltas, avoid double count, and correct an existing amount',t=>{
   const f=makeFixture();t.after(f.close);const engine=f.importer();
   const original=[f.row('2026-10-14','r1',10000),f.row('2026-10-15','r2',20000)];

@@ -1,5 +1,6 @@
 import { ensurePaymentLinks,paymentCatalog,savePaymentLink } from '../api/payment-links.mjs';
 import { createWebLogin } from '../api/web-login.mjs';
+import { createAccountLink } from '../api/account-link.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes,randomInt,randomUUID,createHash } from 'node:crypto';
 import { ensureCompanyMembers,companyForUser,addCompanyMember } from '../api/company-members.mjs';
@@ -27,6 +28,7 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
   ensureCompanyMembers(db);
   ensureBillingSchema(db,now());
   const webLogin=createWebLogin(db,now);
+  const accountLink=createAccountLink(db,now);
   ensurePaymentLinks(db);
   db.exec('CREATE TABLE IF NOT EXISTS notification_preferences (telegram_id TEXT PRIMARY KEY REFERENCES users(telegram_id),hour INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23));');
   db.exec('CREATE TABLE IF NOT EXISTS bot_profiles (telegram_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,username TEXT NOT NULL);'+
@@ -401,6 +403,12 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
           if(!/^[a-f0-9]{48}$/.test(challenge))throw Error('Ссылка входа недействительна.');
           await send(actor,'Подтвердите вход для оплаты на сайте «Бизнес Пульс».\n\nПодтверждайте только если вы сами начали вход на сайте. После подтверждения вернитесь в браузер.',[[button('Подтвердить вход','web:'+challenge)],[button('Отмена','home')]]);
         }
+        else if(command==='/start'&&payload?.startsWith('link_')){
+          const token=payload.slice(5);
+          const target=accountLink.preview(token);
+          await send(actor,'Подключить Telegram к веб-кабинету «'+target.company_name+'»?\n\nПосле подтверждения сайт и Telegram будут работать с одной компанией, отчётами и подпиской. Если у обоих аккаунтов уже есть отдельные финансовые операции, автоматическая привязка будет остановлена.',
+            [[button('Да, связать аккаунты','link:'+token)],[button('Отмена','home')]]);
+        }
         else if(command==='/start'&&payload?.startsWith('join_'))await previewInvite(actor,payload.slice(5));
         else if(command==='/start'&&payload==='prices')await prices(actor);
         else if(command==='/start'&&payload==='support')await support(actor);
@@ -415,6 +423,10 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
         await send(actor,'Вход подтверждён. Вернитесь на сайт — теперь можно выбрать тариф и оплатить.',[[button('В меню','home')]]);
       }
       else if(action==='home')await home(actor);
+      else if(action==='link'){
+        const result=accountLink.complete(a,actor);
+        await home(actor,false,'\n\nTelegram связан с веб-кабинетом. Общая компания: '+result.company_name+'.');
+      }
       else if(action==='stats')await showStats(actor,Number(a||0));
       else if(action==='trial'){
         const c=access(actor,a,true);
