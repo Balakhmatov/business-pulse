@@ -309,10 +309,12 @@ const server=http.createServer(async(req,res)=>{
     }
     if(req.method==='POST'&&url.pathname==='/api/import/corrections/preview'){
       const input=await readCompanyJSON(req,c,id);
+      if(input.financial_basis==='paid_fulfilled')return reply(res,400,{error:'Для совмещённых чеков используйте повторную обычную загрузку. Режим исправлений поддерживает отдельные финансовые типы.'},origin);
       return reply(res,200,correctionService.preview(c,input),origin);
     }
     if(req.method==='POST'&&url.pathname==='/api/import/corrections/apply'){
       const input=await readCompanyJSON(req,c,id);
+      if(input.financial_basis==='paid_fulfilled')return reply(res,400,{error:'Для совмещённых чеков используйте повторную обычную загрузку.'},origin);
       const result=correctionService.apply(c,input);
       if(result.changed)ai.onImport(c);
       return reply(res,200,{...result,report:report(c),history:accumulator.history(c)},origin);
