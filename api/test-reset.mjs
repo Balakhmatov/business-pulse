@@ -1,9 +1,9 @@
-import { isAdminCompany } from './billing.mjs';
-
-// Full reset is restricted to the authenticated administrator's own company.
-export function clearAdminCompanyData(db,company,actor,confirmation){
-  if(company.access_role!=='owner'||String(company.owner_id)!==String(actor)||!isAdminCompany({owner_id:actor})){
-    const error=new Error('Полная очистка доступна только администратору в собственной компании.');
+// A company owner may erase its imported operational data without deleting
+// the company itself, account, payment history, employees or subscription.
+// Ownership is resolved before calling this function (and checked again here).
+export function clearCompanyData(db,company,actor,confirmation){
+  if(company.access_role!=='owner'){
+    const error=new Error('Очистить данные может только владелец компании.');
     error.status=403;throw error;
   }
   if(confirmation!=='DELETE_ALL_COMPANY_DATA'){
