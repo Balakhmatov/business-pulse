@@ -1,6 +1,8 @@
 import http from 'node:http';
 import { createWebLogin } from './web-login.mjs';
 import { createWebsiteAccounts } from './website-accounts.mjs';
+import { createWebsiteSelfService } from './website-selfservice.mjs';
+import { createAuthMail } from './auth-mail.mjs';
 import { createPayments } from './yookassa.mjs';
 import { ensurePaymentLinks } from './payment-links.mjs';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
@@ -41,6 +43,8 @@ ensurePaymentLinks(db);
 const payments=createPayments({db});
 const webLogin=createWebLogin(db);
 const websiteAccounts=createWebsiteAccounts(db);
+const websiteSelfService=createWebsiteSelfService(db);
+const authMail=createAuthMail();
 const paymentTimer=setInterval(()=>void payments.reconcile(),60000);
 paymentTimer.unref();
 void payments.reconcile();
@@ -204,6 +208,39 @@ const server=http.createServer(async(req,res)=>{
   }
   if(req.method==='POST'&&url.pathname==='/api/web-login/poll'){
     try{const input=await readJSON(req);return reply(res,200,webLogin.poll(input.challenge,input.secret),origin);}catch(e){return reply(res,400,{error:e.message},origin);}
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/web-auth/config')
+    return reply(res,200,{registration_available:authMail.ready,password_reset_available:authMail.ready},origin);
+  if(req.method==='POST'&&url.pathname==='/api/web-auth/signup'){
+    try{
+      if(!authMail.ready)return reply(res,503,{error:'Регистрация по email временно недоступна. Обратитесь в поддержку.'},origin);
+      const input=await readJSON(req);
+      const request=websiteSelfService.beginSignup(input);
+      if(request)await authMail.sendVerification(request.email,request.token);
+      return reply(res,202,{pending:true,message:'Если адрес доступен для регистрации, письмо для подтверждения отправлено.'},origin);
+    }catch(error){return reply(res,error.status||503,{error:error.message},origin);}
+  }
+  if(req.method==='POST'&&url.pathname==='/api/web-auth/verify'){
+    try{
+      const input=await readJSON(req);
+      return reply(res,200,websiteSelfService.verifySignup(input?.token),origin);
+    }catch(error){return reply(res,error.status||400,{error:error.message},origin);}
+  }
+  if(req.method==='POST'&&url.pathname==='/api/web-auth/reset/request'){
+    try{
+      if(!authMail.ready)return reply(res,503,{error:'Восстановление пароля временно недоступно. Обратитесь в поддержку.'},origin);
+      const input=await readJSON(req);
+      const request=websiteSelfService.beginReset(input?.email);
+      if(request)await authMail.sendReset(request.email,request.token);
+      return reply(res,202,{pending:true,message:'Если аккаунт существует, письмо для восстановления отправлено.'},origin);
+    }catch(error){return reply(res,error.status||503,{error:error.message},origin);}
+  }
+  if(req.method==='POST'&&url.pathname==='/api/web-auth/reset/confirm'){
+    try{
+      const input=await readJSON(req);
+      return reply(res,200,websiteSelfService.finishReset(input),origin);
+    }catch(error){return reply(res,error.status||400,{error:error.message},origin);}
   }
   if(req.method==='POST'&&url.pathname==='/api/web-auth/register'){
     try{const input=await readJSON(req);return reply(res,201,websiteAccounts.register(input),origin);}
