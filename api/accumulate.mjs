@@ -101,10 +101,13 @@ export function createAccumulator(db) {
   // A paid/fulfilled export must never overlap independently imported cash
   // or earned revenue for the same receipt line. Otherwise one financial
   // book would count the same purchase twice.
-  const overlappingBasis=db.prepare(
-    "SELECT financial_basis FROM operations WHERE company_id=? AND sold_on=? "+
-    "AND source_id=? AND item=? AND status=? AND financial_basis IN "+
-    "('cash_receipts','recognized_revenue','paid_fulfilled') LIMIT 5"
+  const existingSeparate=db.prepare(
+    "SELECT 1 FROM operations WHERE company_id=? AND sold_on=? AND source_id=? "+
+    "AND status=? AND financial_basis IN ('cash_receipts','recognized_revenue') LIMIT 1"
+  );
+  const existingCombined=db.prepare(
+    "SELECT 1 FROM operations WHERE company_id=? AND sold_on=? AND source_id=? "+
+    "AND status=? AND financial_basis='paid_fulfilled' LIMIT 1"
   );
   const count = db.prepare('SELECT count(*) AS n FROM operations WHERE company_id=?');
   const countBasis = db.prepare('SELECT count(*) AS n FROM operations WHERE company_id=? AND financial_basis=?');
@@ -173,10 +176,12 @@ export function createAccumulator(db) {
       for (const entry of keyed) {
         const {row,key} = entry;
         if(basis==='paid_fulfilled'||basis==='cash_receipts'||basis==='recognized_revenue'){
-          const conflicts=overlappingBasis.all(company.id,row.date,row.id.trim(),row.item.trim(),row.status);
-          if(conflicts.some(x=>basis==='paid_fulfilled'
-            ?x.financial_basis!=='paid_fulfilled'
-            :x.financial_basis==='paid_fulfilled')){
+          // Receipt identity, not item name: a cash export can contain
+          // only the receipt total while a sold-items export has line items.
+          const key=[company.id,row.date,row.id.trim(),row.status];
+          const conflicting=basis==='paid_fulfilled'
+            ?existingSeparate.get(...key):existingCombined.get(...key);
+          if(conflicting){
             const e=Error('Эти чеки уже загружены с другим финансовым типом. Не загружайте один и тот же отчёт как оплату и как одновременно оплаченную продажу. Обратитесь в поддержку для изменения типа существующих операций.');
             e.status=409;throw e;
           }
