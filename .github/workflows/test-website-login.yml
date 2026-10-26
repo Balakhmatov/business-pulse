@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'api/**'
+      - 'bot/**'
       - 'web-access.js'
       - 'personal.js'
       - 'payments.js'
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'api/**'
+      - 'bot/**'
       - 'web-access.js'
       - 'personal.js'
       - 'payments.js'
@@ -31,6 +33,8 @@ jobs:
       - name: Validate source syntax
         run: |
           node --check web-access.js
+          node --check bot/index.mjs
+          node --check bot/controls.mjs
           node --check api/private-workspace.test.mjs
           node --check personal.js
           node --check payments.js
@@ -40,4 +44,4 @@ jobs:
           node --check api/auth-mail.mjs
           node --check api/smtp-mail.mjs
       - name: Run access, billing and payment tests
-        run: node --experimental-sqlite --test api/private-workspace.test.mjs api/website-accounts.test.mjs api/website-selfservice.test.mjs api/auth-mail.test.mjs api/smtp-mail.test.mjs api/web-login.test.mjs api/company-access.test.mjs api/billing.test.mjs api/yookassa.test.mjs
+        run: node --experimental-sqlite --test bot/controls.test.mjs api/private-workspace.test.mjs api/website-accounts.test.mjs api/website-selfservice.test.mjs api/auth-mail.test.mjs api/smtp-mail.test.mjs api/web-login.test.mjs api/company-access.test.mjs api/billing.test.mjs api/yookassa.test.mjs
