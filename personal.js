@@ -74,6 +74,8 @@
     body.private-workspace .private-telegram-link [hidden]{display:none!important}
     body.private-workspace .private-settings-note,body.private-workspace #privateIndustryStatus{
       font-size:12px;line-height:1.55;color:#707d95;margin:11px 0 0}
+    body.private-workspace.bp-access-locked .main > #importUtilities{display:flex!important}
+    body.private-workspace.bp-access-locked .main > .clear-data-feedback:not([hidden]){display:block!important}
     body.private-workspace .clear-data-dialog[hidden]{display:none!important}
     body.private-workspace .clear-data-dialog{position:fixed;inset:0;z-index:100;
       background:#10163099;display:flex;justify-content:center;align-items:center;padding:16px}
@@ -703,6 +705,7 @@
     try{
       state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
       state.mineCompany=state.mineReport?.company;
+      state.mineStoredRows=state.mineReport?.source?.rows??0;
     }catch(error){
       state.mineError=error.message||'Не удалось получить данные.';
       if(error.status===402||error.status===401){
@@ -712,6 +715,7 @@
           const me=await request('/me');
           state.mineSubscription=me.subscription;
           state.mineCompany=me.company;
+          state.mineStoredRows=me.stored_operations??0;
         }catch{}
       }
     }
