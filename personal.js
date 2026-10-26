@@ -336,7 +336,7 @@
           undo.onclick=async()=>{
             const ask='Отменить последнюю загрузку? Новые операции будут удалены, а исправленные суммы восстановлены.';
             const approved=await new Promise(resolve=>{
-              if(typeof tg.showConfirm==='function')tg.showConfirm(ask,resolve);
+              if(tg.initData&&typeof tg.showConfirm==='function')tg.showConfirm(ask,resolve);
               else resolve(window.confirm(ask));
             });
             if(!approved)return;
