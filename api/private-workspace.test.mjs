@@ -59,3 +59,14 @@ test('Seven-day reports do not trigger a fixed 25-day coverage warning',()=>{
   assert.doesNotMatch(personal,/r\.coverage\.current_days<25/);
   assert.match(personal,/Сумма '\+periodLabel/);
 });
+
+test('Public demo shows selectable three-month analytics and private trial allows 90 days',()=>{
+  assert.match(index,/id="demoPeriods"/);
+  assert.match(index,/data-demo-days="7"/);
+  assert.match(index,/data-demo-days="30"/);
+  assert.match(index,/data-demo-days="90"/);
+  assert.match(index,/demoSummary\(d,state\.business,yesterday,d\.viewBasis,state\.demoDays\)/);
+  assert.match(index,/body\.private-workspace \.demo-periods\{display:none!important\}/);
+  assert.match(personal,/button\.disabled=days>90&&!allowed/);
+  assert.match(personal,/span>\(isLongPeriodAllowed\(\)\?1095:90\)/);
+});
