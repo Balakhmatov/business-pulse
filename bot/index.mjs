@@ -13,12 +13,14 @@ const ADMIN_IDS=new Set((process.env.BP_ADMIN_IDS??'1296951270').split(',').map(
 const TOKEN = process.env.BP_BOT_TOKEN;
 const EXPECTED_USERNAME = (process.env.BP_BOT_USERNAME || 'business_pulse_app_bot').replace(/^@/, '').toLowerCase();
 const APP_URL = process.env.BP_APP_URL || 'https://balakhmatov.github.io/business-pulse/';
+const SITE_URL = process.env.BP_SITE_URL || 'https://balakhmatov.github.io/business-pulse/index.html?login=1';
 const TIMEZONE = process.env.BP_TIMEZONE || 'Europe/Moscow';
 const SEND_HOUR = Number(process.env.BP_SEND_HOUR || 9);
 const STORAGE_PATH = path.resolve(process.env.BP_SUBSCRIBERS_FILE || './data/subscribers.json');
 const API = TOKEN ? 'https://api.telegram.org/bot' + TOKEN : '';
 if (!TOKEN) throw new Error('Missing BP_BOT_TOKEN. Configure it in a local .env file.');
 if (!/^https:\/\//.test(APP_URL)) throw new Error('BP_APP_URL must be HTTPS.');
+if (!/^https:\/\//.test(SITE_URL)) throw new Error('BP_SITE_URL must be HTTPS.');
 if (!Number.isInteger(SEND_HOUR) || SEND_HOUR < 0 || SEND_HOUR > 23) throw new Error('Invalid BP_SEND_HOUR.');
 new Intl.DateTimeFormat('en-US', {timeZone: TIMEZONE}); // validate time zone
 const subscribers = new Map();
@@ -67,6 +69,7 @@ function launchButton(chatId) {
   return {
     inline_keyboard: [
       [{text: 'Открыть Бизнес Пульс', web_app: {url: APP_URL}}],
+      [{text: 'Открыть сайт', url: SITE_URL}],
       [{text: 'Управление', callback_data: 'bpu:home'}],
       ...(ADMIN_IDS.has(String(chatId))?[[{text: 'Проверить уведомление', callback_data: 'bp:test'}]]:[])
     ]
@@ -100,7 +103,7 @@ async function sendReport(chatId, test = false) {
   return send(chatId, test ? '<b>Проверка уведомлений</b>\n\n' + body : body, {html: true});
 }
 
-controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,botUsername:EXPECTED_USERNAME,
+controls=createBotControls({api,adminIds:ADMIN_IDS,appUrl:APP_URL,siteUrl:SITE_URL,botUsername:EXPECTED_USERNAME,
   defaultHour:SEND_HOUR,timeZone:TIMEZONE,isSubscribed:id=>subscribers.has(id)&&subscribers.get(id).enabled!==false});
 
 async function handle(update,track=true) {
@@ -147,7 +150,7 @@ async function handle(update,track=true) {
       break;
     case '/start':
       await send(chatId, 'Добро пожаловать в Бизнес Пульс.\n\n' +
-        'Откройте «Моя компания» на кнопке ниже. Чтобы ежедневно получать сводку по загруженному отчёту, отправьте /subscribe.\n\n' +
+        'Откройте приложение в Telegram или нажмите «Открыть сайт», чтобы войти в веб-кабинет через браузер. Чтобы ежедневно получать сводку по загруженному отчёту, отправьте /subscribe.\n\n' +
         'Без загруженного CSV бот напомнит о настройке отчёта.');
       break;
     case '/report':
