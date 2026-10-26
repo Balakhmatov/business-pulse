@@ -101,6 +101,10 @@ export function dailyDigestFor(telegramId, {
       'SELECT financial_basis,COUNT(*) AS n FROM operations WHERE company_id=? GROUP BY financial_basis'
     ).all(company.id):[{financial_basis:'unverified',n:1}];
     const available=new Set(basisCounts.filter(x=>x.n>0).map(x=>x.financial_basis));
+    if(available.has('paid_fulfilled')){
+      available.add('cash_receipts');
+      available.add('recognized_revenue');
+    }
     const basis=available.has('cash_receipts')?'cash_receipts':
       available.has('recognized_revenue')?'recognized_revenue':'unverified';
     const metric=basis==='cash_receipts'?'Поступления':
@@ -108,15 +112,15 @@ export function dailyDigestFor(telegramId, {
         'Суммы без уточнения';
     const ops = hasBasis?database.prepare(
       'SELECT sold_on,source_id,amount_kopecks,status FROM operations '+
-      'WHERE company_id=? AND financial_basis=? AND sold_on>=? AND sold_on<=?'
-    ).all(company.id,basis,start,end):
+      "WHERE company_id=? AND (financial_basis=? OR (financial_basis='paid_fulfilled' AND ?!='unverified')) AND sold_on>=? AND sold_on<=?"
+    ).all(company.id,basis,basis,start,end):
       database.prepare(
         'SELECT sold_on,source_id,amount_kopecks,status FROM operations '+
         'WHERE company_id=? AND sold_on>=? AND sold_on<=?'
       ).all(company.id,start,end);
     const latest = hasBasis?database.prepare(
-      'SELECT MAX(sold_on) AS last_date FROM operations WHERE company_id=? AND financial_basis=? AND sold_on<=?'
-    ).get(company.id,basis,end)?.last_date:
+      "SELECT MAX(sold_on) AS last_date FROM operations WHERE company_id=? AND (financial_basis=? OR (financial_basis='paid_fulfilled' AND ?!='unverified')) AND sold_on<=?"
+    ).get(company.id,basis,basis,end)?.last_date:
       database.prepare(
         'SELECT MAX(sold_on) AS last_date FROM operations WHERE company_id=? AND sold_on<=?'
       ).get(company.id,end)?.last_date;
@@ -177,7 +181,7 @@ export function dailyDigestFor(telegramId, {
         if(other===basis||!available.has(other))continue;
         const rows=database.prepare(
           'SELECT COALESCE(SUM(amount_kopecks),0) AS total FROM operations '+
-          'WHERE company_id=? AND financial_basis=? AND sold_on>=? AND sold_on<=?'
+          "WHERE company_id=? AND (financial_basis=? OR financial_basis='paid_fulfilled') AND sold_on>=? AND sold_on<=?"
         ).get(company.id,other,cut,end);
         lines.push(labels[other]+' за 30 дней: <b>'+money(rows.total)+'</b> (считаем отдельно).');
       }
