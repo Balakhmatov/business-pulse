@@ -39,9 +39,10 @@ jobs:
           node --check personal.js
           node --check payments.js
           node --check api/server.mjs
+          node --check api/account-link.mjs
           node --check api/website-accounts.mjs
           node --check api/website-selfservice.mjs
           node --check api/auth-mail.mjs
           node --check api/smtp-mail.mjs
       - name: Run access, billing and payment tests
-        run: node --experimental-sqlite --test bot/controls.test.mjs api/private-workspace.test.mjs api/website-accounts.test.mjs api/website-selfservice.test.mjs api/auth-mail.test.mjs api/smtp-mail.test.mjs api/web-login.test.mjs api/company-access.test.mjs api/billing.test.mjs api/yookassa.test.mjs
+        run: node --experimental-sqlite --test bot/controls.test.mjs api/account-link.test.mjs api/private-workspace.test.mjs api/website-accounts.test.mjs api/website-selfservice.test.mjs api/auth-mail.test.mjs api/smtp-mail.test.mjs api/web-login.test.mjs api/company-access.test.mjs api/billing.test.mjs api/yookassa.test.mjs
