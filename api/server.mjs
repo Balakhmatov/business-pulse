@@ -129,7 +129,7 @@ function resolveRange(c,params){
 }
 function report(c,requestedBasis=null,range=null){
   const period=range||{to:shift(mskToday(),-1),days:30};
-  const end=period.to,start=shift(period.from||end, -(period.days||30));
+  const end=period.to,start=range?shift(range.from,-range.days):shift(end,-59);
   const entries=st.rows.all(c.id,start,end);
   const counts=Object.fromEntries(st.countBasis.all(c.id).map(x=>[x.financial_basis,x.n]));
   const summary=calculateFinancialSummary(entries,counts,end,requestedBasis,c.industry,range);
