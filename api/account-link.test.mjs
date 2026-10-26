@@ -64,6 +64,9 @@ test('Rejects link token replay and linking another employee or previously linke
   db.prepare("INSERT INTO company_members VALUES('202','tg-company',CURRENT_TIMESTAMP)").run();
   const token=tokenFrom(link.start(web).url);
   assert.throws(()=>link.complete(token,'202'),/сотрудник/);
+  // Existing staff are not silently discarded during account consolidation.
+  assert.throws(()=>link.complete(token,'101'),/сотрудники или платежи/);
+  db.prepare("DELETE FROM company_members WHERE telegram_id='202'").run();
   assert.equal(link.complete(token,'101').linked,true);
   assert.throws(()=>link.start(web),/уже привязан/);
   assert.throws(()=>link.complete(token,'202'),/истекла|использована/);
