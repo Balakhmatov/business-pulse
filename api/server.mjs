@@ -138,7 +138,8 @@ function ingest(c,input){
 // The interpreter receives ONLY aggregates, never rows or user identity.
 const ai=createAI({db,report,listOperations:c=>{
   const r=report(c);
-  return st.rows.all(c.id,shift(r.period.from,-30),r.as_of)
+  // Keep normal dashboard lightweight (60 days); AI may inspect six 30-day windows.
+  return st.rows.all(c.id,shift(r.as_of,-179),r.as_of)
     .filter(x=>x.financial_basis===r.primary_basis);
 }});
 
