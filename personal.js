@@ -5,7 +5,7 @@
   const demo=window.BP_Demo;
   const tg=window.Telegram?.WebApp||{};
   const webSession=()=>sessionStorage.getItem('bp-web-session')||'';
-  if(!demo||(!tg.initData&&!webSession()))return;
+  if(!demo||(!tg.initData&&!/^[a-f0-9]{48}$/.test(webSession())))return;
   // The public demo is a separate view, even for authenticated users.
   if(new URLSearchParams(location.search).get('demo')==='1')return;
   const {state,parseImported,mapping,showModal,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday}=demo;
@@ -36,6 +36,14 @@
     body.private-workspace #demoAiPanel{display:none!important}
     body.private-workspace #downloadSample{display:none!important}
     body.private-workspace .calculation-guide{display:none!important}
+    body.private-workspace.private-empty-view .kpi-grid,
+    body.private-workspace.private-empty-view .two-col,
+    body.private-workspace.private-empty-view .bottom-grid,
+    body.private-workspace.private-empty-view .data-bar,
+    body.private-workspace.private-empty-view .source-note,
+    body.private-workspace.private-empty-view #financeBooks,
+    body.private-workspace.private-empty-view #unverifiedReview,
+    body.private-workspace.private-empty-view #debtInfo{display:none!important}
     body.private-workspace .private-empty[hidden]{display:none!important}
     body.private-workspace .private-empty{background:linear-gradient(125deg,#fff 0%,#f8f8ff 100%);
       border:1px solid #e7e9f5;border-radius:21px;padding:clamp(21px,3vw,34px);
@@ -201,8 +209,8 @@
     retryLoad.disabled=busy;
     const src=state.mineReport?.source;
     clearTests.textContent=state.mineClearing?'Удаляем…':operator?'Очистить данные':'Очистить тестовые данные';
-    clearTests.hidden=state.business!=='mine'||(!operator&&(!src||!src.rows||
-      !/синтетич|тестов|demo|sample|пример/i.test(src.name)));
+    clearTests.hidden=state.business!=='mine'||!src||!src.rows||(!operator&&
+      !/синтетич|тестов|demo|sample|пример/i.test(src.name));
     clearTests.disabled=busy;
   }
   clearTests.onclick=async()=>{
@@ -408,6 +416,8 @@
     }
 
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
+    const noData=!imported&&!loading;
+    document.body.classList.toggle('private-empty-view',noData);
     empty.hidden=imported||locked||loading||!!state.mineError;
     const end=r&&r.as_of?r.as_of:yesterday;
     const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length===7?r.chart7:null;
@@ -970,7 +980,7 @@
   };
 
   window.addEventListener('bp:payment-confirmed',()=>void loadMine());
-  // Signed users enter their workspace; demo tabs are shown only to its administrator.
+  // Signed users enter their own workspace; demo is explicitly separate.
   state.business='mine';
   renderMine();
   loadMine();
