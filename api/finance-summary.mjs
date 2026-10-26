@@ -18,12 +18,13 @@ export const INDUSTRIES={
 export const normalizeIndustry=value=>Object.hasOwn(INDUSTRIES,value)?value:'other';
 function volumeForIndustry(rows,industry,books){
   const config=INDUSTRIES[normalizeIndustry(industry)];
-  const basis=config.volume_basis||(books.cash_receipts.available?'cash_receipts':'recognized_revenue');
+  const sourceOnly=config.volume_method==='quantity'&&!books.recognized_revenue.available&&books.unverified.available;
+  const basis=sourceOnly?'unverified':config.volume_basis||(books.cash_receipts.available?'cash_receipts':'recognized_revenue');
   const book=books[basis],periodRows=rows.filter(x=>
     (x.financial_basis===basis||x.financial_basis==='paid_fulfilled')&&x.status==='sale');
   const refunded=rows.filter(x=>
     (x.financial_basis===basis||x.financial_basis==='paid_fulfilled')&&x.status==='refund');
-  const base={label:config.volume_label,unit:config.volume_unit,basis,
+  const base={label:sourceOnly?'Количество из отчёта':config.volume_label,unit:config.volume_unit,basis,
     method:config.volume_method,value:null,coverage:'missing',
     caption:'Для подсчёта нужны данные из отчёта.'};
   if(!book?.available)return base;
@@ -36,7 +37,7 @@ function volumeForIndustry(rows,industry,books){
     const count=periodRows.reduce((n,x)=>n+x.quantity_milli,0)-
       refunded.reduce((n,x)=>n+x.quantity_milli,0);
     return {...base,value:count/1000,coverage:'complete',
-      caption:config.volume_unit==='шт.'?'По столбцу «Количество», с учётом возвратов.':'По данным о количестве.'};
+      caption:sourceOnly?'По столбцу «Количество», с учётом возвратов. Выполнение услуг или продаж не подтверждено.':config.volume_unit==='шт.'?'По столбцу «Количество», с учётом возвратов.':'По данным о количестве.'};
   }
   // "auto" recognizes one completed job ID once in a period, regardless of
   // how many service lines belong to that job. Cafe receipt IDs are normally

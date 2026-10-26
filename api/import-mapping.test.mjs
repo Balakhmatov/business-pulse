@@ -24,7 +24,8 @@ test('Template signature is insensitive to spacing and case, sensitive to column
 test('Only a valid, non-overlapping manual mapping can become a saved template',t=>{
   const f=fixture();t.after(f.close);
   assert.throws(()=>validateMapping(headers,{...selected,amount:1}),/двум разным/);
-  assert.throws(()=>validateMapping(headers,{...selected,id:-1}),/обязательны/);
+  assert.equal(validateMapping(headers,{...selected,id:-1}).id,-1);
+  assert.throws(()=>validateMapping(headers,{...selected,date:-1}),/обязательны/);
   assert.throws(()=>validateMapping(headers,{...selected,amount:headers.length}),/номер столбца/);
   const saved=f.service.confirm({id:'a'},{head:headers,mapping:selected});
   assert.equal(saved.saved,true);

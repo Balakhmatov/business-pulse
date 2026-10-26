@@ -608,7 +608,8 @@
     const copy=industryFor(report);
     const labels=[
       ['cash_receipts',copy.paid,'Фактически полученные деньги, включая авансы'],
-      ['recognized_revenue',copy.done,'Стоимость уже оказанных услуг, работ или переданных товаров']
+      ['recognized_revenue',copy.done,'Стоимость уже оказанных услуг, работ или переданных товаров'],
+      ['unverified','Суммы из отчёта','Назначение суммы не уточнено; исходные данные показаны отдельно']
     ];
     const available=labels.filter(([basis])=>report.financial_books[basis]?.available);
     holder.hidden=available.length===0;
@@ -634,7 +635,7 @@
     review.hidden=!unknown?.available;
     if(unknown?.available){
       review.innerHTML='<details><summary>Нужно уточнить данные · '+fmtK(unknown.amount30_kopecks)+'</summary>'+
-        '<div>По старым отчётам пока неизвестно, что означают суммы. '+
+        '<div>По части отчётов пока неизвестно, что означают суммы. '+
         'Они не добавляются ни к оплатам, ни к выполненным продажам.</div></details>';
     }
     const debt=$('debtInfo');
@@ -668,38 +669,43 @@
   function renderCustomers(r){
     customerPanel.hidden=state.business!=='mine'||!r?.source||!companySubscription()?.access;
     if(customerPanel.hidden)return;
-    const c=r.customers,isClinic=r.company?.industry==='clinic',title=isClinic?'Пациенты и LTV':'Клиенты и LTV';
-    const header='<h2 class="section-title">'+title+'</h2>';
+    const c=r.customers,isClinic=r.company?.industry==='clinic';
+    const estimated=c?.financial?.estimated||c?.visits?.estimated||!c?.visits?.available;
+    const header='<h2 class="section-title">'+(isClinic?'Пациенты и LTV':'Клиенты и LTV')+(c?.available&&estimated?' · оценка':'')+'</h2>';
     if(!c?.available){
-      customerPanel.innerHTML=header+'<p>Для расчёта нужен постоянный ID пациента или клиента. Если его нет, можно использовать телефон или email из обычной выгрузки — столбец подбирается автоматически. ФИО не требуется. Повторно загрузите отчёт с этим полем: операции не задвоятся.</p>';
+      customerPanel.innerHTML=header+'<p>Финансовые показатели рассчитаны. Для оценки LTV и повторных обращений достаточно ФИО — например, фамилии и отчества. Сервис также распознаёт ID, телефон или email, если они есть. Без данных о человеке нельзя оценить его повторные обращения.</p>';
       return;
     }
-    const f=c.financial,v=c.visits;
+    const f=c.financial,activityOnly=!c.visits.available,v=activityOnly?c.activity:c.visits;
     const num=x=>Number.isFinite(x)?Number(x).toLocaleString('ru-RU',{maximumFractionDigits:2}):'—';
     const percent=x=>Number.isFinite(x)?num(x)+'%':'—';
     const card=(label,value,hint)=>'<div class="customer-kpi"><span>'+escapeHTML(label)+'</span><strong>'+escapeHTML(value)+'</strong><span>'+escapeHTML(hint)+'</span></div>';
-    const basis=f.basis==='cash_receipts'?'По оплатам, за вычетом возвратов':f.basis==='recognized_revenue'?'По оказанным услугам / продажам, за вычетом возвратов':'Нужны подтверждённые оплаты или продажи';
+    const basis=f.basis==='cash_receipts'?'По оплатам, за вычетом возвратов':f.basis==='recognized_revenue'?'По оказанным услугам / продажам, за вычетом возвратов':'По суммам из отчёта; смысл сумм не подтверждён';
     const cards=[
       card('Средний LTV по истории',fmtK(f.average_ltv_kopecks),basis),
-      card('Медианный LTV',fmtK(f.median_ltv_kopecks),'Типичная сумма на клиента за историю'),
-      card(isClinic?'Пациентов за период':'Клиентов за период',num(f.active_patients),'По операциям с определённым клиентом'),
-      card('Средний чек клиента',fmtK(f.average_receipt_kopecks),'Сумма / уникальные чеки за доступную историю'),
-      card(isClinic?'Повторных пациентов за период':'Повторных клиентов за период',v.available?num(v.returning_patients):'—','Оказанные услуги в разные дни'),
-      card(isClinic?'Доля повторных пациентов':'Доля повторных клиентов',v.available?percent(v.returning_percent):'—','Среди посетивших в выбранном периоде'),
-      card(isClinic?'Визитов на пациента за период':'Продаж на клиента за период',v.available?num(v.visits_per_patient):'—','По ID и дате оказанных услуг'),
-      card('Между посещениями',v.available&&v.average_gap_days!==null?num(v.average_gap_days)+' дн.':'—','Средний интервал за доступную историю')
+      card('Медианный LTV',fmtK(f.median_ltv_kopecks),'Типичная накопленная сумма на человека'),
+      card(isClinic?'Пациентов за период':'Клиентов за период',num(f.active_patients),'По строкам, связанным с человеком'),
+      card(f.synthetic_rows?'Средняя сумма за обращение (оценка)':'Средний чек клиента',fmtK(f.average_receipt_kopecks),f.synthetic_rows?'Без ID: по пациенту и дню':'По чекам за доступную историю'),
+      card(activityOnly?'Повторные дни операций':isClinic?'Повторных пациентов':'Повторных клиентов',v.available?num(v.returning_patients):'—',activityOnly?'Не подтверждает повторное посещение':'Обращения в разные дни'),
+      card(activityOnly?'Доля с повторными операциями':'Доля повторных пациентов',v.available?percent(v.returning_percent):'—','Среди активных в выбранном периоде'),
+      card(activityOnly?'Операций на человека':isClinic?'Визитов на пациента':'Продаж на клиента',v.available?num(v.visits_per_patient):'—',v.synthetic_rows?'По условным обращениям за день':'За выбранный период'),
+      card(activityOnly?'Между днями операций':'Между посещениями',v.available&&v.average_gap_days!==null?num(v.average_gap_days)+' дн.':'—','Средний интервал за доступную историю')
     ].join('');
-    const coverage='LTV рассчитан по '+num(f.patients)+' клиентам; поле клиента заполнено у '+num(f.coverage.identified_rows)+' из '+num(f.coverage.total_rows)+' строк выбранного показателя.';
-    const partial=f.coverage.identified_rows<f.coverage.total_rows?' Данные неполные: суммы и средние относятся только к связанным с клиентами строкам.':'';
+    let notes='';
+    if(f.name_based_patients||v.name_based_patients)notes+='<p><strong>Пациенты определены по ФИО или его частям.</strong> Совпадающие имена могут объединить разных людей, а опечатки, сокращения и смена фамилии — разделить одного. Процент ошибки по этой выгрузке неизвестен.</p>';
+    if(f.synthetic_rows||v.synthetic_rows)notes+='<p><strong>В исходном отчёте нет ID части или всех операций.</strong> Услуги одного пациента за день объединены в условное обращение. Несколько отдельных визитов за один день могут считаться одним; средний чек и число визитов — оценки.</p>';
+    if(activityOnly)notes+='<p>Повторы рассчитаны по датам операций выбранного показателя. Несколько оплат или назначений не доказывают несколько состоявшихся визитов. Для подтверждённых посещений нужны данные об оказанных услугах.</p>';
+    const coverage='LTV рассчитан по '+num(f.patients)+' людям; связь установлена у '+num(f.coverage.identified_rows)+' из '+num(f.coverage.total_rows)+' строк выбранного показателя.';
+    const partial=f.coverage.identified_rows<f.coverage.total_rows?' Данные неполные: средние относятся только к связанным строкам.':'';
     let extra='';
     if(v.available){
-      extra='<details><summary>Возвращаемость, группы пациентов и дополнительные показатели</summary><p>Впервые в доступной истории за период: '+num(v.first_observed_patients)+'. Пациентов с визитами за период: '+num(v.period_patients)+'. Визитов: '+num(v.period_visits)+'. Без посещений не менее 90 / 180 дней: '+num(v.absent_90_days)+' / '+num(v.absent_180_days)+'. Это не прогноз ухода.</p>'+
-        '<p>Возвращаемость — повторное посещение в другой день в течение указанного срока после первой даты в доступной истории. В знаменатель входят только пациенты с завершённым окном наблюдения. Несколько услуг одного визита считаются одним визитом. Оплаты без оказанных услуг не считаются визитами.</p>'+
-        '<div class="customer-table-wrap"><table class="customer-table"><caption>Возвращаемость по доступной истории</caption><thead><tr><th>Срок</th><th>Достаточно истории</th><th>Вернулись</th><th>Доля</th></tr></thead><tbody>'+v.retention.map(x=>'<tr><td>'+x.days+' дней</td><td>'+num(x.eligible)+'</td><td>'+num(x.returned)+'</td><td>'+percent(x.percent)+'</td></tr>').join('')+'</tbody></table></div>'+
-        '<div class="customer-table-wrap"><table class="customer-table"><caption>Последние 12 групп по месяцу первого посещения в доступной истории</caption><thead><tr><th>Месяц</th><th>Пациентов</th><th>За 30 дней</th><th>За 90 дней</th><th>За 180 дней</th></tr></thead><tbody>'+v.cohorts.map(x=>'<tr><td>'+escapeHTML(x.month)+'</td><td>'+num(x.patients)+'</td>'+x.retention.map(y=>'<td>'+percent(y.percent)+' ('+num(y.returned)+' / '+num(y.eligible)+')</td>').join('')+'</tr>').join('')+'</tbody></table></div>'+
-        '<p>Для посещений поле пациента заполнено у '+num(v.coverage.identified_rows)+' из '+num(v.coverage.total_rows)+' строк услуг. Строки с пустым полем или некорректным контактом не входят в расчёт.</p></details>';
-    }else extra='<p>Для повторных посещений и возвращаемости загрузите лист оказанных услуг с тем же полем пациента. Несколько платежей не подтверждают несколько визитов.</p>';
-    customerPanel.innerHTML=header+'<p>Выбранный период: '+escapeHTML(c.period.from)+' — '+escapeHTML(c.period.to)+'. LTV: доступная история с '+escapeHTML(c.history_from||'—')+' по '+escapeHTML(c.as_of)+', максимум '+(c.history_window_days===1095?'3 года':c.history_window_days+' дней')+'. Это накопленная сумма, не прибыль и не прогноз пожизненной ценности.</p><div class="customer-kpis">'+cards+'</div><p>'+escapeHTML(coverage+partial)+'</p>'+extra+'<p>Во всех файлах используйте один и тот же вид идентификатора: ID, телефон или email. Общий семейный телефон объединяет людей; смена контакта может разделить одного пациента. По одному ФИО пациенты не объединяются.</p>';
+      extra='<details><summary>Повторы, группы пациентов и дополнительные показатели</summary><p>Впервые в доступной истории за период: '+num(v.first_observed_patients)+'. Активных за период: '+num(v.period_patients)+'. Обращений / операций: '+num(v.period_visits)+'. Без '+(activityOnly?'операций':'посещений')+' не менее 90 / 180 дней: '+num(v.absent_90_days)+' / '+num(v.absent_180_days)+'. Это не прогноз ухода.</p>'+
+        '<p>Возврат — запись в другой день в течение указанного срока после первой даты в доступной истории. Учитываются только люди с завершённым окном наблюдения. Несколько услуг одного обращения не увеличивают число обращений.</p>'+
+        '<div class="customer-table-wrap"><table class="customer-table"><caption>Повторные '+(activityOnly?'операции':'посещения')+' по доступной истории</caption><thead><tr><th>Срок</th><th>Достаточно истории</th><th>Повтор</th><th>Доля</th></tr></thead><tbody>'+v.retention.map(x=>'<tr><td>'+x.days+' дней</td><td>'+num(x.eligible)+'</td><td>'+num(x.returned)+'</td><td>'+percent(x.percent)+'</td></tr>').join('')+'</tbody></table></div>'+
+        '<div class="customer-table-wrap"><table class="customer-table"><caption>Последние 12 групп по первой дате в доступной истории</caption><thead><tr><th>Месяц</th><th>Людей</th><th>За 30 дней</th><th>За 90 дней</th><th>За 180 дней</th></tr></thead><tbody>'+v.cohorts.map(x=>'<tr><td>'+escapeHTML(x.month)+'</td><td>'+num(x.patients)+'</td>'+x.retention.map(y=>'<td>'+percent(y.percent)+' ('+num(y.returned)+' / '+num(y.eligible)+')</td>').join('')+'</tr>').join('')+'</tbody></table></div>'+
+        '<p>Для повторов связь с человеком установлена у '+num(v.coverage.identified_rows)+' из '+num(v.coverage.total_rows)+' строк. Пустые и непригодные для связи значения не входят в расчёт.</p></details>';
+    }
+    customerPanel.innerHTML=header+'<p>Выбранный период: '+escapeHTML(c.period.from)+' — '+escapeHTML(c.period.to)+'. LTV: история с '+escapeHTML(c.history_from||'—')+' по '+escapeHTML(c.as_of)+', максимум '+(c.history_window_days===1095?'3 года':c.history_window_days+' дней')+'. Это накопленная сумма из доступных данных, не прибыль и не прогноз.</p>'+notes+'<div class="customer-kpis">'+cards+'</div><p>'+escapeHTML(coverage+partial)+'</p>'+extra+'<p>Дополнительные данные вручную создавать не нужно. При наличии сервис предпочитает постоянный ID, затем телефон или email, затем ФИО. Во всех выгрузках лучше использовать один вид данных; разные идентификаторы автоматически не объединяются.</p>';
   }
   function renderMine(){
     document.body.classList.remove('demo-mode');
@@ -740,7 +746,7 @@
     document.body.classList.toggle('private-empty-view',noData);
     empty.hidden=imported||locked||loading||!!state.mineError;
     const end=r&&r.as_of?r.as_of:yesterday;
-    const chartData=r?.primary_basis!=='unverified'&&r&&Array.isArray(r.chart7)&&r.chart7.length>0?r.chart7:null;
+    const chartData=r&&Array.isArray(r.chart7)&&r.chart7.length>0?r.chart7:null;
     const dates=chartData?chartData.map(x=>x.date):Array.from({length:7},(_,i)=>dateShift(end,-6+i));
     const values=chartData?chartData.map(x=>x.amount_kopecks/100):Array(7).fill(0);
     const change=imported&&r.primary_basis!=='unverified'?r.change_percent:null;
@@ -752,11 +758,11 @@
       r?.primary_basis==='recognized_revenue'?'Продажи':'Суммы';
     const moneyLabels=industryFor(r);
     const metricTitle=r?.primary_basis==='cash_receipts'?moneyLabels.paid:
-      r?.primary_basis==='recognized_revenue'?moneyLabels.done:'Данные требуют уточнения';
+      r?.primary_basis==='recognized_revenue'?moneyLabels.done:'Суммы из отчёта';
     const verified=r?.primary_basis==='cash_receipts'||r?.primary_basis==='recognized_revenue';
     const volumeCard=$('salesCount').closest('.mini-kpi');
     const averageCard=$('averageTicket').closest('.mini-kpi');
-    volumeCard.hidden=!Number.isFinite(r?.volume?.value);
+    volumeCard.hidden=!Number.isFinite(r?.volume?.value)&&!(r?.operation_identity?.total_rows>0);
     averageCard.hidden=!Number.isFinite(r?.average_receipt_kopecks);
     const periodLabel=r?.period?.days===7?'за 7 дней':r?.period?.days===30?'за 30 дней':r?.period?.days===365?'за год':r?.period?.days===1095?'за 3 года':'за '+(r?.period?.days||30)+' дней';
     document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' '+periodLabel;
@@ -767,33 +773,33 @@
     $('rowsInfo').textContent=imported?'В базе '+number(r.source.rows)+' операций':(loading?'Загружаем данные…':state.mineError?'Данные временно недоступны':'Нет загруженных отчётов');
     $('dataBadge').textContent=imported?'Ваши данные':'Личная панель';
     $('dataBadge').style.cssText='color:#6252a4;background:#f1edff;border-color:#e5dfff';
-    $('revenue30').textContent=imported&&verified?fmtK(r.revenue30_kopecks):'—';
+    $('revenue30').textContent=imported?fmtK(r.revenue30_kopecks):'—';
     $('revenueChange').textContent=change===null?'Пока не с чем сравнить':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
     $('comparisonDesc').textContent=imported&&verified&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из '+(r.period?.days||30)+' дней, ранее — за '+r.coverage.previous_days:'Выбранный период с учётом возвратов';
     $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
       shortMetric+' за последний день периода';
-    $('revenueYesterday').textContent=imported&&verified?fmtK(r.yesterday_kopecks):'—';
+    $('revenueYesterday').textContent=imported?fmtK(r.yesterday_kopecks):'—';
     $('yesterdayDate').textContent=verboseDate(end);
     const volume=r?.volume;
-    $('countLabel').textContent=(volume?.label||'Количество операций')+' '+periodLabel;
+    $('countLabel').textContent=(Number.isFinite(volume?.value)?volume.label:'Строк в отчёте')+' '+periodLabel;
     $('salesCount').textContent=imported&&Number.isFinite(volume?.value)
       ?Number(volume.value).toLocaleString('ru-RU',{maximumFractionDigits:3})+(volume.unit?' '+volume.unit:'')
-      :'—';
-    $('salesCaption').textContent=volume?.caption||'Пока нет данных о количестве';
-    $('averageLabel').textContent='Средний чек';
-    $('averageTicket').textContent=imported&&verified&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
-    $('averageCaption').textContent='Сумма '+periodLabel+' / число чеков';
+      :imported&&r.operation_identity?.total_rows>0?number(r.operation_identity.total_rows):'—';
+    $('salesCaption').textContent=Number.isFinite(volume?.value)?volume.caption:'Число строк за выбранный период, включая возвраты. Количество отдельных единиц не указано.';
+    $('averageLabel').textContent=r?.operation_identity?.estimated?'Средняя сумма (оценка)':'Средний чек';
+    $('averageTicket').textContent=imported&&r.average_receipt_kopecks!==null?fmtK(r.average_receipt_kopecks):'—';
+    $('averageCaption').textContent=r?.operation_identity?.estimated?'Без ID: на условную группу записей за день':'Сумма '+periodLabel+' / число чеков';
     $('topTitle').textContent=r?.company?.industry==='clinic'?'Топ-3 услуги':
       r?.company?.industry==='store'?'Топ-3 товара':
       r?.company?.industry==='auto'?'Топ-3 работы':'Топ-3 позиции';
-    const top=imported&&verified?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
+    const top=imported?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
     $('topItems').closest('.panel').querySelector('.section-muted').textContent='По сумме '+shortMetric.toLowerCase()+' '+periodLabel;
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
     $('chartCaption').textContent=verified?shortMetric+' '+(r?.chart_granularity==='month'?'по месяцам':r?.chart_granularity==='week'?'по неделям':'по дням')+'. Возвраты и исправления учтены.':
-      'Загрузите подтверждённые оплаты или выполненные продажи для графика.';
+      'Суммы из отчёта по выбранному периоду. Тип денег не уточнён.';
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
     if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
@@ -873,7 +879,7 @@
   const localIntro=intro.textContent;
   function refreshIntro(){
     intro.textContent=state.business==='mine'
-      ?'CSV и Excel (.xlsx) дополняют историю: совпадающие операции обновляются. Обязателен стабильный ID чека или визита. Исходный файл читается в браузере; выбранные поля сохраняются для аналитики компании. Передавайте персональные данные только при наличии законного основания.'
+      ?'CSV и Excel (.xlsx) дополняют историю: совпадающие операции обновляются. Можно загрузить отчёт без ID операции: записи будут связаны по пациенту и дате, с пометкой об оценке. Исходный файл читается в браузере; выбранные поля сохраняются для аналитики компании. Передавайте персональные данные только при наличии законного основания.'
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','sideImport'].forEach(id=>{
@@ -1034,12 +1040,13 @@
     const cols=mapping();
     if(cols.id<0)throw Error('Для исправлений обязателен уникальный ID операции.');
     const parsed=parseImported(file,cols);
+    if(parsed.rows.some(row=>row.synthetic_id))throw Error('Для режима исправлений нужны ID всех операций. Файл без ID можно загрузить обычным способом; при изменении детализации потребуется сверка.');
     if(parsed.invalid>0)throw Error('Исправьте '+parsed.invalid+' ошибочных строк: '+parsed.invalidExamples.join('; '));
     if(parsed.skipped>parsed.cancelled)
       throw Error('В выгрузке есть неоплаченные или ожидающие операции. В режиме исправлений нельзя пропускать такие строки незаметно. Уточните их статус и выгрузите только окончательные операции или явные отмены.');
     if(parsed.duplicate>0)throw Error('В файле есть одинаковые строки. Для сверки нужен уникальный ID каждого платежа.');
     const rows=parsed.rows.map(x=>({
-      date:x.date,id:String(x.id),item:String(x.item),
+      date:x.date,id:String(x.id),item:String(x.item),synthetic_id:x.synthetic_id,
       amount_kopecks:Math.round(x.amount*100),status:x.status,quantity_milli:x.quantity_milli??null,customer_ref:x.customer_ref,customer_ref_kind:x.customer_ref_kind
     }));
     if(rows.length+parsed.cancelled_ids.length>1000)
@@ -1235,7 +1242,7 @@
       dates:p.dates,nums:p.nums,statuses:p.statuses,unique:p.unique,
       words:p.words,zeroids:p.zeroids,filled:p.filled
     }));
-    const missing=['date','id','amount'].some(k=>file.mappingGuess?.[k]<0);
+    const missing=['date','amount'].some(k=>file.mappingGuess?.[k]<0);
     const ambiguous=Object.values(file.confidence||{}).some(v=>v==='неоднозначно'||v==='требует проверки');
     const localFinance=window.BP_SmartImport?.financialSemantics(header,file.mappingGuess);
     const financialAmbiguity=(localFinance?.flags?.length||0)>0 ||
@@ -1259,8 +1266,6 @@
       if(financial?.needsConfirm&&!$('financialConfirm').checked){
         throw Error('Проверьте замечания к суммам и подтвердите их перед загрузкой.');
       }
-      if(columns.id<0)throw Error('Для накопительной загрузки выберите столбец «ID чека / визита». Без него нельзя надёжно исключить дубли.');
-      if(state.fileTable.rows.some(values=>!String(values[columns.id]??'').trim()))throw Error('В столбце ID есть пустые значения. Нужны стабильные идентификаторы.');
       const isCorrection=correctionMode.checked;
       const result=parseImported(state.fileTable,columns);
       if(result.cancelled>0&&!isCorrection)throw Error('В файле есть отменённые операции. Выберите режим исправлений и проверьте изменения.');
@@ -1269,12 +1274,15 @@
         throw Error('Нет корректных оплаченных операций для импорта.');
       if(result.rows.length>100000)throw Error('В одном файле можно загрузить до 100 000 операций. Разделите отчёт на несколько файлов.');
       const occurrenceCounts=new Map();
-      const rows=result.rows.map(x=>{
+      const orderedRows=[...result.rows.filter(row=>!row.synthetic_id),...result.rows.filter(row=>row.synthetic_id)
+        .sort((a,b)=>Math.round(a.amount*100)-Math.round(b.amount*100)||(a.quantity_milli??0)-(b.quantity_milli??0))];
+      const rows=orderedRows.map(x=>{
         const date=x.date,id=String(x.id),item=String(x.item),status=x.status;
-        const group=JSON.stringify([date,id.trim(),item.trim(),status]);
+        const ref=window.BP_SmartImport.normalizeCustomerRef(x.customer_ref,x.customer_ref_kind);
+        const group=JSON.stringify([date,x.synthetic_id?(ref?[x.customer_ref_kind,ref]:null):id.trim(),item.trim(),status]);
         const occurrence=occurrenceCounts.get(group)||0;
         occurrenceCounts.set(group,occurrence+1);
-        return {date,id,item,amount_kopecks:Math.round(x.amount*100),status,
+        return {date,id,item,synthetic_id:x.synthetic_id,amount_kopecks:Math.round(x.amount*100),status,
           quantity_milli:x.quantity_milli??null,customer_ref:x.customer_ref,customer_ref_kind:x.customer_ref_kind,occurrence};
       });
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');

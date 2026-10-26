@@ -432,3 +432,31 @@ test('Patient analytics is company-scoped, hashed at ingress, bounded by subscri
  const keys=new DatabaseSync(dbPath);
  try{assert.notEqual(keys.prepare('SELECT customer_key FROM operations WHERE company_id=? LIMIT 1').get(c.id).customer_key,keys.prepare('SELECT customer_key FROM operations WHERE company_id=?').get(other.id).customer_key);}finally{keys.close();}
 });
+
+test('Minimal clinic API accepts names, dates, services and amounts without IDs and exposes honest estimates',async t=>{
+ const {call,dbPath}=await apiFixture(t);const company=(await call('101','/me')).data.company;
+ await call('101','/company/industry',{industry:'clinic'});
+ const end=(await call('101','/report')).data.as_of;
+ const shift=n=>new Date(Date.parse(end+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+ const make=(date,person,amount)=>({date,item:'Консультация',amount_kopecks:amount,status:'sale',quantity_milli:1000,customer_ref:person,customer_ref_kind:'name'});
+ const rows=[make(shift(-45),'Семёнов   Петрович',100000),make(shift(-5),'СЕМЕНОВ ПЕТРОВИЧ',200000),make(shift(-2),'Иванов Иванович',300000),make(shift(-2),'Иванов Иванович',300000)];
+ const input={source:'minimal-clinic.xlsx',source_headers:['Дата назначения','Наименование услуги','ФИО пациента','Кол-во','Сумма, руб.'],amount_index:4,rows};
+ const first=await call('101','/import',input);assert.equal(first.status,200);assert.equal(first.data.stats.added,4);
+ const r=(await call('101','/report?days=30')).data;
+ assert.equal(r.primary_basis,'unverified');assert.equal(r.revenue30_kopecks,800000);
+ assert.equal(r.volume.value,3);assert.equal(r.volume.label,'Количество из отчёта');
+ assert.equal(r.customers.financial.average_ltv_kopecks,450000);assert.equal(r.customers.financial.name_based_patients,2);
+ assert.equal(r.customers.visits.available,false);assert.equal(r.customers.activity.returning_patients,1);
+ assert.equal(r.customers.activity.period_patients,2);assert.equal(r.operation_identity.estimated,true);
+ const repeated=await call('101','/import',{...input,source:'renamed.xlsx',rows:[...rows].reverse()});
+ assert.equal(repeated.data.stats.unchanged,4);assert.equal(repeated.data.stats.updated,0);
+ const db=new DatabaseSync(dbPath);
+ try{
+  const stored=db.prepare('SELECT * FROM operations WHERE company_id=?').all(company.id);
+  assert.equal(stored.length,4);assert.ok(stored.every(row=>row.source_id.startsWith('AUTO-DAY-V1-')));
+  assert.doesNotMatch(JSON.stringify(stored),/Сем|Иванов|Петрович/);
+  const records=db.prepare('SELECT revision FROM ai_dataset_versions WHERE company_id=?').get(company.id).revision;
+  assert.equal((await call('101','/import',input)).data.stats.unchanged,4);
+  assert.equal(db.prepare('SELECT revision FROM ai_dataset_versions WHERE company_id=?').get(company.id).revision,records);
+ }finally{db.close();}
+});

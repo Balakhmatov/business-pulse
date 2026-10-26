@@ -12,6 +12,7 @@ import './ai-evidence.test.mjs';
 import './ai-cache.test.mjs';
 import './clinic-import.test.mjs';
 import './customer-analytics.test.mjs';
+import './minimal-import.test.mjs';
 import './corrections.test.mjs';
 import './finance-summary.test.mjs';
 import excel from '../excel-adapter.js';
@@ -494,11 +495,12 @@ test('UI parser must never silently drop malformed financial rows',()=>{
       ['2026-10-17','D','2000','ожидание']
     ]
   },{date:0,id:1,amount:2,status:3,item:-1});
-  assert.equal(parsed.rows.length,1);
-  assert.equal(parsed.invalid,2);
+  assert.equal(parsed.rows.length,2);
+  assert.equal(parsed.rows[1].synthetic_id,true);
+  assert.equal(parsed.invalid,1);
   assert.equal(parsed.cancelled,1);
   assert.equal(parsed.skipped,2);
-  assert.match(parsed.invalidExamples.join(' '),/строка 6.*строка 7/);
+  assert.match(parsed.invalidExamples.join(' '),/строка 6/);
 });
 test('UI parser accepts a complete CSV with multiple currency formats and zero errors',()=>{
   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');

@@ -17,6 +17,9 @@ export function lineKey(date, id, item, status, occurrence, basis='unverified') 
   if(basis!=='unverified')parts.push(basis);
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
+export function syntheticOperationID(companyId,date,customerKey){
+  return 'AUTO-DAY-V1-'+createHash('sha256').update(JSON.stringify([companyId,date,customerKey||null])).digest('hex');
+}
 export function createAccumulator(db,{customerKeyFor=null}={}) {
   const operationColumns = db.prepare('PRAGMA table_info(operations)').all().map(c => c.name);
   const importColumns = db.prepare('PRAGMA table_info(imports)').all().map(c => c.name);
@@ -167,20 +170,24 @@ export function createAccumulator(db,{customerKeyFor=null}={}) {
     // No explicit line-id in the current CSV contract: occurrence is stable only
     // if multiple lines of one item retain their original order.
     const basis=financialBasis(input.financial_basis);
-    const seq = new Map(), keyed = [];
-    for (const row of rows) {
-      const group = JSON.stringify([row.date,row.id.trim(),row.item.trim(),row.status]);
-      const occurrence = row.occurrence===undefined?(seq.get(group) || 0):row.occurrence;
-      seq.set(group,Math.max(seq.get(group)||0,occurrence+1));
-      keyed.push({ row, key: lineKey(row.date,row.id,row.item,row.status,occurrence,basis) });
-    }
+    const seq = new Map();
     const stats = {received:rows.length,added:0,updated:0,unchanged:0,total:0};
     const changedRows=[];
     db.exec('BEGIN IMMEDIATE');
     try {
       const oldMeta=latest.get(company.id);
-      for (const entry of keyed) {
-        const {row,key} = entry;
+      const prepared=rows.map(rawRow=>{
+        const incomingCustomerKey=customerKeyFor?customerKeyFor(company,rawRow):rawRow.customer_key;
+        const row=rawRow.synthetic_id?{...rawRow,id:syntheticOperationID(company.id,rawRow.date,incomingCustomerKey)}:rawRow;
+        return {row,incomingCustomerKey};
+      });
+      const ordered=[...prepared.filter(x=>!x.row.synthetic_id),...prepared.filter(x=>x.row.synthetic_id)
+        .sort((a,b)=>a.row.amount_kopecks-b.row.amount_kopecks||(a.row.quantity_milli??0)-(b.row.quantity_milli??0))];
+      for (const {row,incomingCustomerKey} of ordered) {
+        const group=JSON.stringify([row.date,row.id.trim(),row.item.trim(),row.status]);
+        const occurrence=row.occurrence===undefined?(seq.get(group)||0):row.occurrence;
+        seq.set(group,Math.max(seq.get(group)||0,occurrence+1));
+        const key=lineKey(row.date,row.id,row.item,row.status,occurrence,basis);
         if(basis==='paid_fulfilled'||basis==='cash_receipts'||basis==='recognized_revenue'){
           // Receipt identity, not item name: a cash export can contain
           // only the receipt total while a sold-items export has line items.
@@ -193,7 +200,7 @@ export function createAccumulator(db,{customerKeyFor=null}={}) {
           }
         }
         const prev = getPrevious.get(company.id,key);
-        const customerKey=(customerKeyFor?customerKeyFor(company,row):row.customer_key)??prev?.customer_key??null;
+        const customerKey=incomingCustomerKey??prev?.customer_key??null;
         if (!prev) stats.added++;
         else if (prev.amount_kopecks === row.amount_kopecks && prev.quantity_milli === (row.quantity_milli??null) && prev.customer_key === customerKey) stats.unchanged++;
         else stats.updated++;
