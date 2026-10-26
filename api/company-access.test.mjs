@@ -318,3 +318,43 @@ test('Website login grants payment access only after bot confirmation and cannot
   assert.equal((await poll()).status,400);
 });
 
+
+test('Trial reports are limited to a month; admin/premium get 3 years and custom calendar selection',async t=>{
+  const {call}=await apiFixture(t);
+  await call('101','/me');
+  const normal=await call('101','/report?days=7');
+  assert.equal(normal.status,200);assert.equal(normal.data.period.days,7);
+  assert.equal((await call('101','/report?days=90')).status,403);
+  assert.equal((await call('101','/analysis?days=1095')).status,403);
+  const admin=await call('1296951270','/report?days=1095');
+  assert.equal(admin.status,200);
+  assert.equal(admin.data.period.days,1095);
+  assert.equal(admin.data.chart_granularity,'month');
+  assert.ok(admin.data.chart7.length>30);
+  const range=await call('1296951270','/report?from=2023-01-01&to=2023-04-01');
+  assert.equal(range.status,200);assert.equal(range.data.period.from,'2023-01-01');
+  assert.equal(range.data.period.to,'2023-04-01');
+  assert.equal((await call('1296951270','/report?from=2023-01-01&to=2026-10-25')).status,400);
+});
+test('API automatically detects financial type from mapped amount column, without relying on user-selected book',async t=>{
+  const {call,dbPath}=await apiFixture(t);
+  await call('101','/me');
+  const date=(await call('101','/report')).data.as_of;
+  const one=[{date,id:'P-1',item:'Оплата клиента',amount_kopecks:85000,status:'sale'}];
+  let result=await call('101','/import',{source:'касса.xlsx',financial_basis:'recognized_revenue',source_headers:['Дата','ID','Сумма оплаты'],amount_index:2,rows:one});
+  assert.equal(result.status,200);
+  assert.equal(result.data.stats.financial_basis,'cash_receipts');
+  assert.equal(result.data.report.financial_books.recognized_revenue.available,false);
+  const other=[{date,id:'S-1',item:'Консультация',amount_kopecks:150000,status:'sale'}];
+  result=await call('101','/import',{source:'услуги.xlsx',source_headers:['Дата','ID','Стоимость оказанных услуг'],amount_index:2,rows:other});
+  assert.equal(result.status,200);
+  assert.equal(result.data.stats.financial_basis,'recognized_revenue');
+  const third=[{date,id:'U-1',item:'Непонятный тип',amount_kopecks:75000,status:'sale'}];
+  result=await call('101','/import',{source:'unknown.xlsx',source_headers:['Дата','ID','Сумма'],amount_index:2,rows:third});
+  assert.equal(result.status,200);
+  assert.equal(result.data.stats.financial_basis,'unverified');
+  const db=new DatabaseSync(dbPath);
+  try{
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations').get().n,3);
+  }finally{db.close();}
+});
