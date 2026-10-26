@@ -56,6 +56,9 @@
       text-decoration:none;font-size:12px;padding:12px;border-radius:10px}
     body.private-workspace .private-sidelink:hover{background:#252c49;color:white}
     body.private-workspace.bp-access-locked .main > .private-company-settings:not([hidden]){display:block!important}
+    body.private-workspace .finance-book[hidden],
+    body.private-workspace .mini-kpi[hidden]{display:none!important}
+    body.private-workspace .finance-books.single-book{grid-template-columns:minmax(0,1fr)}
     body.private-workspace .private-company-settings[hidden]{display:none!important}
     body.private-workspace .private-company-settings{background:#fff;border:1px solid #e8eaf2;
       border-radius:13px;margin:0 0 16px;padding:12px 16px;color:#3f4863}
@@ -453,11 +456,14 @@
       ['cash_receipts',copy.paid,'Фактически полученные деньги, включая авансы'],
       ['recognized_revenue',copy.done,'Стоимость уже оказанных услуг, работ или переданных товаров']
     ];
-    holder.innerHTML=labels.map(([basis,name,hint])=>{
+    const available=labels.filter(([basis])=>report.financial_books[basis]?.available);
+    holder.hidden=available.length===0;
+    holder.classList.toggle('single-book',available.length===1);
+    holder.innerHTML=available.map(([basis,name,hint])=>{
       const book=report.financial_books[basis]||{};
       const selected=report.primary_basis===basis;
       return '<button type="button" class="finance-book" data-financial-basis="'+basis+
-        '" aria-pressed="'+selected+'" '+(book.available?'':'disabled')+'>'+
+        '" aria-pressed="'+selected+'">'+
         '<div class="finance-book-name">'+name+'</div>'+
         '<div class="finance-book-amount">'+(book.available?fmtK(book.amount30_kopecks):'Нет данных')+'</div>'+
         '<div class="finance-book-hint">'+hint+'</div></button>';
@@ -520,6 +526,7 @@
       industrySave.hidden=currentCompany.access_role!=='owner';
       industrySave.disabled=industrySaving;
     }
+    if(state.fileTable)refreshBothOption();
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
     const noData=!imported&&!loading;
     document.body.classList.toggle('private-empty-view',noData);
@@ -538,6 +545,10 @@
     const metricTitle=r?.primary_basis==='cash_receipts'?moneyLabels.paid:
       r?.primary_basis==='recognized_revenue'?moneyLabels.done:'Данные требуют уточнения';
     const verified=r?.primary_basis==='cash_receipts'||r?.primary_basis==='recognized_revenue';
+    const volumeCard=$('salesCount').closest('.mini-kpi');
+    const averageCard=$('averageTicket').closest('.mini-kpi');
+    volumeCard.hidden=!Number.isFinite(r?.volume?.value);
+    averageCard.hidden=!Number.isFinite(r?.average_receipt_kopecks);
     document.querySelector('.revenue-panel .kpi-name').textContent=metricTitle+' за 30 дней';
     $('revenueChart').closest('.panel').querySelector('.section-title').textContent='Динамика: '+shortMetric.toLowerCase();
     $('revenueChart').closest('.panel').querySelector('.subtle-chip').textContent=shortMetric+' по дням';
@@ -686,6 +697,7 @@
     '<option value="unverified">Не знаю, что за суммы — сохранить отдельно</option>'+
     '<option value="cash_receipts">Полученные деньги (включая авансы)</option>'+
     '<option value="recognized_revenue">Продажи: оказанные услуги и проданные товары</option>'+
+    '<option value="paid_fulfilled">Оплачено и продано одновременно (кафе / магазин)</option>'+
     '</select>'+
     '<div id="financialBookHelp" style="margin-top:7px;font-size:12px;line-height:1.5;color:#66718a"></div>'+
     '<label id="earnedConfirmLabel" hidden style="display:flex;align-items:flex-start;gap:9px;margin-top:10px;font-size:12px">'+
@@ -694,6 +706,13 @@
   $('financialPanel').before(bookChoice);
   const bookSelect=$('financialBookSelect'),earnedConfirm=$('earnedConfirm');
   const earnedConfirmLabel=$('earnedConfirmLabel'),bookHelp=$('financialBookHelp');
+  const bothOption=bookSelect.querySelector('option[value="paid_fulfilled"]');
+  function refreshBothOption(){
+    const industry=(state.mineReport?.company||state.mineCompany)?.industry;
+    bothOption.hidden=!['cafe','store'].includes(industry);
+    bothOption.disabled=bothOption.hidden;
+    if(bothOption.hidden&&bookSelect.value==='paid_fulfilled')bookSelect.value='';
+  }
   function basisConflict(){
     if(!state.fileTable)return '';
     const local=window.BP_SmartImport?.financialSemantics(state.fileTable.head,mapping());
@@ -701,13 +720,28 @@
       return 'Здесь указаны оплаты. Нельзя считать их продажами без данных об оказанных услугах или переданных товарах.';
     if(bookSelect.value==='cash_receipts'&&local?.basis==='reported_revenue')
       return 'Здесь указана стоимость продаж. Для поступлений выберите суммы реально полученных оплат.';
+    if(bookSelect.value==='paid_fulfilled'){
+      if(bothOption.disabled)return 'Совмещённый тип доступен только для кафе и магазина.';
+      if(local?.basis==='reported_revenue')
+        return 'Отчёт показывает продажи, но не подтверждает получение денег. Выберите «Продажи» или выгрузите оплаченные чеки.';
+      if(/аванс|предоплат|долг|задолж|дебитор|начислен|сч[её]т к оплате/i.test(state.fileTable.head.join(' ')))
+        return 'В отчёте есть признаки авансов, начислений или долгов. Нельзя автоматически признать такие суммы оплаченными и проданными.';
+      if(correctionMode.checked)return 'Для исправления чеков выберите один финансовый тип. Совмещённый режим доступен при обычной загрузке.';
+    }
     return '';
   }
   function validateBookChoice(){
-    const earned=bookSelect.value==='recognized_revenue';
+    refreshBothOption();
+    const combined=bookSelect.value==='paid_fulfilled';
+    const earned=bookSelect.value==='recognized_revenue'||combined;
     earnedConfirmLabel.hidden=!earned;
+    earnedConfirmLabel.querySelector('span').textContent=combined
+      ?'Подтверждаю: все включённые чеки полностью оплачены, заказы уже выданы, авансов, неоплаченных заказов и будущих услуг нет. Одна операция попадёт в оба показателя без удвоения общей базы.'
+      :'Подтверждаю: услуги уже оказаны или товары переданы. Просто выставленные счета и авансы за будущие услуги не включены.';
     bookHelp.textContent=!bookSelect.value
       ?'Уточните тип суммы. Полученные оплаты попадут в поступления, выполненные продажи — в продажи. Без выбора загрузка недоступна.'
+      :combined
+      ?'Для полностью оплаченных и выданных заказов кафе или магазина. Одна операция учитывается отдельно в показателях оплат и продаж, а не дважды в базе.'
       :earned
       ?'Стоимость уже оказанных услуг и переданных товаров — даже если клиент заплатит позже. Авансы за будущие услуги сюда не входят.'
       :bookSelect.value==='cash_receipts'
@@ -722,6 +756,7 @@
   }
   function inferCashBook(file){
     if(!file||!file.head)return;
+    refreshBothOption();
     const semantic=window.BP_SmartImport?.financialSemantics(file.head,mapping());
     if(!bookSelect.dataset.manuallyChosen)
       bookSelect.value=semantic?.basis==='cash_receipts'?'cash_receipts':'';
@@ -802,7 +837,7 @@
     const financial=state.fileTable?._bpFinancialReview;
     let canApply=!!checkedCorrection&&checkedCorrection.file===state.fileTable&&
       correctionApprove.checked&&
-      (bookSelect.value!=='recognized_revenue'||earnedConfirm.checked)&&!basisConflict()&&!financial?.blocked&&
+      (!['recognized_revenue','paid_fulfilled'].includes(bookSelect.value)||earnedConfirm.checked)&&!basisConflict()&&!financial?.blocked&&
       (!financial?.needsConfirm||$('financialConfirm').checked);
     if(canApply){
       try{
@@ -1064,6 +1099,7 @@
             answer=await request('/import',{
               source:state.fileTable.name.slice(0,120),
               financial_basis:financialBasis,
+              confirm_paid_fulfilled:financialBasis==='paid_fulfilled'&&earnedConfirm.checked,
               more_chunks:part<parts-1,
               rows:rows.slice(part*batchSize,(part+1)*batchSize)
             });
@@ -1089,9 +1125,9 @@
         ?' Формат выгрузки запомнен для следующих загрузок.'
         :' Соответствие столбцов не удалось запомнить; операции сохранены.';
       state.mineImportStats=answer.stats||null;
-      state.mineViewBasis=financialBasis;
+      state.mineViewBasis=financialBasis==='paid_fulfilled'?'cash_receipts':financialBasis;
       try{
-        state.mineReport=await request('/report?basis='+financialBasis);
+        state.mineReport=await request('/report?basis='+state.mineViewBasis);
       }catch{state.mineReport=answer.report;}
       state.mineAI=null;
       state.mineError='';
