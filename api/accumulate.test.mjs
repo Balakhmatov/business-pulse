@@ -11,6 +11,34 @@ import './corrections.test.mjs';
 import './finance-summary.test.mjs';
 import excel from '../excel-adapter.js';
 import smart from '../smart-import.js';
+import { calculateFinancialSummary } from './finance-summary.mjs';
+
+test('Downloaded sample identifies received payments and computes net cash after refunds',t=>{
+  const server=readFileSync(new URL('./server.mjs',import.meta.url),'utf8');
+  const source=server.slice(server.indexOf('const sampleCatalog='),server.indexOf('function sendSample('));
+  const shift=(date,n)=>new Date(Date.parse(date+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+  const sample=Function('shift','mskToday',source+'return generateSample;')(shift,()=> '2026-10-26');
+  const csv=sample('clinic').replace(/^\uFEFF/,'').trim().split(/\r?\n/).map(line=>line.split(';'));
+  assert.equal(smart.financialSemantics(csv[0],{amount:3}).basis,'cash_receipts');
+  assert.equal(smart.financialSemantics(['Дата','Чек','Услуга','Сумма','Статус'],{amount:3}).basis,'unknown');
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const parserSource=html.slice(html.indexOf('function parseDate('),html.indexOf('const financialFlagLabels='));
+  const parse=Function('dayStamp',parserSource+'return parseImported;')(
+    date=>date.toISOString().slice(0,10));
+  const parsed=parse({headerRow:1,rows:csv.slice(1)},{date:0,id:1,item:2,amount:3,status:4,quantity:-1});
+  assert.equal(parsed.invalid,0);
+  assert.equal(parsed.rows.length,425);
+  const f=makeFixture();t.after(f.close);
+  const engine=f.importer();
+  const rows=parsed.rows.map(x=>({...x,amount_kopecks:Math.round(x.amount*100)}));
+  const input={source:'sample.csv',financial_basis:'cash_receipts'};
+  assert.equal(engine.ingest({id:'a'},input,rows).added,425);
+  assert.equal(engine.ingest({id:'a'},input,rows).unchanged,425);
+  const entries=f.db.prepare('SELECT * FROM operations').all();
+  const report=calculateFinancialSummary(entries,{cash_receipts:425},'2026-10-25','cash_receipts','clinic');
+  assert.equal(report.revenue30_kopecks,71400000);
+  assert.equal(report.financial_books.unverified.stored_rows,0);
+});
 
 function makeFixture(){
   const dir=mkdtempSync(path.join(tmpdir(),'bp-accumulate-'));
@@ -621,3 +649,4 @@ test('Unit quantity corrections with unchanged amounts are reversible; legacy ab
   engine.undoLatest({id:'a'},other.batch_id);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM operations').get().n,1);
 });
+

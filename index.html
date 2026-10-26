@@ -540,7 +540,7 @@ function preview(f){
     const positiveLabel=selectedBook==='recognized_revenue'?'Продажа':
       selectedBook==='cash_receipts'?'Оплата':'Операция';
     $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':positiveLabel)+'</td></tr>').join('')+'</tbody></table>';
-    $('confirmImport').disabled=idMissing||review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
+    $('confirmImport').disabled=(state.business==='mine'&&!selectedBook)||idMissing||review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
   }catch(e){
     f._bpFinancialReview=null;
     panel.hidden=true;
@@ -629,7 +629,7 @@ window.BP_Demo={state,parseImported,mapping,preview,showModal,render,chart,insig
 render();
 })();
 </script>
-<script type="module" src="personal.js?v=20261026-admin-access-v1"></script>
+<script type="module" src="personal.js?v=20261026-import-basis-v2"></script>
 <script src="payments.js?v=20261026-admin-access-v1" defer></script>
 </body>
 </html>

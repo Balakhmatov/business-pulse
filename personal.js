@@ -581,6 +581,7 @@
   bookChoice.innerHTML=
     '<label for="financialBookSelect" style="display:block;font-size:13px;font-weight:800;margin-bottom:8px">Что означают суммы в этом файле?</label>'+
     '<select id="financialBookSelect" style="width:100%;min-height:43px;background:white;color:#29334f;border:1px solid #cfd5e5;border-radius:10px;padding:9px;font-size:13px">'+
+    '<option value="">Выберите, что означают суммы</option>'+
     '<option value="unverified">Не знаю, что за суммы — сохранить отдельно</option>'+
     '<option value="cash_receipts">Полученные деньги (включая авансы)</option>'+
     '<option value="recognized_revenue">Продажи: оказанные услуги и проданные товары</option>'+
@@ -604,14 +605,16 @@
   function validateBookChoice(){
     const earned=bookSelect.value==='recognized_revenue';
     earnedConfirmLabel.hidden=!earned;
-    bookHelp.textContent=earned
+    bookHelp.textContent=!bookSelect.value
+      ?'Уточните тип суммы. Полученные оплаты попадут в поступления, выполненные продажи — в продажи. Без выбора загрузка недоступна.'
+      :earned
       ?'Стоимость уже оказанных услуг и переданных товаров — даже если клиент заплатит позже. Авансы за будущие услуги сюда не входят.'
       :bookSelect.value==='cash_receipts'
         ?'Все деньги, которые пришли в кассу или на счёт, включая авансы. Это не то же самое, что продажи.'
-        :'Эти суммы сохраним отдельно, пока не выясним, что именно они означают.';
+        :'Суммы попадут только в блок «Нужно уточнить данные». Поступления, продажи и аналитика по ним не изменятся.';
     const conflict=basisConflict();
     if(conflict)bookHelp.textContent=conflict;
-    const approved=(!earned||earnedConfirm.checked)&&!conflict;
+    const approved=!!bookSelect.value&&(!earned||earnedConfirm.checked)&&!conflict;
     if(!approved)$('confirmImport').disabled=true;
     if(typeof correctionMode!=='undefined'&&correctionMode.checked)setCorrectionButton();
     return approved;
@@ -620,7 +623,7 @@
     if(!file||!file.head)return;
     const semantic=window.BP_SmartImport?.financialSemantics(file.head,mapping());
     if(!bookSelect.dataset.manuallyChosen)
-      bookSelect.value=semantic?.basis==='cash_receipts'?'cash_receipts':'unverified';
+      bookSelect.value=semantic?.basis==='cash_receipts'?'cash_receipts':'';
     earnedConfirm.checked=false;
     validateBookChoice();
   }
@@ -638,7 +641,7 @@
   document.addEventListener('bp:import-table-ready',event=>{
     bookChoice.hidden=state.business!=='mine';
     delete bookSelect.dataset.manuallyChosen;
-    bookSelect.value='unverified';
+    bookSelect.value='';
     inferCashBook(event.detail?.file);
   });
   document.addEventListener('change',event=>{
@@ -920,7 +923,7 @@
       }));
       if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
       if(!validateBookChoice())
-        throw Error(basisConflict()||'Подтвердите, что услуги уже оказаны или товары переданы. Авансы за будущие услуги и просто выставленные счета сюда не входят.');
+        throw Error(!bookSelect.value?'Выберите, что означают суммы в файле: полученные деньги, выполненные продажи или суммы без уточнения.':basisConflict()||'Подтвердите, что услуги уже оказаны или товары переданы. Авансы за будущие услуги и просто выставленные счета сюда не входят.');
       const financialBasis=bookSelect.value;
       const correctionData=isCorrection?correctionPayload():null;
       if(isCorrection&&(!checkedCorrection||checkedCorrection.file!==state.fileTable||

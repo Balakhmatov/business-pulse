@@ -149,7 +149,7 @@ const sampleCatalog={
 };
 function generateSample(type='clinic'){
   const catalog=sampleCatalog[type]||sampleCatalog.clinic;
-  const lines=['Дата;Номер чека;Товар или услуга;Сумма;Статус'];
+  const lines=['Дата;Номер чека;Товар или услуга;Сумма оплаты;Статус'];
   const end=shift(mskToday(),-1);
   for(let day=59;day>=0;day--){
     const date=shift(end,-day);
@@ -266,4 +266,5 @@ const server=http.createServer(async(req,res)=>{
   }catch(e){console.error('API request rejected:',e.message);return reply(res,e.status||400,{error:e.status===413?'File too large':e.message,code:e.code},origin);}
 });
 server.listen(port,'127.0.0.1',()=>console.log('Business Pulse API started on 127.0.0.1:'+port));
+
 
