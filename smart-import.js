@@ -6,6 +6,7 @@
 })(typeof window!=='undefined'?window:globalThis,function(){
   'use strict';
   const KEYS=['date','id','item','amount','status'];
+  const quantityHeader=/^(?:количество(?:\s+(?:товаров|услуг|работ|единиц|штук))?|кол[- ]?во|шт\.?|quantity|qty|units?)(?:\s*\([^)]*\))?$/i;
   const WORDS={
     date:[/\bdate\b|\btime\b|^day$/i,/дата|день|время|создан|закрыт|проведен|проведён|день операц|период/i],
     id:[/\breceipt\b|\border.?id\b|\btransaction.?id\b|\bdocument.?id\b|\bvisit.?id\b/i,/номер.{0,12}(чека|визита|заказа|документа|продаж)|\bчек\b|чека|визит|заказ|идентификатор|код реализац|номер операц|номер документа|(?:^|\s)(?:id|ид|uuid)[\s_-]*(?:операц|транзакц|платеж|платёж|чек|визит|документ|заказ)|№\s*записи\s*журнала|номер\s*записи\s*журнала|реестровая запись|регистратор|документ основание/i],
@@ -107,6 +108,8 @@
           'Несколько столбцов похожи на сумму операции. Выберите нужный вручную.');
       }
     }
+    const quantities=head.map((h,i)=>quantityHeader.test(norm(h))&&!claimed.has(i)?i:-1).filter(i=>i>=0);
+    if(quantities.length===1){mapping.quantity=quantities[0];confidence.quantity='высокая';}
     return {mapping,confidence,profiles:ps,ambiguities};
   }
   function headerCandidate(matrix,i){
@@ -221,6 +224,12 @@
         flag('accrual_amount','Здесь выставленные суммы, но не подтверждённые оплаты. Выберите столбец реальных поступлений.', 'blocked');
       }else if(cues.cash.test(amount)){
         basis='cash_receipts';
+      }else if(/стоимость.{0,25}(оказан|выполн|реализован|продан)|сумма.{0,25}(оказан|выполн|реализован|продан)/i.test(amount)||
+        (/^(?:стоимость|сумма)(?:\s+(?:услуг|услуги|строки))?$/.test(amount)&&
+         normalized.some(h=>/^дата\s+оказания(?:\s+услуг[и]?)?$/.test(h))&&
+         normalized.some(h=>/^(?:наименование\s+)?услуг[аи]$/.test(h))&&
+         !normalized.some(h=>cues.advance.test(h)||cues.debt.test(h)||cues.partial.test(h)))){
+        basis='reported_revenue';
       }else if(/выручк|revenue|продаж|sales/i.test(amount)){
         basis='reported_revenue';
       }
