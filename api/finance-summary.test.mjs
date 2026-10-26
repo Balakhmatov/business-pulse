@@ -5,6 +5,35 @@ import {calculateFinancialSummary} from './finance-summary.mjs';
 const END='2026-10-17';
 const entry=(basis,id,amount,date='2026-10-16',item='Тестовая услуга',status='sale')=>
   ({financial_basis:basis,source_id:id,amount_kopecks:amount,sold_on:date,item,status});
+test('Paid and fulfilled purchase is one row counted in both available books, without summing them',()=>{
+  const row={...entry('paid_fulfilled','check-1',120000),quantity_milli:2000};
+  const r=calculateFinancialSummary([row],{paid_fulfilled:1},END,null,'store');
+  assert.equal(r.primary_basis,'cash_receipts');
+  assert.equal(r.financial_books.cash_receipts.available,true);
+  assert.equal(r.financial_books.recognized_revenue.available,true);
+  assert.equal(r.financial_books.cash_receipts.amount30_kopecks,120000);
+  assert.equal(r.financial_books.recognized_revenue.amount30_kopecks,120000);
+  assert.equal(r.revenue30_kopecks,120000);
+  assert.equal(r.volume.value,2);
+  assert.equal(r.financial_books.unverified.available,false);
+  const switchView=calculateFinancialSummary([row],{paid_fulfilled:1},END,'recognized_revenue','store');
+  assert.equal(switchView.primary_basis,'recognized_revenue');
+  assert.equal(switchView.revenue30_kopecks,120000);
+});
+test('Simultaneous receipts are additive only within their own book, never treated as two operations',()=>{
+  const rows=[
+    entry('paid_fulfilled','a',100000),
+    entry('cash_receipts','advance',20000),
+    entry('recognized_revenue','unpaid-sale',30000)
+  ];
+  const r=calculateFinancialSummary(rows,{paid_fulfilled:1,cash_receipts:1,recognized_revenue:1},END);
+  assert.equal(r.financial_books.cash_receipts.amount30_kopecks,120000);
+  assert.equal(r.financial_books.recognized_revenue.amount30_kopecks,130000);
+  assert.equal(r.revenue30_kopecks,120000);
+  assert.equal(r.financial_books.cash_receipts.stored_rows,2);
+  assert.equal(r.financial_books.recognized_revenue.stored_rows,2);
+});
+
 test('Advance is cash collected, not recognized revenue; never add the two financial books',()=>{
   const rows=[
     entry('cash_receipts','advance',200000),

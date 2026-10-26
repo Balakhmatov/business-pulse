@@ -45,6 +45,45 @@ async function apiFixture(t,trial=true){
   return {base,dbPath,headersFor,call};
 }
 
+test('Cafe paid-and-fulfilled import populates both cards from one stored operation and prevents overlapping reimports',async t=>{
+  const {call,dbPath}=await apiFixture(t);
+  await call('101','/me');
+  const day=(await call('101','/report')).data.as_of;
+  const rows=[{date:day,id:'cafe-1',item:'Кофе',status:'sale',amount_kopecks:45000}];
+  assert.equal((await call('101','/import',{source:'check.csv',financial_basis:'paid_fulfilled',confirm_paid_fulfilled:true,rows})).status,400,
+    'Only cafe/store may use combined finance classification');
+  assert.equal((await call('101','/company/industry',{industry:'cafe'})).status,200);
+  assert.equal((await call('101','/import',{source:'check.csv',financial_basis:'paid_fulfilled',rows})).status,400,
+    'Explicit confirmation is required');
+  const combined={source:'check.csv',financial_basis:'paid_fulfilled',confirm_paid_fulfilled:true,rows};
+  assert.equal((await call('101','/import',combined)).status,200);
+  const report=(await call('101','/report')).data;
+  assert.equal(report.financial_books.cash_receipts.amount30_kopecks,45000);
+  assert.equal(report.financial_books.recognized_revenue.amount30_kopecks,45000);
+  assert.equal(report.volume.value,1);
+  assert.equal((await call('101','/import',combined)).data.stats.unchanged,1);
+  assert.equal((await call('101','/import',{source:'other.csv',financial_basis:'cash_receipts',rows})).status,409);
+  assert.equal((await call('101','/import',{source:'other.csv',financial_basis:'recognized_revenue',rows})).status,409);
+  const db=new DatabaseSync(dbPath);
+  try{assert.equal(db.prepare('SELECT COUNT(*) AS n FROM operations').get().n,1);}
+  finally{db.close();}
+});
+test('Existing cash-only cafe import is never automatically counted as earned sales',async t=>{
+  const {call,dbPath}=await apiFixture(t);
+  await call('101','/me');
+  await call('101','/company/industry',{industry:'cafe'});
+  const date=(await call('101','/report')).data.as_of;
+  const rows=[{date,id:'advance-1',item:'Банкет',status:'sale',amount_kopecks:200000}];
+  assert.equal((await call('101','/import',{source:'cash.csv',financial_basis:'cash_receipts',rows})).status,200);
+  const r=(await call('101','/report')).data;
+  assert.equal(r.financial_books.cash_receipts.available,true);
+  assert.equal(r.financial_books.recognized_revenue.available,false);
+  const attempt=await call('101','/import',{source:'cash.csv',financial_basis:'paid_fulfilled',confirm_paid_fulfilled:true,rows});
+  assert.equal(attempt.status,409);
+  const db=new DatabaseSync(dbPath);
+  try{assert.equal(db.prepare('SELECT COUNT(*) n FROM operations').get().n,1);}
+  finally{db.close();}
+});
 test('Only authenticated admin owner can clear own data; undo, AI and mappings are removed without changing access',async t=>{
   const {call,dbPath}=await apiFixture(t,false);
   const admin='1296951270';

@@ -19,8 +19,10 @@ export const normalizeIndustry=value=>Object.hasOwn(INDUSTRIES,value)?value:'oth
 function volumeForIndustry(rows,industry,books){
   const config=INDUSTRIES[normalizeIndustry(industry)];
   const basis=config.volume_basis||(books.cash_receipts.available?'cash_receipts':'recognized_revenue');
-  const book=books[basis],periodRows=rows.filter(x=>x.financial_basis===basis&&x.status==='sale');
-  const refunded=rows.filter(x=>x.financial_basis===basis&&x.status==='refund');
+  const book=books[basis],periodRows=rows.filter(x=>
+    (x.financial_basis===basis||x.financial_basis==='paid_fulfilled')&&x.status==='sale');
+  const refunded=rows.filter(x=>
+    (x.financial_basis===basis||x.financial_basis==='paid_fulfilled')&&x.status==='refund');
   const base={label:config.volume_label,unit:config.volume_unit,basis,
     method:config.volume_method,value:null,coverage:'missing',
     caption:'Для подсчёта нужны данные из отчёта.'};
@@ -50,10 +52,14 @@ export function calculateFinancialSummary(entries,allTimeCounts,end,requestedBas
   const first=shift(end,-59),currentStart=shift(end,-29),chartStart=shift(end,-6);
   const books={};
   for(const basis of BOOKS){
-    const all=entries.filter(x=>(x.financial_basis||'unverified')===basis&&x.sold_on>=first&&x.sold_on<=end);
+    // One verified, simultaneously paid-and-fulfilled operation belongs to
+    // both independent views, without inserting duplicate operations.
+    const all=entries.filter(x=>((x.financial_basis||'unverified')===basis||
+      (basis!=='unverified'&&x.financial_basis==='paid_fulfilled'))&&
+      x.sold_on>=first&&x.sold_on<=end);
     const current=all.filter(x=>x.sold_on>=currentStart);
     const previous=all.filter(x=>x.sold_on<currentStart);
-    const count=Number(allTimeCounts?.[basis]||0);
+    const count=Number(allTimeCounts?.[basis]||0)+(basis==='unverified'?0:Number(allTimeCounts?.paid_fulfilled||0));
     const currentDays=new Set(current.map(x=>x.sold_on)).size;
     const previousDays=new Set(previous.map(x=>x.sold_on)).size;
     const net=sum(current),previousNet=sum(previous);

@@ -616,7 +616,7 @@ test('Owner-facing interface uses clear Payments and Sales terminology, keeping 
   assert.match(personal,/Нужно уточнить данные/);
   assert.match(personal,/Не оплачено клиентами: нет данных для расчёта/);
   assert.doesNotMatch(personal,/Выручка за 30 дней/);
-  assert.match(html,/const positiveLabel=selectedBook==='recognized_revenue'\?'Продажа'/);
+  assert.match(html,/const positiveLabel=\['recognized_revenue','paid_fulfilled'\]\.includes\(selectedBook\)\?'Продажа'/);
   assert.match(html,/selectedBook==='cash_receipts'\?'Оплата':'Операция'/);
   assert.match(html,/Пока не с чем сравнить/);
   assert.match(html,/Что означают суммы в этом столбце/);

@@ -29,3 +29,17 @@ test('customer import/history and AI remain intact',()=>{
   assert.match(personal,/request\('\/analysis'/);
   assert.match(personal,/request\('\/import'/);
 });
+
+test('empty finance books are hidden instead of rendering disabled no-data cards',()=>{
+  assert.match(personal,/const available=labels\.filter/);
+  assert.match(personal,/holder\.hidden=available\.length===0/);
+  assert.match(personal,/holder\.classList\.toggle\('single-book',available\.length===1\)/);
+  assert.match(personal,/volumeCard\.hidden=!Number\.isFinite/);
+  assert.match(personal,/averageCard\.hidden=!Number\.isFinite/);
+  assert.match(index,/\.finance-books\.single-book/);
+});
+test('only cafe and store can select paid-and-fulfilled imports with explicit confirmation',()=>{
+  assert.match(personal,/bothOption\.hidden=!\['cafe','store'\]\.includes\(industry\)/);
+  assert.match(personal,/confirm_paid_fulfilled:financialBasis==='paid_fulfilled'&&earnedConfirm\.checked/);
+  assert.match(personal,/financialBasis==='paid_fulfilled'\?'cash_receipts'/);
+});

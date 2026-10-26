@@ -8,6 +8,20 @@ import { dailyDigestFor } from './digest.mjs';
 
 const NOW = new Date('2026-10-17T06:00:00.000Z');
 
+test('Telegram digest counts paid and handed-over cafe orders as cash and sales without doubling rows',t=>{
+  const f=fixture();t.after(f.cleanup);
+  f.db.exec("ALTER TABLE companies ADD COLUMN industry TEXT DEFAULT 'other'; UPDATE companies SET industry='cafe' WHERE id='c101';"+
+    "ALTER TABLE operations ADD COLUMN financial_basis TEXT NOT NULL DEFAULT 'unverified';");
+  f.addImport('c101','Кафе');
+  f.db.prepare('INSERT INTO operations(company_id,sold_on,source_id,amount_kopecks,status,financial_basis) VALUES(?,?,?,?,?,?)')
+    .run('c101','2026-10-16','cafe-1',45000,'sale','paid_fulfilled');
+  const digest=f.read('101');
+  assert.match(digest,/1\. Поступления за 30 дней: <b>450 ₽<\/b>/);
+  assert.match(digest,/2\. Количество чеков за 30 дней: <b>1<\/b>/);
+  assert.match(digest,/Продажи за 30 дней: <b>450 ₽<\/b> \(считаем отдельно\)/);
+  assert.doesNotMatch(digest,/Поступления за 30 дней: <b>900 ₽/);
+});
+
 test('Clinic digest counts explicit quantities from earned ledger and does not count payments as services',t=>{
   const f=fixture();t.after(f.cleanup);f.addImport('c101');
   f.db.exec("ALTER TABLE companies ADD COLUMN industry TEXT DEFAULT 'other'; UPDATE companies SET industry='clinic' WHERE id='c101';"+

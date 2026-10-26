@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 // Identity: date + receipt ID + item + sale/refund + occurrence within receipt/item.
 // This assumes stable receipt IDs and stable line ordering if several same-name
 // items exist within a receipt. A future explicit line ID will remove that caveat.
-export const FINANCIAL_BASES=['unverified','cash_receipts','recognized_revenue'];
+export const FINANCIAL_BASES=['unverified','cash_receipts','recognized_revenue','paid_fulfilled'];
 export function financialBasis(value){
   if(value===undefined||value===null)return 'unverified'; // legacy/test imports
   if(!FINANCIAL_BASES.includes(value))throw Object.assign(Error('Неверный тип финансовых данных.'),{status:400});
@@ -98,6 +98,17 @@ export function createAccumulator(db) {
     'OR operations.quantity_milli IS NOT excluded.quantity_milli'
   );
   const getPrevious = db.prepare('SELECT amount_kopecks,quantity_milli FROM operations WHERE company_id=? AND import_key=?');
+  // A paid/fulfilled export must never overlap independently imported cash
+  // or earned revenue for the same receipt line. Otherwise one financial
+  // book would count the same purchase twice.
+  const existingSeparate=db.prepare(
+    "SELECT 1 FROM operations WHERE company_id=? AND sold_on=? AND source_id=? "+
+    "AND status=? AND financial_basis IN ('cash_receipts','recognized_revenue') LIMIT 1"
+  );
+  const existingCombined=db.prepare(
+    "SELECT 1 FROM operations WHERE company_id=? AND sold_on=? AND source_id=? "+
+    "AND status=? AND financial_basis='paid_fulfilled' LIMIT 1"
+  );
   const count = db.prepare('SELECT count(*) AS n FROM operations WHERE company_id=?');
   const countBasis = db.prepare('SELECT count(*) AS n FROM operations WHERE company_id=? AND financial_basis=?');
   const latest = db.prepare('SELECT source,row_count,imported_at,last_change_at FROM imports WHERE company_id=?');
@@ -164,6 +175,17 @@ export function createAccumulator(db) {
       const oldMeta=latest.get(company.id);
       for (const entry of keyed) {
         const {row,key} = entry;
+        if(basis==='paid_fulfilled'||basis==='cash_receipts'||basis==='recognized_revenue'){
+          // Receipt identity, not item name: a cash export can contain
+          // only the receipt total while a sold-items export has line items.
+          const key=[company.id,row.date,row.id.trim(),row.status];
+          const conflicting=basis==='paid_fulfilled'
+            ?existingSeparate.get(...key):existingCombined.get(...key);
+          if(conflicting){
+            const e=Error('Эти чеки уже загружены с другим финансовым типом. Не загружайте один и тот же отчёт как оплату и как одновременно оплаченную продажу. Обратитесь в поддержку для изменения типа существующих операций.');
+            e.status=409;throw e;
+          }
+        }
         const prev = getPrevious.get(company.id,key);
         if (!prev) stats.added++;
         else if (prev.amount_kopecks === row.amount_kopecks && prev.quantity_milli === (row.quantity_milli??null)) stats.unchanged++;

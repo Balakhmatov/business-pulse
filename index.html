@@ -68,6 +68,7 @@
 /* Verified financial books: never add collected cash to earned revenue. */
 .finance-books{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin:0 0 17px}
 .finance-books[hidden]{display:none!important}
+.finance-books.single-book{grid-template-columns:minmax(0,1fr)}
 .finance-book{border:1px solid var(--line);border-radius:15px;padding:14px;text-align:left;background:#fff;min-width:0;color:var(--ink)}
 .finance-book[aria-pressed="true"]{border-color:#8275f1;box-shadow:0 0 0 2px #857bed18}
 .finance-book:disabled{opacity:.68;cursor:default}
@@ -236,8 +237,13 @@ function render(){
  $('companyName').textContent=c.name;$('asOf').textContent='По '+verboseDate(yesterday)+' включительно';
  $('rowsInfo').textContent=d.imported?'Загружено '+number(d.rows.length)+' строк':'90 дней истории';
  $('dataBadge').textContent=d.imported?'Ваши данные (локально)':'Демо-данные';
- const holder=$('financeBooks');holder.hidden=false;
- holder.innerHTML=[['cash_receipts',copy.paid,'Фактически полученные деньги, включая авансы'],['recognized_revenue',copy.done,'Стоимость выполненных услуг, работ или проданных товаров']].map(([basis,label,hint])=>{
+ const holder=$('financeBooks');
+ const labels=[['cash_receipts',copy.paid,'Фактически полученные деньги, включая авансы'],
+   ['recognized_revenue',copy.done,'Стоимость выполненных услуг, работ или проданных товаров']];
+ const available=labels.filter(([basis])=>r.financial_books[basis]?.available);
+ holder.hidden=available.length===0;
+ holder.classList.toggle('single-book',available.length===1);
+ holder.innerHTML=available.map(([basis,label,hint])=>{
   const b=r.financial_books[basis];
   return '<button type="button" class="finance-book" data-financial-basis="'+basis+'" aria-pressed="'+(basis===r.primary_basis)+'" '+(b.available?'':'disabled')+'><div class="finance-book-name">'+label+'</div><div class="finance-book-amount">'+(b.available?fmt(b.amount30_kopecks):'Нет данных')+'</div><div class="finance-book-hint">'+hint+'</div></button>';
  }).join('');
@@ -542,7 +548,7 @@ function preview(f){
           :'';
     const examples=result.rows.slice(0,4);
     const selectedBook=document.getElementById('financialBookSelect')?.value;
-    const positiveLabel=selectedBook==='recognized_revenue'?'Продажа':
+    const positiveLabel=['recognized_revenue','paid_fulfilled'].includes(selectedBook)?'Продажа':
       selectedBook==='cash_receipts'?'Оплата':'Операция';
     $('importPreview').innerHTML='<strong>Предварительная проверка</strong><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':positiveLabel)+'</td></tr>').join('')+'</tbody></table>';
     $('confirmImport').disabled=(state.business==='mine'&&!selectedBook)||idMissing||review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
@@ -644,7 +650,7 @@ if(authenticatedShell&&demoRequested){
 })();
 </script>
 <script src="web-access.js?v=20261026-public-signup-v2"></script>
-<script type="module" src="personal.js?v=20261026-linked-bulk-import-v1"></script>
+<script type="module" src="personal.js?v=20261026-finance-card-refinement-v1"></script>
 <script src="payments.js?v=20261026-website-access-v1" defer></script>
 </body>
 </html>
