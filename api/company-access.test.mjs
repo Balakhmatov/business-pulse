@@ -108,7 +108,7 @@ test('Only the real company owner can update business type without altering oper
   const owner=(await call('101','/me')).data.company;
   const db=new DatabaseSync(dbPath);
   t.after(()=>db.close());
-  startCompanyTrial(db,owner,'1296951270');
+  // apiFixture grants a trial when /me is opened.
   const day=(await call('101','/report')).data.as_of;
   const rows=[{date:day,id:'CHECK-1',item:'Пицца Пепперони',amount_kopecks:78000,status:'sale'}];
   assert.equal((await call('101','/import',{source:'cafe.csv',financial_basis:'cash_receipts',rows})).status,200);
