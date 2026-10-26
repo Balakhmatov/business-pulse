@@ -8,9 +8,23 @@
   const {state,parseImported,mapping,showModal,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday}=demo;
   const $=id=>document.getElementById(id);
   const accessStyle=document.createElement('style');
-  accessStyle.textContent='.bp-access-locked .main > :not(.topbar):not(#subscriptionInfo):not(nav){display:none!important} .bp-access-locked #openImport,.bp-access-locked #importUtilities{display:none!important}';
+  accessStyle.textContent='.bp-access-locked .main > :not(.topbar):not(#subscriptionInfo):not(nav){display:none!important} .bp-access-locked #importUtilities{display:none!important}';
   document.head.appendChild(accessStyle);
   const URL_ROOT='https://pulse.cityai.site/api';
+  function companySubscription(){
+    const s=state.mineReport?.subscription||state.mineSubscription;
+    if(!s?.access||s.state==='admin')return s;
+    const end=s.state==='paid'?s.paid_until_ms:s.state==='trial'?s.trial_ends_ms:null;
+    return end&&Number(end)<=Date.now()?{...s,state:'expired',access:false}:s;
+  }
+  function canImport(){return state.business==='mine'&&companySubscription()?.access===true;}
+  const accessMessage=()=>state.mineError||'Загрузка недоступна: нужен действующий пробный период или подписка.';
+  function requireImportAccess(){
+    if(canImport())return;
+    showModal(false);
+    renderMine();
+    throw Error(accessMessage());
+  }
 
   const style=document.createElement('style');
   style.textContent='@media(max-width:680px){.in-telegram .company-switch{grid-template-columns:repeat(2,minmax(0,1fr))}} #quickDemoImport[hidden]{display:none!important}';
@@ -261,6 +275,7 @@
   }
   function fmtK(x){return Number.isFinite(x)?money(x/100):'—'}
   async function request(route,body){
+    if(body&&(route.startsWith('/import')||route==='/reset-test-data'))requireImportAccess();
     // VPS may briefly restart the API after a new commit. Retry READS only.
     // Never retry POST: repeating financial imports or deletion is unsafe.
     const tries=body?1:4;
@@ -283,7 +298,19 @@
     }
     let result;
     try{result=await response.json()}catch{throw Error('Сервер вернул некорректный ответ.')}
-    if(!response.ok){const error=Error(response.status===401?'Авторизация Telegram устарела. Закройте и снова откройте Mini App.':result.error||'Ошибка сервера '+response.status);error.status=response.status;throw error;}
+    if(!response.ok){
+      const error=Error(response.status===401?'Авторизация Telegram устарела. Закройте и снова откройте Mini App.':result.error||'Ошибка сервера '+response.status);
+      error.status=response.status;
+      if(response.status===401||response.status===402){
+        const previous=companySubscription();
+        state.mineReport=null;
+        state.mineSubscription=response.status===402?{...previous,state:'expired',access:false}:null;
+        state.mineError=error.message;
+        showModal(false);
+        if(state.business==='mine')renderMine();
+      }
+      throw error;
+    }
     return result;
   }
   function activeTab(){
@@ -358,19 +385,25 @@
   function renderMine(){
     document.body.classList.remove('demo-mode');
     const r=state.mineReport||null;
-    const subscription=r?.subscription||state.mineSubscription;
+    const subscription=companySubscription();
     const locked=!subscription?.access;
     document.body.classList.toggle('bp-access-locked',locked);
-    $('openImport').disabled=locked;
+    $('openImport').disabled=locked||!!state.mineLoading;
+    $('sideImport').disabled=locked||!!state.mineLoading;
     const operator=subscription?.state==='admin'&&r?.company?.access_role==='owner';
+    window.dispatchEvent(new CustomEvent('bp:workspace-access',{detail:{admin:operator,pending:!subscription&&!!state.mineLoading}}));
     document.querySelectorAll('.company-tab:not([data-business="mine"])').forEach(el=>{el.hidden=!operator;});
     const subscriptionBox=$('subscriptionInfo');
-    subscriptionBox.hidden=!subscription||subscription.state==='admin';
-    if(!subscriptionBox.hidden){
+    subscriptionBox.hidden=false;
+    if(subscription?.state==='admin'){
+      subscriptionBox.textContent='Постоянный административный доступ. Подписка и пробный период не требуются.';
+    }else if(subscription){
       const until=subscription.state==='paid'?subscription.paid_until_ms:subscription.trial_ends_ms;
       const label=subscription.state==='paid'?'Подписка до ':subscription.state==='pending'?'Доступ пока не активирован. Оплатите подписку или обратитесь в поддержку для включения пробных 48 часов.':subscription.state==='expired'?'Доступ завершён. Данные сохранены.':'Пробный доступ — до ';
       const date=subscription.state==='expired'||subscription.state==='pending'?'':new Date(until).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК.';
       subscriptionBox.innerHTML=escapeHTML(label+date)+' <a href="#" data-bp-pay="month">Перейти к оплате</a>'+(!subscription.access?' · <a href="https://t.me/business_pulse_app_bot?start=support">Поддержка</a>':'');
+    }else{
+      subscriptionBox.textContent=state.mineLoading?'Проверяем доступ к компании…':state.mineError||'Не удалось проверить доступ. Откройте приложение заново.';
     }
 
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
@@ -455,6 +488,13 @@
       if(state.mineImportStats){
         const x=state.mineImportStats;
         $('bottomDataHint').textContent+=' Последний импорт: +'+number(x.added)+' новых, '+number(x.updated)+' исправлено'+(x.deleted?', '+number(x.deleted)+' отменено':'')+', '+number(x.unchanged)+' без изменений.';
+        if(!x.added&&!x.updated&&!x.deleted){
+          $('bottomDataTitle').textContent='Новых изменений нет: эти операции уже загружены.';
+          $('bottomDataHint').textContent+=' Повторная загрузка не дублирует операции и не меняет прежние суммы.';
+        }
+        if(r.primary_basis==='unverified'){
+          $('bottomDataHint').textContent+=' Смысл сумм не подтверждён: они показаны в блоке «Нужно уточнить данные», отдельно от оплат и продаж.';
+        }
         if(state.mineTemplateNotice)$('bottomDataHint').textContent+=state.mineTemplateNotice;
       }
       const message=ready?' Выводы готовы.':ai?.status==='pending'?' Готовим выводы по загруженным данным…':ai?.status==='disabled'?' Автоматические выводы недоступны, но основные показатели рассчитаны.':ai?.status==='error'?' Автоматические выводы временно недоступны. Основные показатели рассчитаны.':'';
@@ -473,7 +513,7 @@
       state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
     }catch(error){
       state.mineError=error.message||'Не удалось получить данные.';
-      if(error.status===402){state.mineReport=null;try{state.mineSubscription=(await request('/subscription')).subscription;}catch{}}
+      if(error.status===402||error.status===401){state.mineReport=null;state.mineSubscription=null;if(error.status===402)try{state.mineSubscription=(await request('/subscription')).subscription;}catch{}}
     }
     finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }
@@ -511,7 +551,27 @@
       ?'CSV и Excel (.xlsx) дополняют историю: совпадающие операции обновляются. Обязателен стабильный ID чека или визита. Не загружайте персональные данные клиентов.'
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
-  ['openImport','sideImport'].forEach(id=>$(id).addEventListener('click',refreshIntro));
+  ['openImport','sideImport'].forEach(id=>{
+    $(id).addEventListener('click',event=>{
+      if(!canImport()){
+        event.preventDefault();event.stopImmediatePropagation();
+        showModal(false);renderMine();
+      }
+    },true);
+    $(id).addEventListener('click',refreshIntro);
+  });
+  $('fileInput').addEventListener('change',event=>{
+    if(!canImport()){event.stopImmediatePropagation();$('fileInput').value='';showModal(false);renderMine();}
+  },true);
+  $('dropZone').addEventListener('drop',event=>{
+    if(!canImport()){event.preventDefault();event.stopImmediatePropagation();showModal(false);renderMine();}
+  },true);
+  setInterval(()=>{
+    if(state.business==='mine'&&!companySubscription()?.access){
+      if($('modal').classList.contains('show'))showModal(false);
+      renderMine();
+    }
+  },30000);
   // Financial classification is explicit: field names alone cannot prove
   // whether a sum was collected or earned. Historical data stays unverified.
   const bookChoice=document.createElement('section');
@@ -838,6 +898,7 @@
     if(state.mineSaving)return;
     let submitError='';
     try{
+      requireImportAccess();
       const columns=mapping();
       const financial=state.fileTable?._bpFinancialReview;
       if(financial?.blocked)throw Error('В этом столбце не сумма полученных денег или выполненных продаж. Выберите подходящую сумму.');
@@ -934,3 +995,4 @@
   renderMine();
   loadMine();
 })();
+

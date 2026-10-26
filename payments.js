@@ -12,6 +12,14 @@
     {id:'year',name:'12 месяцев',price:17990,detail:'−40% · экономия 11 890 ₽'}
   ];
   const button=document.createElement('button');button.type='button';button.className='bp-pay-toggle';button.textContent='Подключить';button.setAttribute('aria-haspopup','dialog');
+  let adminWorkspace=false;
+  window.addEventListener('bp:workspace-access',event=>{
+    adminWorkspace=event.detail?.admin===true;
+    button.disabled=event.detail?.pending===true;
+    button.textContent=button.disabled?'Проверяем доступ…':adminWorkspace?'Загрузить отчёт':'Подключить';
+    if(adminWorkspace)button.removeAttribute('aria-haspopup');
+    else button.setAttribute('aria-haspopup','dialog');
+  });
   const dialog=document.createElement('dialog');dialog.className='bp-pay-dialog';dialog.setAttribute('aria-labelledby','bp-pay-title');
   // All interpolated strings below are fixed product copy, never server HTML.
   dialog.innerHTML='<div class="bp-pay-head"><div><h2 id="bp-pay-title">Выберите тариф</h2></div><button type="button" class="bp-pay-close" aria-label="Закрыть">×</button></div>'+
@@ -106,7 +114,12 @@
   window.addEventListener('focus',()=>void refreshPayment());
   setInterval(()=>void refreshPayment(),30000);
   function open(plan){chosen=typeof plan==='string'?plan:null;if(!dialog.open){accept.checked=false;dialog.showModal();}void load();}
-  button.addEventListener('click',()=>open());
+  button.addEventListener('click',()=>{
+    if(adminWorkspace){
+      document.querySelector('.company-tab[data-business="mine"]')?.click();
+      document.getElementById('openImport')?.click();
+    }else open();
+  });
   dialog.querySelector('.bp-pay-close').addEventListener('click',()=>dialog.close());
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
   document.addEventListener('click',e=>{const trigger=e.target.closest('[data-bp-pay]');if(trigger){e.preventDefault();open(trigger.dataset.bpPay);}});
@@ -118,3 +131,4 @@
     tg?.initDataUnsafe?.start_param==='payment';
   if(paymentRequested)open();
 })();
+
