@@ -153,8 +153,8 @@ export function createAccumulator(db) {
     const seq = new Map(), keyed = [];
     for (const row of rows) {
       const group = JSON.stringify([row.date,row.id.trim(),row.item.trim(),row.status]);
-      const occurrence = seq.get(group) || 0;
-      seq.set(group,occurrence + 1);
+      const occurrence = row.occurrence===undefined?(seq.get(group) || 0):row.occurrence;
+      seq.set(group,Math.max(seq.get(group)||0,occurrence+1));
       keyed.push({ row, key: lineKey(row.date,row.id,row.item,row.status,occurrence,basis) });
     }
     const stats = {received:rows.length,added:0,updated:0,unchanged:0,total:0};
