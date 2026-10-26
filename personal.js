@@ -734,6 +734,7 @@
       r?.company?.industry==='store'?'Топ-3 товара':
       r?.company?.industry==='auto'?'Топ-3 работы':'Топ-3 позиции';
     const top=imported&&verified?(r.top3||[]).filter(x=>x.amount_kopecks>0):[];
+    $('topItems').closest('.panel').querySelector('.section-muted').textContent='По сумме '+shortMetric.toLowerCase()+' '+periodLabel;
     const highest=top.length?top[0].amount_kopecks:1;
     $('topItems').innerHTML=top.length?top.map((x,i)=>'<div><div class="top-row-head"><strong title="'+escapeHTML(x.item)+'">'+(i+1)+'. '+escapeHTML(x.item)+'</strong><span>'+fmtK(x.amount_kopecks)+'</span></div><div class="progress-track"><div class="progress-fill" style="width:'+Math.max(0,x.amount_kopecks/highest*100).toFixed(1)+'%;opacity:'+(1-i*.14)+'"></div></div></div>').join(''):'<p class="small-muted">Позиции появятся после загрузки CSV или Excel.</p>';
     chart(values,dates);
@@ -742,8 +743,8 @@
     const bad=[],good=[];
     if(imported&&change!==null&&change<0)bad.push({title:shortMetric+' — снижение',desc:'Изменение к прошлым 30 дням: '+String(change).replace('.',',')+'%. Проверьте полноту выгрузки.'});
     if(imported&&change!==null&&change>0)good.push({title:shortMetric+' — рост',desc:'Рост к предыдущим 30 дням: +'+String(change).replace('.',',')+'%.'});
-    if(imported&&top.length&&!good.length)good.push({title:'Лидер по объёму — '+top[0].item,desc:'За 30 дней: '+fmtK(top[0].amount_kopecks)+'. Лидер по выручке не обязательно самый прибыльный. Для рекомендаций нужен анализ ИИ.'});
-    if(imported&&r.coverage&&(r.coverage.current_days<25||r.coverage.previous_days<25))bad.push({title:'Недостаточно дней для сравнения',desc:'Дни без записей могут быть пропусками выгрузки. Сначала проверьте полноту периодов.'});
+    if(imported&&top.length&&!good.length)good.push({title:'Лидер по объёму — '+top[0].item,desc:'Сумма '+periodLabel+': '+fmtK(top[0].amount_kopecks)+'. Лидер по выручке не обязательно самый прибыльный. Для рекомендаций нужен анализ ИИ.'});
+    if(imported&&r.coverage&&!r.coverage.comparable)bad.push({title:'Недостаточно данных для сравнения',desc:'Для корректного сравнения нужны операции за оба выбранных периода одинаковой длины.'});
     if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV или Excel (.xlsx) с датой, суммой и названиями товаров или услуг.'});
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
