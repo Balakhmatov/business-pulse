@@ -111,31 +111,60 @@
   }
   dialog.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>open(button.dataset.mode));
   dialog.querySelector('.bp-web-auth-close').onclick = () => dialog.close();
-  form.addEventListener('submit', async event => {
+  async function post(route,body){
+    const response=await fetch(root+route,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(20000)
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(data.error||'Ошибка запроса. Попробуйте снова.');
+    return data;
+  }
+  function enter(token){
+    if(!validToken(token))throw Error('Сервер не вернул действительную сессию.');
+    sessionStorage.setItem(storeKey,token);
+    window.location.replace(window.location.pathname);
+  }
+  form.addEventListener('submit',async event=>{
     event.preventDefault();
-    message.textContent = '';
-    const submit = form.querySelector('[type=submit]');
-    submit.disabled = true;
-    const endpoint = registering ? '/web-auth/register' : '/web-auth/login';
-    const body = {email: form.elements.email.value, password: form.elements.password.value};
-    if (registering) {
-      body.invite = form.elements.invite.value.trim();
-      body.accepted_terms = form.elements.accepted.checked;
-    }
-    try {
-      const response = await fetch(root + endpoint, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
-        cache:'no-store', signal:AbortSignal.timeout(20000)
-      });
-      const data = await response.json();
-      if (!response.ok) throw Error(data.error || 'Не удалось выполнить вход.');
-      if (!validToken(data.token)) throw Error('Сервер вернул недействительную сессию.');
-      sessionStorage.setItem(storeKey,data.token);
-      window.location.replace(window.location.pathname);
-    } catch (error) {
-      message.textContent = error.message || 'Ошибка соединения. Повторите попытку.';
-    } finally {
-      submit.disabled = false;
+    const submit=form.querySelector('[type=submit]');
+    if(submit.disabled)return;
+    submit.disabled=true;message.textContent='';
+    const email=form.elements.email.value.trim(),password=form.elements.password.value;
+    try{
+      if(mode==='login'){
+        const data=await post('/web-auth/login',{email,password});enter(data.token);return;
+      }
+      if(mode==='invite'){
+        const data=await post('/web-auth/register',{
+          email,password,invite:form.elements.invite.value.trim(),
+          accepted_terms:form.elements.accepted.checked});
+        enter(data.token);return;
+      }
+      if(mode==='signup'){
+        const data=await post('/web-auth/signup',{email,password,
+          company_name:form.elements.company.value,industry:form.elements.industry.value,
+          accepted_terms:form.elements.accepted.checked});
+        message.textContent=data.message+' Проверьте папку «Спам».';
+        message.style.color='#267d6a';
+      }
+      if(mode==='forgot'){
+        const data=await post('/web-auth/reset/request',{email});
+        message.textContent=data.message+' Проверьте папку «Спам».';
+        message.style.color='#267d6a';
+      }
+      if(mode==='reset'){
+        if(password!==form.elements.confirm.value)throw Error('Пароли не совпадают.');
+        await post('/web-auth/reset/confirm',{token:linkToken,password});
+        linkToken='';
+        message.textContent='Пароль изменён. Теперь войдите с новым паролем.';
+        message.style.color='#267d6a';
+      }
+    }catch(error){
+      message.style.color='#a03939';
+      message.textContent=error.message||'Ошибка соединения.';
+    }finally{
+      submit.disabled=mailEnabled===false&&['signup','forgot'].includes(mode);
     }
   });
   // The demo hides .right-top; keep the login entry visible in the page header.
