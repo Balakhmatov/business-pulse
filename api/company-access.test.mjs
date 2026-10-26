@@ -103,19 +103,47 @@ test('Unpaid owner and employee are blocked on all business endpoints; admin tri
   assert.equal((await call('303','/report')).status,402);
 });
 
-test('Signed owner cannot change industry through API; operator assignment appears in next report',async t=>{
-  const {base,dbPath,headersFor}=await apiFixture(t);
-  const headers=headersFor('101');
-  const me=await fetch(base+'/api/me',{headers});assert.equal(me.status,200);
-  const company=(await me.json()).company;assert.equal(company.industry,'other');
-  const d=new DatabaseSync(dbPath);try{startCompanyTrial(d,company,'1296951270');}finally{d.close();}
-  const denied=await fetch(base+'/api/company/industry',{method:'POST',headers,body:JSON.stringify({industry:'clinic'})});
-  assert.equal(denied.status,404);
-  companyAdmin({dbPath,action:'set',ownerId:'101',industry:'clinic'});
-  const report=await (await fetch(base+'/api/report',{headers})).json();
-  assert.equal(report.company.industry,'clinic');assert.equal(report.volume.label,'Оказано услуг');
+test('Only the real company owner can update business type without altering operations or payments',async t=>{
+  const {call,dbPath}=await apiFixture(t);
+  const owner=(await call('101','/me')).data.company;
+  const db=new DatabaseSync(dbPath);
+  t.after(()=>db.close());
+  // apiFixture grants a trial when /me is opened.
+  const day=(await call('101','/report')).data.as_of;
+  const rows=[{date:day,id:'CHECK-1',item:'Пицца Пепперони',amount_kopecks:78000,status:'sale'}];
+  assert.equal((await call('101','/import',{source:'cafe.csv',financial_basis:'cash_receipts',rows})).status,200);
+  const beforeOps=db.prepare('SELECT * FROM operations WHERE company_id=?').all(owner.id);
+  const billingBefore=db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(owner.id);
+  db.prepare('INSERT OR REPLACE INTO ai_analyses(company_id,version,status,payload,updated_ms) VALUES(?,?,?,?,?)')
+    .run(owner.id,'fake-old','ready','{}',Date.now());
+  assert.equal((await call('101','/company/industry',{industry:'unknown'})).status,400);
+  assert.equal((await call('101','/company/industry',{industry:42})).status,400);
+  companyAdmin({dbPath,action:'addmember',ownerId:'101',memberId:'303'});
+  assert.equal((await call('303','/company/industry',{industry:'cafe'})).status,403);
+  const result=await call('101','/company/industry',{industry:'cafe'});
+  assert.equal(result.status,200);
+  assert.equal(result.data.changed,true);
+  assert.equal(result.data.company.industry,'cafe');
+  assert.equal(result.data.report.company.industry,'cafe');
+  assert.equal(result.data.report.volume.label,'Количество чеков');
+  assert.equal(result.data.report.volume.value,1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ai_analyses WHERE company_id=?').get(owner.id).n,0);
+  assert.deepEqual(db.prepare('SELECT * FROM operations WHERE company_id=?').all(owner.id),beforeOps);
+  assert.deepEqual(db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(owner.id),billingBefore);
+  const noChange=await call('101','/company/industry',{industry:'cafe'});
+  assert.equal(noChange.status,200);assert.equal(noChange.data.changed,false);
+  assert.equal((await call('303','/report')).data.company.industry,'cafe');
 });
-
+test('A company owner may correct type before activating a subscription',async t=>{
+  const {call}=await apiFixture(t,false);
+  const company=(await call('101','/me')).data.company;
+  assert.equal(company.industry,'other');
+  const changed=await call('101','/company/industry',{industry:'cafe'});
+  assert.equal(changed.status,200);
+  assert.equal(changed.data.company.industry,'cafe');
+  assert.equal(changed.data.report,null);
+  assert.equal(changed.data.subscription.access,false);
+});
 
 test('Owner and employee import into one company, share history/digest and lose access immediately on revocation',async t=>{
   const f=await apiFixture(t),{call,dbPath}=f;

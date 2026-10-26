@@ -55,6 +55,18 @@
     body.private-workspace .private-sidelink{display:flex;align-items:center;gap:8px;color:#a7b1d1;
       text-decoration:none;font-size:12px;padding:12px;border-radius:10px}
     body.private-workspace .private-sidelink:hover{background:#252c49;color:white}
+    body.private-workspace.bp-access-locked .main > .private-company-settings:not([hidden]){display:block!important}
+    body.private-workspace .private-company-settings[hidden]{display:none!important}
+    body.private-workspace .private-company-settings{background:#fff;border:1px solid #e8eaf2;
+      border-radius:13px;margin:0 0 16px;padding:12px 16px;color:#3f4863}
+    body.private-workspace .private-company-settings summary{font-size:13px;font-weight:700;cursor:pointer}
+    body.private-workspace .private-settings-body{padding-top:15px}
+    body.private-workspace .private-settings-body label{display:block;font-weight:650;font-size:12px;margin-bottom:7px}
+    body.private-workspace .private-settings-fields{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+    body.private-workspace .private-settings-fields select{flex:1;min-width:160px;max-width:360px;
+      font:inherit;font-size:13px;padding:11px;border:1px solid #dfe3ed;border-radius:9px;background:white;color:#252d46}
+    body.private-workspace .private-settings-note,body.private-workspace #privateIndustryStatus{
+      font-size:12px;line-height:1.55;color:#707d95;margin:11px 0 0}
     body.private-workspace .topbar .eyebrow{color:#625dca}
     body.private-workspace .data-bar{background:#f9faff}
     @media(max-width:680px){
@@ -86,6 +98,43 @@
     '<div class="private-empty-actions"><button type="button" class="primary-btn" id="privateFirstImport">Загрузить первый отчёт</button></div>';
   $('subscriptionInfo').after(empty);
   $('privateFirstImport').onclick=()=>$('openImport').click();
+  const companySettings=document.createElement('details');
+  companySettings.className='private-company-settings';
+  companySettings.hidden=true;
+  companySettings.innerHTML=
+    '<summary>Настройки компании</summary>'+
+    '<div class="private-settings-body"><label for="privateCompanyIndustry">Тип бизнеса</label>'+
+    '<div class="private-settings-fields"><select id="privateCompanyIndustry" aria-label="Тип бизнеса">'+
+    '<option value="clinic">Клиника</option><option value="store">Магазин</option>'+
+    '<option value="cafe">Кафе</option><option value="auto">Автосервис</option>'+
+    '<option value="other">Другой бизнес</option></select>'+
+    '<button type="button" class="ghost-btn" id="privateSaveIndustry">Сохранить</button></div>'+
+    '<p class="private-settings-note">Тип влияет на названия и расчёт отраслевых показателей. Загруженные данные, история и подписка сохраняются.</p>'+
+    '<p id="privateIndustryStatus" role="status" aria-live="polite"></p></div>';
+  empty.after(companySettings);
+  const industrySelect=$('privateCompanyIndustry'),industrySave=$('privateSaveIndustry');
+  const industryStatus=$('privateIndustryStatus');
+  let industrySaving=false;
+  industrySave.onclick=async()=>{
+    const currentCompany=state.mineReport?.company||state.mineCompany;
+    if(industrySaving||currentCompany?.access_role!=='owner')return;
+    industrySaving=true;
+    industrySave.disabled=true;
+    industryStatus.textContent='Сохраняем…';
+    try {
+      const result=await request('/company/industry',{industry:industrySelect.value});
+      if(result.report)state.mineReport=result.report;
+      state.mineCompany=result.company;
+      if(state.mineReport)state.mineReport.company=result.company;
+      state.mineAI=null;
+      state.mineViewBasis=null;
+      industryStatus.textContent=result.changed?'Тип бизнеса сохранён. Показатели пересчитаны.':'Этот тип бизнеса уже выбран.';
+      renderMine();
+      if(state.mineReport?.source)void loadAI();
+    }catch(error){
+      industryStatus.textContent=error.message||'Не удалось сохранить тип бизнеса.';
+    }finally{industrySaving=false;industrySave.disabled=false;}
+  };
 
   // A reliable sample link, with headers Telegram's native downloader expects.
   const originalSampleDownload=$('downloadSample').onclick;
@@ -415,6 +464,14 @@
       subscriptionBox.textContent=state.mineLoading?'Проверяем доступ к компании…':state.mineError||'Не удалось проверить доступ. Откройте приложение заново.';
     }
 
+    const currentCompany=r?.company||state.mineCompany;
+    companySettings.hidden=!currentCompany;
+    if(currentCompany){
+      industrySelect.value=currentCompany.industry||'other';
+      industrySelect.disabled=currentCompany.access_role!=='owner';
+      industrySave.hidden=currentCompany.access_role!=='owner';
+      industrySave.disabled=industrySaving;
+    }
     const imported=!!(r&&r.source), loading=!!state.mineLoading;
     const noData=!imported&&!loading;
     document.body.classList.toggle('private-empty-view',noData);
@@ -524,9 +581,18 @@
     if(state.business==='mine')renderMine();
     try{
       state.mineReport=await request('/report'+(state.mineViewBasis?'?basis='+state.mineViewBasis:''));
+      state.mineCompany=state.mineReport?.company;
     }catch(error){
       state.mineError=error.message||'Не удалось получить данные.';
-      if(error.status===402||error.status===401){state.mineReport=null;state.mineSubscription=null;if(error.status===402)try{state.mineSubscription=(await request('/subscription')).subscription;}catch{}}
+      if(error.status===402||error.status===401){
+        state.mineReport=null;
+        state.mineSubscription=null;
+        if(error.status===402)try{
+          const me=await request('/me');
+          state.mineSubscription=me.subscription;
+          state.mineCompany=me.company;
+        }catch{}
+      }
     }
     finally{state.mineLoading=false;if(state.business==='mine')renderMine();if(state.mineReport?.source)void loadAI();}
   }

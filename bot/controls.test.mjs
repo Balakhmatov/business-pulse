@@ -114,6 +114,27 @@ test('Start creates a company and button menu; profile ID and admin directory ne
   assert.equal(companyForUser(f.db,'101').industry,'cafe');
 });
 
+test('Telegram owner can change type through the main menu without affecting data or trial',async t=>{
+  const f=fixture(t);
+  await f.msg('101','/start');
+  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='bpu:business'));
+  const billing=f.db.prepare("SELECT * FROM company_billing WHERE company_id='a'").get();
+  f.db.prepare("INSERT INTO operations(company_id,amount_kopecks) VALUES('a',12500)").run();
+  await f.click('101','business');
+  assert.match(f.last().text,/Тип бизнеса/);
+  const option=f.last().reply_markup.inline_keyboard.flat().find(b=>b.text==='Кафе');
+  assert.equal(option.callback_data,'bpu:business-type:cafe');
+  await f.click('101','business-type:cafe');
+  assert.match(f.last().text,/Тип бизнеса сохранён/);
+  assert.equal(f.db.prepare("SELECT industry FROM companies WHERE id='a'").get().industry,'cafe');
+  assert.equal(f.db.prepare("SELECT amount_kopecks FROM operations WHERE company_id='a'").get().amount_kopecks,12500);
+  assert.deepEqual(f.db.prepare("SELECT * FROM company_billing WHERE company_id='a'").get(),billing);
+  await f.click('101','home');
+  assert.ok(f.last().reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='bpu:business'));
+  await f.click('202','business-type:clinic');
+  assert.equal(f.db.prepare("SELECT industry FROM companies WHERE id='a'").get().industry,'cafe');
+});
+
 test('Native Telegram person selection creates a targeted invitation surviving restart; recipient confirms without IDs',async t=>{
   const f=fixture(t);
   await f.msg('101','/start');await f.click('101','pick:101');
