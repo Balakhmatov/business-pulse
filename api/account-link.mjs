@@ -76,9 +76,9 @@ export function createAccountLink(db,now=Date.now) {
         }
         db.prepare('DELETE FROM companies WHERE id=?').run(discarded.id);
       }
+      db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)').run(String(telegramActor));
       if(source.owner_id!==String(telegramActor))
         db.prepare('UPDATE companies SET owner_id=? WHERE id=?').run(String(telegramActor),source.id);
-      db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)').run(String(telegramActor));
       db.prepare('INSERT INTO account_links VALUES(?,?,?,?)')
         .run(webActor,String(telegramActor),source.id,now());
       db.prepare('DELETE FROM account_link_requests WHERE web_actor_id=?').run(webActor);
