@@ -8,7 +8,7 @@
   const session = () => sessionStorage.getItem(storeKey) || '';
   const style = document.createElement('style');
   style.textContent = `
-    .bp-web-entry{min-height:42px}
+    .bp-web-entry{min-height:42px;margin-left:auto}
     .bp-web-auth{border:0;border-radius:20px;padding:0;background:transparent;color:#202943;width:min(420px,calc(100vw - 28px));max-height:calc(100dvh - 32px);box-shadow:0 24px 90px #151a3566;overflow:auto}
     .bp-web-auth::backdrop{background:#0b14368a;backdrop-filter:blur(5px)}
     .bp-web-auth-main{background:#fff;padding:30px}
@@ -39,7 +39,7 @@
     <form id="bp-web-form" autocomplete="on">
       <label>Email <input name="email" type="email" autocomplete="username" maxlength="254" required placeholder="name@company.ru"></label>
       <label>Пароль <input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required placeholder="Не менее 10 символов"></label>
-      <label id="bp-web-invite-box" hidden>Код приглашения <input name="invite" autocomplete="off" inputmode="text" maxlength="48" pattern="[a-f0-9]{48}" placeholder="Код из личного сообщения"></label>
+      <label id="bp-web-invite-box" hidden>Код приглашения <input name="invite" autocomplete="off" inputmode="text" autocapitalize="off" spellcheck="false" maxlength="48" pattern="[a-f0-9]{48}" placeholder="Код из личного сообщения"></label>
       <label class="bp-web-accept" id="bp-web-accept-box" hidden><input type="checkbox" name="accepted"> <span>Принимаю <a href="./legal/offer.html" target="_blank" rel="noopener">условия сервиса</a> и ознакомлен с <a href="./legal/privacy.html" target="_blank" rel="noopener">политикой обработки данных</a>.</span></label>
       <button type="submit" class="bp-web-auth-submit">Войти</button>
       <p role="status" class="bp-web-auth-message" aria-live="polite"></p>
@@ -103,7 +103,8 @@
       submit.disabled = false;
     }
   });
-  const buttons = document.querySelector('.right-top');
+  // The demo hides .right-top; keep the login entry visible in the page header.
+  const buttons = validToken(session()) ? document.querySelector('.right-top') : document.querySelector('.topbar');
   if (buttons) {
     const entry = document.createElement('button');
     entry.type = 'button';
