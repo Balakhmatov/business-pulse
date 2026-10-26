@@ -16,6 +16,7 @@
     .bp-web-auth h2{font-size:25px;letter-spacing:-.8px;margin:0;color:#202943}
     .bp-web-auth p{color:#727e98;font-size:13px;line-height:1.55}
     .bp-web-auth label{display:block;margin:17px 0 0;font-size:12px;color:#454e68;font-weight:720}
+    .bp-web-auth select{display:block;margin-top:7px;width:100%;border:1px solid #d9deea;background:white;color:#1c2540;padding:12px 13px;font:inherit;font-size:15px;border-radius:11px}
     .bp-web-auth input:not([type=checkbox]){display:block;margin-top:7px;width:100%;border:1px solid #d9deea;background:#fff;color:#1c2540;padding:12px 13px;font:inherit;font-size:15px;border-radius:11px}
     .bp-web-auth input:focus-visible{outline:2px solid #747ae4;outline-offset:2px}
     .bp-web-auth button{cursor:pointer}
@@ -37,15 +38,23 @@
     <div class="bp-web-auth-top"><h2 id="bp-web-auth-heading">Вход в Бизнес Пульс</h2><button type="button" class="bp-web-auth-close" aria-label="Закрыть">×</button></div>
     <p id="bp-web-intro">Войдите, чтобы загрузить отчёт и получить аналитику своей компании.</p>
     <form id="bp-web-form" autocomplete="on">
+      <label id="bp-web-company-box" hidden>Название компании <input name="company" minlength="2" maxlength="120" autocomplete="organization" placeholder="Название компании"></label>
+      <label id="bp-web-industry-box" hidden>Сфера бизнеса <select name="industry"><option value="other">Другое</option><option value="cafe">Кафе и доставка</option><option value="store">Магазин</option><option value="clinic">Клиника</option><option value="auto">Автосервис</option></select></label>
       <label>Email <input name="email" type="email" autocomplete="username" maxlength="254" required placeholder="name@company.ru"></label>
       <label>Пароль <input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required placeholder="Не менее 10 символов"></label>
+      <label id="bp-web-confirm-box" hidden>Повторите пароль <input name="confirm" type="password" minlength="10" maxlength="128" autocomplete="new-password"></label>
       <label id="bp-web-invite-box" hidden>Код приглашения <input name="invite" autocomplete="off" inputmode="text" autocapitalize="off" spellcheck="false" maxlength="48" pattern="[a-f0-9]{48}" placeholder="Код из личного сообщения"></label>
       <label class="bp-web-accept" id="bp-web-accept-box" hidden><input type="checkbox" name="accepted"> <span>Принимаю <a href="./legal/offer.html" target="_blank" rel="noopener">условия сервиса</a> и ознакомлен с <a href="./legal/privacy.html" target="_blank" rel="noopener">политикой обработки данных</a>.</span></label>
       <button type="submit" class="bp-web-auth-submit">Войти</button>
       <p role="status" class="bp-web-auth-message" aria-live="polite"></p>
     </form>
-    <button type="button" class="bp-web-auth-switch">Есть приглашение? Создать аккаунт</button>
-    <p style="font-size:11px">Нет приглашения? <a href="mailto:ilya.balahmatov@gmail.com">Свяжитесь с нами</a> для подключения бесплатного теста.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button type="button" class="bp-web-auth-switch" data-mode="signup">Зарегистрироваться</button>
+      <button type="button" class="bp-web-auth-switch" data-mode="forgot">Забыли пароль?</button>
+      <button type="button" class="bp-web-auth-switch" data-mode="invite">Есть приглашение</button>
+      <button type="button" class="bp-web-auth-switch" data-mode="login">Войти</button>
+    </div>
+    <p style="font-size:11px">Не приходит письмо? Проверьте «Спам» или свяжитесь с поддержкой.</p>
   </div>`;
   document.body.append(dialog);
   const form = dialog.querySelector('form');
