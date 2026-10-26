@@ -17,6 +17,7 @@ import { resetTestData,clearCompanyData } from './test-reset.mjs';
 import { createImportMapper } from './import-mapping.mjs';
 import { ensureCompanyMembers,companyForUser } from './company-members.mjs';
 import { createAccountLink } from './account-link.mjs';
+import { inferImportedBasis } from './financial-auto.mjs';
 import { setCompanyIndustry } from './company-industry.mjs';
 import { ensureBillingSchema,ensureCompanyBilling,subscriptionFor,assertSubscription,PLANS } from './billing.mjs';
 
@@ -104,11 +105,34 @@ async function readCompanyJSON(req,c,id){
 const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'});
 function mskToday(){const p=Object.fromEntries(fmt.formatToParts(new Date()).map(x=>[x.type,x.value]));return [p.year,p.month,p.day].join('-');}
 function shift(day,n){const x=new Date(day+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);}
-function report(c,requestedBasis=null){
-  const end=shift(mskToday(),-1),start=shift(end,-59);
+function resolveRange(c,params){
+  const yesterday=shift(mskToday(),-1);
+  const sub=subscriptionFor(db,c);
+  const upgraded=sub?.state==='paid'||sub?.state==='admin';
+  const hasCustom=params?.has('from')||params?.has('to');
+  if(hasCustom&&(!params?.get('from')||!params?.get('to')))
+    throw Object.assign(Error('Укажите начало и конец периода.'),{status:400});
+  const wanted=hasCustom?null:Number(params?.get('days')||30);
+  if(!hasCustom&&(!Number.isInteger(wanted)||![7,30,90,365,1095].includes(wanted)))
+    throw Object.assign(Error('Выберите период 7, 30, 90, 365 или 1095 дней.'),{status:400});
+  const from=hasCustom?params.get('from'):shift(yesterday,1-wanted);
+  const to=hasCustom?params.get('to'):yesterday;
+  const valid=d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&
+    !Number.isNaN(Date.parse(d+'T00:00:00Z'))&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
+  const days=valid(from)&&valid(to)?
+    Math.round((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000)+1:0;
+  if(days<1||days>1095||to>yesterday||from<shift(yesterday,-3650))
+    throw Object.assign(Error('Допустимый диапазон — завершённые дни за последние 10 лет, максимум три года.'),{status:400});
+  if(!upgraded&&days>30)
+    throw Object.assign(Error('Анализ более 30 дней доступен в платной подписке.'),{status:403,code:'HISTORY_PREMIUM_REQUIRED'});
+  return {from,to,days};
+}
+function report(c,requestedBasis=null,range=null){
+  const period=range||{to:shift(mskToday(),-1),days:30};
+  const end=period.to,start=shift(period.from||end, -(period.days||30));
   const entries=st.rows.all(c.id,start,end);
   const counts=Object.fromEntries(st.countBasis.all(c.id).map(x=>[x.financial_basis,x.n]));
-  const summary=calculateFinancialSummary(entries,counts,end,requestedBasis,c.industry);
+  const summary=calculateFinancialSummary(entries,counts,end,requestedBasis,c.industry,range);
   const src=st.latest.get(c.id);
   return {...summary,company:c,subscription:subscriptionFor(db,c),
     source:src?{name:src.source,imported_at:src.imported_at,rows:st.total.get(c.id).n,
@@ -146,10 +170,11 @@ function ingest(c,input){
 }
 
 // The interpreter receives ONLY aggregates, never rows or user identity.
-const ai=createAI({db,report,listOperations:c=>{
-  const r=report(c);
-  // Keep normal dashboard lightweight (60 days); AI may inspect six 30-day windows.
-  return st.rows.all(c.id,shift(r.as_of,-179),r.as_of)
+const ai=createAI({db,report,listOperations:(c,range)=>{
+  const r=report(c,null,range);
+  const from=range?.from||shift(r.as_of,-179);
+  const compareStart=range?shift(from,-range.days):from;
+  return st.rows.all(c.id,compareStart,r.as_of)
     .filter(x=>x.financial_basis===r.primary_basis||x.financial_basis==='paid_fulfilled');
 }});
 
@@ -306,8 +331,9 @@ const server=http.createServer(async(req,res)=>{
     }
     assertSubscription(db,c);
     if(req.method==='GET'&&url.pathname==='/api/report')
-      return reply(res,200,report(c,url.searchParams.get('basis')),origin);
-    if(req.method==='GET'&&url.pathname==='/api/analysis')return reply(res,200,ai.get(c),origin);
+      return reply(res,200,report(c,url.searchParams.get('basis'),resolveRange(c,url.searchParams)),origin);
+    if(req.method==='GET'&&url.pathname==='/api/analysis')
+      return reply(res,200,ai.get(c,resolveRange(c,url.searchParams)),origin);
     if(req.method==='POST'&&url.pathname==='/api/import/mapping/resolve'){
       const input=await readCompanyJSON(req,c,id);
       return reply(res,200,await importMapper.resolve(c,input),origin);
@@ -351,13 +377,18 @@ const server=http.createServer(async(req,res)=>{
         (!['cafe','store'].includes(c.industry)||input.confirm_paid_fulfilled!==true)){
         return reply(res,400,{error:'Совмещённые продажи и оплаты разрешены только для кафе и магазинов при явном подтверждении, что заказы оплачены и выданы без авансов.'},origin);
       }
+      if(Array.isArray(input.source_headers)&&Number.isInteger(input.amount_index)){
+        const inference=inferImportedBasis(input.source_headers,input.amount_index);
+        input.financial_basis=inference.basis;
+        input.classification=inference.reason;
+      }
       const stats=ingest(c,input);
       const updated=report(c);
       if(stats.added || stats.updated){
         if(input.more_chunks===true)db.prepare('DELETE FROM ai_analyses WHERE company_id=?').run(c.id);
         else ai.onImport(c); // generate once after the last upload chunk
       }
-      return reply(res,200,{saved:stats.received,stats,report:updated},origin);
+      return reply(res,200,{saved:stats.received,stats,report:updated,classification:input.classification||null},origin);
     }
     return reply(res,404,{error:'Unknown API route'},origin);
   }catch(e){console.error('API request rejected:',e.message);return reply(res,e.status||400,{error:e.status===413?'File too large':e.message,code:e.code},origin);}
