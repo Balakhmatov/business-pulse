@@ -343,6 +343,9 @@ function showModal(open){
     $('importActionError').textContent='';
     $('mappingSection').hidden=true;
     $('confirmImport').disabled=true;
+    $('confirmImport').hidden=false;
+    $('importDifferenceNotice').hidden=true;
+    $('importAdvanced').open=false;
     sheetControl.hidden=true;
     excelBook=null;
     state.fileTable=null;
@@ -552,6 +555,7 @@ function financialReview(file,columns){
 function customerKindForPreview(f,m){return m.customer>=0?window.BP_SmartImport?.customerKind(f.head[m.customer]):null;}
 function preview(f){
   const panel=$('financialPanel');
+  $('importPreview').hidden=state.business==='mine';
   try{
     const m=mapping(),result=parseImported(f,m);
     const review=financialReview(f,m);
@@ -595,10 +599,12 @@ function preview(f){
   }catch(e){
     f._bpFinancialReview=null;
     panel.hidden=true;
-    $('importPreview').textContent='Выберите столбцы для просмотра данных.';
-    $('importAlert').textContent=e.message;
-    $('importActionError').textContent=e.message;
-    $('importActionError').hidden=false;
+    $('importPreview').textContent='Не удалось прочитать данные.';
+    if(state.business!=='mine'){
+      $('importAlert').textContent=e.message;
+      $('importActionError').textContent=e.message;
+      $('importActionError').hidden=false;
+    }
     $('confirmImport').disabled=state.business==='mine'?false:true;
   }
 }
@@ -612,6 +618,7 @@ async function showExcelSheet(name){
   $('importAlert').textContent='';
   $('mappingSection').hidden=true;
   $('confirmImport').disabled=true;
+  $('confirmImport').hidden=true;
   state.fileTable=null;
   try{
     const parsed=await excelBook.readSheet(name);
@@ -635,6 +642,8 @@ async function readFile(file){
   $('demoFinancialBook').value='';
   $('mappingSection').hidden=true;
   $('confirmImport').disabled=true;
+  $('confirmImport').hidden=true;
+  $('importDifferenceNotice').hidden=true;
   $('importAlert').textContent='';
   try{
     if(file.size>32*1024*1024)throw Error('Файл должен быть не больше 32 МБ.');
