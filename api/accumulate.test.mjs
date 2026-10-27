@@ -672,3 +672,34 @@ test('Unit quantity corrections with unchanged amounts are reversible; legacy ab
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM operations').get().n,1);
 });
 
+
+
+test('Preflight detects changed amounts but never updates or deletes existing operations',t=>{
+  const f=makeFixture();t.after(f.close);
+  const engine=f.importer(),input={source:'clinic.xlsx',financial_basis:'recognized_revenue'};
+  const first=[f.row('2026-10-26','v1',10000),f.row('2026-10-26','v2',20000)];
+  const before=engine.preview({id:'a'},input,first);
+  assert.deepEqual([before.added,before.updated,before.unchanged],[2,0,0]);
+  assert.equal(f.amount(),0);
+  engine.ingest({id:'a'},input,first);
+  const same=engine.preview({id:'a'},input,first);
+  assert.deepEqual([same.added,same.updated,same.unchanged],[0,0,2]);
+  const changed=[f.row('2026-10-26','v1',15000)];
+  const preview=engine.preview({id:'a'},input,changed);
+  assert.deepEqual([preview.added,preview.updated,preview.unchanged],[0,1,0]);
+  assert.equal(preview.examples[0].previous_amount_kopecks,10000);
+  assert.equal(preview.examples[0].new_amount_kopecks,15000);
+  assert.equal(f.amount(),30000,'Read-only preview cannot mutate stored money');
+  assert.equal(f.all().length,2,'Missing rows in a partial report are never deleted');
+  engine.ingest({id:'a'},input,changed);
+  assert.equal(f.amount(),35000);
+  assert.equal(f.all().length,2);
+});
+test('Preflight changes are company-scoped and keep cash/sales separate',t=>{
+  const f=makeFixture();t.after(f.close);const e=f.importer();
+  const rows=[f.row('2026-10-26','v1',10000)];
+  e.ingest({id:'a'},{source:'x',financial_basis:'cash_receipts'},rows);
+  assert.equal(e.preview({id:'a'},{financial_basis:'cash_receipts'},rows).unchanged,1);
+  assert.equal(e.preview({id:'a'},{financial_basis:'recognized_revenue'},rows).added,1);
+  assert.equal(e.preview({id:'b'},{financial_basis:'cash_receipts'},rows).added,1);
+});
