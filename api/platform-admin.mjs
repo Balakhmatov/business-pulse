@@ -6,6 +6,8 @@ const DAY=86400000;
 export function isPlatformAdmin(db,actor){
   if(/^[1-9]\d{0,15}$/.test(String(actor))&&isAdminCompany({owner_id:actor}))return true;
   if(!String(actor).startsWith('web:'))return false;
+  const webAdmins=new Set((process.env.BP_ADMIN_WEB_IDS||'').split(',').map(v=>v.trim()).filter(v=>/^web:[0-9a-f-]{36}$/.test(v)));
+  if(webAdmins.has(String(actor))&&db.prepare('SELECT 1 FROM web_accounts WHERE actor_id=?').get(actor))return true;
   const link=db.prepare('SELECT telegram_id FROM account_links WHERE web_actor_id=?').get(actor);
   return Boolean(link&&isAdminCompany({owner_id:link.telegram_id}));
 }
@@ -22,7 +24,7 @@ export function createPlatformAdmin(db,now=Date.now){
     LEFT JOIN imports i ON i.company_id=c.id
 `;
   function companyRows(at){return db.prepare(base+' ORDER BY c.created_at DESC,c.id').all().map(c=>{
-    const admin=isAdminCompany(c)||Boolean(c.linked_telegram_id&&isAdminCompany({owner_id:c.linked_telegram_id})),paid=c.paid_until_ms>at,trial=Boolean(c.trial_granted_by)&&c.trial_started_ms<=at&&c.trial_ends_ms>at;
+    const admin=isPlatformAdmin(db,c.owner_id)||Boolean(c.linked_telegram_id&&isAdminCompany({owner_id:c.linked_telegram_id})),paid=c.paid_until_ms>at,trial=Boolean(c.trial_granted_by)&&c.trial_started_ms<=at&&c.trial_ends_ms>at;
     const state=admin?'admin':paid?'paid':trial?'trial':!c.trial_granted_by&&c.plan===null?'pending':'expired';
     const until=state==='paid'?c.paid_until_ms:state==='trial'?c.trial_ends_ms:null;
     return {...c,state,access:['admin','paid','trial'].includes(state),access_until_ms:until,

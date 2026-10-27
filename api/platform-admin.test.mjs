@@ -82,3 +82,18 @@ test('Successful provider payment without applied access stays visible in the re
  assert.equal(review.total,2);assert.ok(review.items.some(p=>p.id==='p2'));
  assert.equal(call('overview').summary.receipts_kopecks,498000,'Unapplied success must not invent a receipt');
 });
+
+test('An explicitly appointed email actor can view admin without Telegram linking; no rights pass to other accounts',t=>{
+ const {db,service}=fixture(t),before=process.env.BP_ADMIN_WEB_IDS;
+ const actor='web:11111111-1111-4111-8111-111111111111';
+ try{
+  db.prepare('INSERT INTO web_accounts VALUES(?,?,?)').run(actor,'operator@example.test','not-returned');
+  process.env.BP_ADMIN_WEB_IDS=actor;
+  assert.equal(service.handle(actor,'access').admin,true);
+  assert.equal(service.handle(actor,'overview').summary.companies,4);
+  assert.throws(()=>service.handle('web:client','overview'),e=>e.status===403);
+  process.env.BP_ADMIN_WEB_IDS='';assert.throws(()=>service.handle(actor,'overview'),e=>e.status===403);
+  process.env.BP_ADMIN_WEB_IDS='web:22222222-2222-4222-8222-222222222222';
+  assert.throws(()=>service.handle(process.env.BP_ADMIN_WEB_IDS,'overview'),e=>e.status===403,'Unknown actor is not an account');
+ }finally{if(before===undefined)delete process.env.BP_ADMIN_WEB_IDS;else process.env.BP_ADMIN_WEB_IDS=before;}
+});
