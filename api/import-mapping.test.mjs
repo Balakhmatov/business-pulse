@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createImportMapper,headerSignature,validateMapping } from './import-mapping.mjs';
+import smartImport from '../smart-import.js';
 
 const headers=['Дата закрытия','Код реализации','Номенклатура','Оплачено','Вид движения'];
 const selected={date:0,id:1,item:2,amount:3,status:4};
@@ -287,4 +288,32 @@ test('An optional item quantity column is company-scoped, remembered and never o
   assert.deepEqual(saved.mapping,selectedWithQuantity);
   const other=await f.service.resolve({id:'b'},{head:cols,needs_ai:false});
   assert.equal(other.mapping,null);
+});
+
+test('AI-first import auto-accepts a clear clinic service export with correct financial basis',()=>{
+  const file={reportType:'operations',head:['Дата оказания','ID визита','Наименование услуги','Стоимость оказанных услуг','Количество']};
+  const mapping={date:0,id:1,item:2,amount:3,status:-1,quantity:4};
+  const parsed={rows:[{date:'2026-10-27',amount:1500,item:'Приём'}],invalid:0,cancelled:0,skipped:0,duplicate:0};
+  const financial={basis:'reported_revenue',confidence:'high',risk_flags:[]};
+  assert.equal(smartImport.automaticDecision({file,mapping,parsed,basis:'recognized_revenue',financial}).ready,true);
+  assert.equal(smartImport.automaticDecision({file,mapping,parsed,basis:'cash_receipts',financial}).ready,false);
+  assert.equal(smartImport.automaticDecision({file,mapping,parsed,basis:'recognized_revenue',
+    financial:{...financial,confidence:'medium'}}).ready,false);
+});
+
+test('AI-first import requires manual review for conflicting amounts, risks or incomplete operations',()=>{
+  const file={reportType:'operations',head:['Дата оказания','Услуга','Стоимость оказанных услуг','Предоплата']};
+  const mapping={date:0,id:-1,item:1,amount:2,status:-1};
+  const parsed={rows:[{date:'2026-10-27',amount:1500}],invalid:0,cancelled:0,skipped:0,duplicate:0};
+  const financial={basis:'reported_revenue',confidence:'high',risk_flags:[]};
+  const check=(changes={})=>smartImport.automaticDecision({file,mapping,parsed,basis:'recognized_revenue',financial,...changes}).ready;
+  assert.equal(check(),false,'Advance fields must not silently become recognized sales');
+  const cleanFile={...file,head:file.head.slice(0,3)};
+  assert.equal(check({file:cleanFile}),true);
+  assert.equal(check({file:cleanFile,parsed:{...parsed,invalid:1}}),false);
+  assert.equal(check({file:cleanFile,parsed:{...parsed,skipped:1}}),false);
+  assert.equal(check({file:cleanFile,parsed:{...parsed,duplicate:1}}),false);
+  assert.equal(check({file:cleanFile,parsed:{...parsed,cancelled:1}}),false);
+  assert.equal(check({file:cleanFile,financial:{...financial,risk_flags:['partial_payments']}}),false);
+  assert.equal(check({file:{...cleanFile,reportType:'aggregate'}}),false);
 });
