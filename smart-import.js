@@ -319,5 +319,37 @@
       materialRisks:[...new Set([...localCodes,...aiCodes])]
     };
   }
-  return {detect,guess,dateLike,numberLike,financialSemantics,financialConfirmation,customerKind,normalizeCustomerRef};
+
+  // Decides whether a private-company upload may proceed without any user action.
+  // Never let AI confidence override contradictory money semantics or invalid rows.
+  function automaticDecision({file,mapping,parsed,basis,financial}){
+    const manual=reason=>({ready:false,reason});
+    if(!file||!mapping||!parsed||file.reportType!=='operations')
+      return manual('Не удалось однозначно определить тип отчёта.');
+    if(!Number.isInteger(mapping.date)||mapping.date<0||
+       !Number.isInteger(mapping.amount)||mapping.amount<0||
+       !Number.isInteger(mapping.item)||mapping.item<0)
+      return manual('Нужно уточнить дату, сумму или наименование услуги.');
+    if(!['cash_receipts','recognized_revenue'].includes(basis))
+      return manual('Не удалось достоверно определить тип денежных сумм.');
+    const local=financialSemantics(file.head,mapping);
+    const decision=financialConfirmation(local,financial);
+    if(decision.blocked||decision.needsConfirm)
+      return manual('В файле есть финансовые показатели, которые требуют проверки.');
+    const localBasis=local.basis==='cash_receipts'?'cash_receipts':
+      local.basis==='reported_revenue'?'recognized_revenue':null;
+    if(localBasis!==basis)
+      return manual('Нужно уточнить, указаны оплаты или стоимость выполненных продаж.');
+    if(financial){
+      const aiBasis=financial.basis==='cash_receipts'?'cash_receipts':
+        financial.basis==='reported_revenue'?'recognized_revenue':null;
+      if(financial.confidence!=='high'||aiBasis!==basis)
+        return manual('ИИ не смог однозначно подтвердить тип выручки.');
+    }
+    if(parsed.invalid>0||parsed.cancelled>0||parsed.skipped>0||parsed.duplicate>0||
+       !Array.isArray(parsed.rows)||parsed.rows.length===0||parsed.rows.length>100000)
+      return manual('В строках отчёта есть неоднозначности, нужна проверка.');
+    return {ready:true,reason:''};
+  }
+  return {detect,guess,dateLike,numberLike,financialSemantics,financialConfirmation,automaticDecision,customerKind,normalizeCustomerRef};
 });
