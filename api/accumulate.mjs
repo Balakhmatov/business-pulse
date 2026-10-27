@@ -365,5 +365,5 @@ export function createAccumulator(db,{customerKeyFor=null}={}) {
         restored:latestBatch.updated+latestBatch.deleted,total};
     }catch(error){db.exec('ROLLBACK');throw error;}
   }
-  return { ingest,history,undoLatest };
+  return { ingest,preview,history,undoLatest };
 }
