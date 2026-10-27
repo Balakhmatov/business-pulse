@@ -691,6 +691,10 @@ test('Preflight detects changed amounts but never updates or deletes existing op
   assert.equal(preview.examples[0].new_amount_kopecks,15000);
   assert.equal(f.amount(),30000,'Read-only preview cannot mutate stored money');
   assert.equal(f.all().length,2,'Missing rows in a partial report are never deleted');
+  const missing=engine.preview({id:'a'},{...input,check_missing:true},changed);
+  assert.equal(missing.possible_missing,1,'Only rows from the same dates and ledger trigger warning');
+  assert.equal(engine.preview({id:'a'},{...input,check_missing:false},changed).possible_missing,0);
+
   engine.ingest({id:'a'},input,changed);
   assert.equal(f.amount(),35000);
   assert.equal(f.all().length,2);
