@@ -31,7 +31,7 @@ export function buildHistoricalFacts(report,operations){
   for(const [month,stats] of [...months].sort(([a],[b])=>a.localeCompare(b))){
     // 36 month windows fit comfortably in grounded structured prompt.
     facts['month_'+(++ix)]='Месяц '+month+': '+money(stats.sum)+
-      ', уникальных чеков '+stats.ids.size+', дней с операциями '+stats.days.size+'.';
+      ', '+(report.operation_identity?.estimated?'условных групп записей ':'уникальных чеков ')+stats.ids.size+', дней с операциями '+stats.days.size+'.';
   }
   for(const [year,stats] of [...years].sort(([a],[b])=>a.localeCompare(b)))
     facts['year_'+year]='В '+year+' году в выбранном диапазоне: '+money(stats.sum)+
