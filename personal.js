@@ -797,7 +797,7 @@
     $('revenue30').textContent=imported?fmtK(r.revenue30_kopecks):'—';
     $('revenueChange').textContent=change===null?'Пока не с чем сравнить':(change>0?'+':'')+String(change).replace('.',',')+'% к предыдущему периоду';
     $('revenueChange').classList.toggle('down',change!==null&&change<0);
-    $('comparisonDesc').textContent=imported&&verified&&r.coverage&&!r.coverage.comparable?'Для сравнения нужно больше данных: записи за '+r.coverage.current_days+' из '+(r.period?.days||30)+' дней, ранее — за '+r.coverage.previous_days:'Выбранный период с учётом возвратов';
+    $('comparisonDesc').textContent=imported&&verified&&r.coverage&&!r.coverage.comparable?'Динамику можно оценить внутри выбранного периода.':'Выбранный период с учётом возвратов';
     $('revenueYesterday').closest('.mini-kpi').querySelector('.kpi-name').textContent=
       shortMetric+' за последний день периода';
     $('revenueYesterday').textContent=imported?fmtK(r.yesterday_kopecks):'—';
@@ -835,11 +835,19 @@
     const ready=imported&&ai?.status==='ready'&&ai.analysis&&
       ai.primary_basis===r?.primary_basis&&ai.period_key===(r?.period?.from+'_'+r?.period?.to);
     if(ready){
-      const asItem=x=>({
-        title:x.title,
-        desc:[x.explanation,...(x.evidence||[])].join(' '),
-        recommendation:x.recommendation
-      });
+      const asItem=x=>{
+        const evidence=Array.isArray(x.evidence)?x.evidence:[];
+        // Keep a short grounded number in view; do not dump every lengthy
+        // limitation and calculation into the main recommendation paragraph.
+        const primary=evidence.find(v=>/ВНУТРИ выбранного периода|Рост услуги|Снижение услуги/i.test(v))||
+          evidence[0]||'';
+        const brief=primary.length>170?primary.slice(0,167).trim()+'…':primary;
+        return {
+          title:x.title,
+          desc:x.explanation+(brief?' '+brief:''),
+          recommendation:x.recommendation
+        };
+      };
       bad.splice(0,bad.length,...ai.analysis.issues.map(asItem));
       good.splice(0,good.length,...ai.analysis.positives.map(asItem));
       if(!good.length)good.push({title:'Пока нет заметных положительных изменений',desc:'По загруженным данным пока нельзя уверенно выделить положительные изменения.'});
@@ -851,6 +859,16 @@
     const pendingHTML='<div class="bp-ai-pending" role="status"><span class="bp-ai-pending-dot" aria-hidden="true"></span>Идёт анализ</div>';
     $('concerns').innerHTML=aiPending?pendingHTML:insightHTML(bad.slice(0,3),true);
     $('positives').innerHTML=aiPending?pendingHTML:insightHTML(good.slice(0,2),false);
+    const contextNote=$('aiContextNote');
+    const notes=[];
+    if(imported&&!r.coverage?.comparable)
+      notes.push('Выводы — по выбранному периоду; данных для сравнения с более ранним периодом пока нет.');
+    if(imported&&r.operation_identity?.estimated)
+      notes.push('Количество чеков и средний чек приблизительные: в выгрузке нет ID операций.');
+    if(imported&&r.coverage?.current_days<Math.ceil((r.period?.days||30)*.55))
+      notes.push('В выбранном периоде есть пробелы в данных.');
+    contextNote.hidden=!notes.length;
+    contextNote.textContent=notes.join(' ');
     $('warningBanner').classList.toggle('show',!!state.mineError);
     $('warningBanner').textContent=state.mineError||'';
     $('bottomDataTitle').textContent=imported?'Данные сохранены. Новые отчёты дополняют историю.':(loading?'Получаем показатели…':state.mineError?'Не удалось получить сохранённые данные.':'Загрузите первый отчёт вашей компании.');
