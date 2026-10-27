@@ -121,7 +121,8 @@ test('An allowlisted website administrator has permanent access ONLY to owned wo
   assert.equal(subscriptionFor(db,website,START+864000000).state,'admin');
   assert.equal(subscriptionFor(db,c,START+864000000).access,false);
   const masquerade={id:c.id,owner_id:actor};
-  assert.equal(subscriptionFor(db,masquerade,START+864000000).state,'admin');
+  assert.equal(subscriptionFor(db,masquerade,START+864000000).state,'pending',
+    'Forged owner_id must never grant permanent admin access');
 });
 test('Website owner not allowlisted and not linked remains on normal billing',t=>{
   const {db}=fixture(t,false);
