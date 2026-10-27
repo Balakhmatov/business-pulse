@@ -624,7 +624,7 @@ async function showExcelSheet(name){
     $('importAlert').textContent=error.message||'Не удалось прочитать лист Excel.';
   }
 }
-$('excelSheet').addEventListener('change',event=>{void showExcelSheet(event.target.value)});
+$('excelSheet').addEventListener('change',event=>{if(event.target.value)void showExcelSheet(event.target.value)});
 async function readFile(file){
   if(!file)return;
   const ticket=++importReadToken;
@@ -650,11 +650,16 @@ async function readFile(file){
       excelBook=book;
       if(book.names.length>1){
         const select=$('excelSheet');
-        select.replaceChildren(...book.names.map(name=>{
+        const placeholder=document.createElement('option');
+        placeholder.value='';
+        placeholder.textContent='Выберите лист с данными';
+        select.replaceChildren(placeholder,...book.names.map(name=>{
           const option=document.createElement('option');
           option.value=name;option.textContent=name;return option;
         }));
         sheetControl.hidden=false;
+        $('fileStatus').textContent='В файле несколько листов. Выберите лист с операциями.';
+        return; // Never auto-import the first sheet without user choosing it.
       }
       await showExcelSheet(book.names[0]);
     }else{
