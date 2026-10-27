@@ -304,8 +304,9 @@ export function createBotControls({api:transport,adminIds,appUrl,siteUrl='https:
     try{
       const companies=db.prepare('SELECT c.* FROM companies c JOIN company_billing b ON b.company_id=c.id WHERE b.plan IS NULL AND NOT EXISTS(SELECT 1 FROM company_members m WHERE m.telegram_id=c.owner_id)').all();
       for(const c of companies){
-        if(adminIds.has(String(c.owner_id)))continue;
+        if(!idOK(c.owner_id)||adminIds.has(String(c.owner_id)))continue;
         const notice=reminderFor(db,c,now());if(!notice)continue;
+        if(db.prepare("SELECT 1 FROM billing_email_deliveries WHERE company_id=? AND kind=? AND status IN ('sending','sent','uncertain')").get(c.id,notice.kind))continue;
         try{
           await sendTrialNotice(c.owner_id,notice.text);
           db.prepare('INSERT OR IGNORE INTO billing_reminders VALUES(?,?,?)').run(c.id,notice.kind,now());

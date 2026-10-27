@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {createTrialEmailReminders} from './trial-email-reminders.mjs';
 import {createPlatformAdmin} from './platform-admin.mjs';
 import { createWebLogin } from './web-login.mjs';
 import { createWebsiteAccounts } from './website-accounts.mjs';
@@ -59,6 +60,10 @@ const accumulator=createAccumulator(db,{customerKeyFor:(c,row)=>customerIdentity
 const correctionService=createCorrectionService({db,secret:token,prepareInput:customerInput});
 const importMapper=createImportMapper({db});
 const platformAdmin=createPlatformAdmin(db);
+const trialEmails=createTrialEmailReminders({db,mail:authMail});
+const trialEmailTimer=setInterval(()=>void trialEmails.tick().catch(()=>console.error('Trial email worker failed')),60000);
+trialEmailTimer.unref();
+void trialEmails.tick().catch(()=>console.error('Initial trial email worker failed'));
 const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),

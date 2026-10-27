@@ -97,7 +97,7 @@ export async function sendTimewebMail({host='smtp.timeweb.ru',port=465,user,pass
     console.error('Business Pulse SMTP: stage='+stage+
       (smtpResponseCode?' smtp_code='+smtpResponseCode:'')+
       (socketErrorCode?' network_code='+socketErrorCode:''));
-    throw mailError();
+    throw Object.assign(mailError(),{deliveryUncertain:stage==='data-completion'&&!smtpResponseCode});
   }finally{
     reader.close();
     socket.destroy();
