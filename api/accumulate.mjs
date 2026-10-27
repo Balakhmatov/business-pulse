@@ -107,6 +107,7 @@ export function createAccumulator(db,{customerKeyFor=null}={}) {
     'OR operations.quantity_milli IS NOT excluded.quantity_milli OR operations.customer_key IS NOT excluded.customer_key'
   );
   const getPrevious = db.prepare('SELECT amount_kopecks,quantity_milli,customer_key FROM operations WHERE company_id=? AND import_key=?');
+  const existingOnDate=db.prepare('SELECT import_key FROM operations WHERE company_id=? AND financial_basis=? AND sold_on=?');
   // A paid/fulfilled export must never overlap independently imported cash
   // or earned revenue for the same receipt line. Otherwise one financial
   // book would count the same purchase twice.
@@ -171,7 +172,8 @@ export function createAccumulator(db,{customerKeyFor=null}={}) {
   // Excel export may represent only part of a period.
   function preview(company,input,rows){
     const basis=financialBasis(input.financial_basis),seq=new Map();
-    const stats={received:rows.length,added:0,updated:0,unchanged:0,examples:[]};
+    const stats={received:rows.length,added:0,updated:0,unchanged:0,possible_missing:0,examples:[]};
+    const incomingByDate=new Map();
     const prepared=rows.map(rawRow=>{
       const incomingCustomerKey=customerKeyFor?customerKeyFor(company,rawRow):rawRow.customer_key;
       const row=rawRow.synthetic_id?{...rawRow,id:syntheticOperationID(company.id,rawRow.date,incomingCustomerKey)}:rawRow;
@@ -184,6 +186,10 @@ export function createAccumulator(db,{customerKeyFor=null}={}) {
       const occurrence=row.occurrence===undefined?(seq.get(group)||0):row.occurrence;
       seq.set(group,Math.max(seq.get(group)||0,occurrence+1));
       const key=lineKey(row.date,row.id,row.item,row.status,occurrence,basis);
+      if(input.check_missing===true&&rows.length<=5000){
+        if(!incomingByDate.has(row.date))incomingByDate.set(row.date,new Set());
+        incomingByDate.get(row.date).add(key);
+      }
       const old=getPrevious.get(company.id,key);
       const customerKey=incomingCustomerKey??old?.customer_key??null;
       if(!old){stats.added++;continue;}
@@ -195,6 +201,13 @@ export function createAccumulator(db,{customerKeyFor=null}={}) {
         previous_amount_kopecks:old.amount_kopecks,new_amount_kopecks:row.amount_kopecks,
         previous_quantity_milli:old.quantity_milli,new_quantity_milli:row.quantity_milli??null
       });
+    }
+    if(input.check_missing===true&&rows.length<=5000){
+      for(const [date,keys] of incomingByDate){
+        for(const previous of existingOnDate.all(company.id,basis,date)){
+          if(!keys.has(previous.import_key))stats.possible_missing++;
+        }
+      }
     }
     return stats;
   }
