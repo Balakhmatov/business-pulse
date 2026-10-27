@@ -59,3 +59,12 @@ test('SMTP sender requires matching account address and password',()=>{
   assert.equal(missing.ready,false);
   assert.equal(mismatch.ready,false);
 });
+
+test('Trial emails reuse mailbox and correct deadline/prices with a safe cabinet link',async()=>{
+ const sent=[],mail=createAuthMail({smtpUser:'support@cityai.site',smtpPassword:'test',from:'support@cityai.site',smtpFn:async p=>sent.push(p)});
+ const at=Date.parse('2026-10-29T09:00:00Z');
+ for(const kind of ['trial_unused','trial_ending','trial_ended'])await mail.sendTrialReminder({to:'owner@example.test',kind,trialEndsMs:at,companyName:'Тестовая клиника'});
+ assert.equal(sent.length,3);assert.match(sent[1].text,/1 990 ₽ вместо 2 490 ₽/);assert.match(sent[1].text,/29\.10\.(?:20)?26/);
+ assert.ok(!sent[2].text.includes('1 990'));assert.match(sent[2].text,/2 490/);
+ assert.ok(sent.every(p=>p.text.includes('index.html?login=1')&&!p.text.includes('password')&&!p.text.includes('#reset=')));
+});

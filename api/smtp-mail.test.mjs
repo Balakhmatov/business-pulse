@@ -64,3 +64,15 @@ test('SMTP rejects injection and wrong sender before connecting',async()=>{
   },connect),/SMTP/);
   assert.equal(called,false);
 });
+
+test('SMTP reports ambiguous acceptance separately from a definite pre-delivery refusal',async()=>{
+ const info={user:'support@cityai.site',password:'mail-secret',from:'support@cityai.site',to:'test@example.com',subject:'Тест',text:'Тест'};
+ class LostAcceptance extends MockSMTP{
+  _write(buffer,encoding,callback){if(this.dataMode){this.dataMode=false;callback();queueMicrotask(()=>this.push(null));return}super._write(buffer,encoding,callback)}
+ }
+ class RejectedRecipient extends MockSMTP{
+  _write(buffer,encoding,callback){if(buffer.toString().startsWith('RCPT TO:')){callback();queueMicrotask(()=>this.push('550 Rejected\r\n'));return}super._write(buffer,encoding,callback)}
+ }
+ await assert.rejects(()=>sendTimewebMail(info,()=>new LostAcceptance()),e=>e.deliveryUncertain===true);
+ await assert.rejects(()=>sendTimewebMail(info,()=>new RejectedRecipient()),e=>e.deliveryUncertain===false);
+});

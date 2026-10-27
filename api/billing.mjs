@@ -14,6 +14,12 @@ export function ensureBillingSchema(db,at=Date.now()){
     'CREATE TABLE IF NOT EXISTS billing_reminders (company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,kind TEXT NOT NULL,sent_ms INTEGER NOT NULL,PRIMARY KEY(company_id,kind));'+
     'CREATE TABLE IF NOT EXISTS billing_confirmations (token TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,actor_id TEXT NOT NULL,plan TEXT NOT NULL,expires_ms INTEGER NOT NULL,used INTEGER NOT NULL DEFAULT 0);'+
     'CREATE TABLE IF NOT EXISTS billing_grants (token TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,actor_id TEXT NOT NULL,plan TEXT NOT NULL,amount_rubles INTEGER NOT NULL,confirmed_ms INTEGER NOT NULL,paid_until_ms INTEGER NOT NULL);');
+  db.exec(`CREATE TABLE IF NOT EXISTS billing_email_deliveries (
+    company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,kind TEXT NOT NULL,
+    status TEXT NOT NULL,token TEXT NOT NULL,attempts INTEGER NOT NULL,next_attempt_ms INTEGER NOT NULL,
+    lease_until_ms INTEGER NOT NULL,sent_ms INTEGER,
+    PRIMARY KEY(company_id,kind));
+    CREATE TABLE IF NOT EXISTS billing_email_meta(key TEXT PRIMARY KEY,value_ms INTEGER NOT NULL);`);
   // Old automatic trials are not authorizations. Paid subscriptions are preserved.
   if(!db.prepare('PRAGMA table_info(company_billing)').all().some(x=>x.name==='trial_granted_by'))
     db.exec('ALTER TABLE company_billing ADD COLUMN trial_granted_by TEXT');
@@ -89,7 +95,7 @@ export function confirmReceivedPayment(db,c,actor,token,at=Date.now()){
 }
 export function reminderFor(db,c,at=Date.now()){
   const s=subscriptionFor(db,c,at);
-  if(!s||!s.trial_granted_by||s.state==='admin'||s.plan!==null)return null;
+  if(!s||!s.trial_granted_by||(s.state==='admin'||s.state==='paid')||s.plan!==null)return null;
   const elapsed=at-s.trial_started_ms;
   let kind;
   if(at>=s.trial_ends_ms)kind='trial_ended';

@@ -462,3 +462,12 @@ test('Website payment login requires a separate explicit confirmation in the bot
   assert.equal(login.actor(login.poll(a.challenge,a.secret).token),'101');
 });
 
+
+test('Telegram trial worker skips web-only owners and a notice already claimed by email before linking',async t=>{
+ const f=fixture(t);f.db.exec("INSERT INTO users VALUES('web:test');INSERT INTO companies(id,owner_id,name,industry) VALUES('web','web:test','Сайт','clinic');");
+ f.db.prepare('INSERT INTO company_billing(company_id,trial_started_ms,trial_ends_ms,trial_granted_by) SELECT ?,trial_started_ms,trial_ends_ms,trial_granted_by FROM company_billing WHERE company_id=?').run('web','a');
+ f.advance(24*3600000);
+ f.db.prepare("INSERT INTO billing_email_deliveries VALUES('a','trial_unused','sending','test',1,0,?,NULL)").run(Date.now()+3600000);
+ await f.tick();assert.ok(f.messages.every(m=>m.chat_id!=='web:test'));assert.ok(!f.messages.some(m=>m.chat_id==='101'&&m.text?.includes('Первый день')));
+ assert.equal(f.db.prepare("SELECT COUNT(*) n FROM billing_reminders WHERE company_id='a'").get().n,0);
+});
