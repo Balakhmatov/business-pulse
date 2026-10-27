@@ -72,7 +72,7 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
     const add = (id, value) => { facts[id] = value; };
     add('revenue', title+' за выбранный период '+r.period.from+' — '+r.period.to+' ('+days+' дней): '+money(r.revenue30_kopecks)+'.');
     // Data-quality qualifications appear once in the UI, not as negative AI insights.
-    add('receipts','За тот же период было '+currentReceipts+(r.operation_identity?.estimated?' условных групп записей (оценка по пациенту и дню).':' операций с уникальными номерами.'));
+    if(!r.operation_identity?.estimated)add('receipts','За тот же период было '+currentReceipts+' операций с уникальными номерами.');
     if(Number.isFinite(r.volume?.value))add('industry_volume',r.volume.label+': '+r.volume.value+' '+r.volume.unit+'. '+r.volume.caption);
     // Missing quantity cannot be treated as a falling business metric.
     if(Number.isFinite(r.customers?.financial?.average_ltv_kopecks)){
@@ -84,7 +84,7 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
       add('returning_patients','В выбранном периоде пациентов с оказанными услугами: '+v.period_patients+'; повторно обратившихся в другой день по доступной истории: '+v.returning_patients+'.');
     }
     if(r.customers?.available&&!r.customers.visits.available&&r.customers.activity?.available){const a=r.customers.activity;add('repeat_activity','За выбранный период людей с повторными операциями в разные дни: '+a.returning_patients+' из '+a.period_patients+'. Это даты операций, не подтверждённые повторные посещения. '+(a.estimated?'Связь людей и обращений приблизительная; процент погрешности неизвестен.':''));}
-    if (r.average_receipt_kopecks !== null) add('average', (r.operation_identity?.estimated?'Средняя сумма на условную группу записей (оценка): ':'Средний чек: ') + money(r.average_receipt_kopecks) + '.');
+    if (!r.operation_identity?.estimated && r.average_receipt_kopecks !== null) add('average','Средний чек: '+money(r.average_receipt_kopecks)+'.');
     // Coverage limitations are presented as a short footnote, except when the
     // chosen range itself is too incomplete for any dependable trend.
     if(curDays<Math.ceil(days*.55))add('data_coverage_limited', 'В выбранном диапазоне операции присутствуют только за '+curDays+' из '+days+' дней. Выводы о динамике требуют осторожности.');
@@ -109,11 +109,13 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
     // or source IDs are sent to the model; only finite summary facts.
     Object.assign(facts, days===30?buildInsightFacts(r, entries):buildHistoricalFacts(r, entries));
     Object.assign(facts, buildInPeriodFacts(r, entries));
+    // Limitations explain data provenance; they are not actionable business risks.
+    delete facts.analysis_limits;
     return { financial_basis:r.primary_basis,facts, stats: {
       current_covered_days: curDays, 
       selected_period_days: days,
       comparable, revenue_change_percent: comparable ? r.change_percent : null,
-      receipt_count: currentReceipts, refund_rows: refunds,
+      receipt_count: r.operation_identity?.estimated?null:currentReceipts, refund_rows: refunds,
       chart7_kopecks: r.chart7.map(x => x.amount_kopecks)
     }};
   }
