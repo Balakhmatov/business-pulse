@@ -330,6 +330,15 @@
        !Number.isInteger(mapping.amount)||mapping.amount<0||
        !Number.isInteger(mapping.item)||mapping.item<0)
       return manual('Нужно уточнить дату, сумму или наименование услуги.');
+    // An AI match for an arbitrary text column must not silently become the
+    // service/product field: that would corrupt top-services and quantities.
+    const itemHeader=norm(file.head[mapping.item]).toLowerCase();
+    const dateHeader=norm(file.head[mapping.date]).toLowerCase();
+    if(customerKind(itemHeader)||
+       !/услуг|товар|позици|номенклатур|наименован|процедур|вид работ|что делали|\bitem\b|\bservice\b|\bproduct\b|\bdescription\b/i.test(itemHeader))
+      return manual('Не удалось подтвердить столбец услуг или товаров.');
+    if(/рождени|регистрац|дата поставк|дата доставк/i.test(dateHeader))
+      return manual('Дата похожа на справочное поле, а не дату операции.');
     if(!['cash_receipts','recognized_revenue'].includes(basis))
       return manual('Не удалось достоверно определить тип денежных сумм.');
     const local=financialSemantics(file.head,mapping);
