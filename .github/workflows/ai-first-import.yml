@@ -9,6 +9,12 @@ on:
       - 'api/import-mapping.test.mjs'
       - 'api/ai.mjs'
       - 'api/ai-evidence.test.mjs'
+      - 'api/accumulate.mjs'
+      - 'api/accumulate.test.mjs'
+      - 'api/server.mjs'
+      - 'api/company-access.test.mjs'
+      - 'api/billing.mjs'
+      - 'api/billing.test.mjs'
       - 'api/minimal-import.test.mjs'
       - '.github/workflows/ai-first-import.yml'
   workflow_dispatch:
@@ -28,5 +34,8 @@ jobs:
           node --check api/import-mapping.mjs
           node --check api/ai.mjs
           node --check api/import-mapping.test.mjs
+          node --check api/server.mjs
+          node --check api/accumulate.mjs
+          node --check api/billing.mjs
       - name: Run import and financial safety tests
-        run: node --experimental-sqlite --test api/import-mapping.test.mjs api/minimal-import.test.mjs api/financial-auto.test.mjs api/ai-evidence.test.mjs
+        run: node --experimental-sqlite --test api/import-mapping.test.mjs api/minimal-import.test.mjs api/financial-auto.test.mjs api/ai-evidence.test.mjs api/accumulate.test.mjs api/billing.test.mjs api/company-access.test.mjs
