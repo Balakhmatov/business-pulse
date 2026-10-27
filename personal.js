@@ -835,12 +835,19 @@
     const ready=imported&&ai?.status==='ready'&&ai.analysis&&
       ai.primary_basis===r?.primary_basis&&ai.period_key===(r?.period?.from+'_'+r?.period?.to);
     if(ready){
-      const asItem=x=>({
-        title:x.title,
-        desc:x.explanation,
-        evidence:x.evidence||[],
-        recommendation:x.recommendation
-      });
+      const asItem=x=>{
+        const evidence=Array.isArray(x.evidence)?x.evidence:[];
+        // Keep a short grounded number in view; do not dump every lengthy
+        // limitation and calculation into the main recommendation paragraph.
+        const primary=evidence.find(v=>/ВНУТРИ выбранного периода|Рост услуги|Снижение услуги/i.test(v))||
+          evidence[0]||'';
+        const brief=primary.length>170?primary.slice(0,167).trim()+'…':primary;
+        return {
+          title:x.title,
+          desc:x.explanation+(brief?' '+brief:''),
+          recommendation:x.recommendation
+        };
+      };
       bad.splice(0,bad.length,...ai.analysis.issues.map(asItem));
       good.splice(0,good.length,...ai.analysis.positives.map(asItem));
       if(!good.length)good.push({title:'Пока нет заметных положительных изменений',desc:'По загруженным данным пока нельзя уверенно выделить положительные изменения.'});
