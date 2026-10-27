@@ -1357,7 +1357,7 @@
       'Новые строки добавятся, совпадающие не продублируются.';
     $('importDifferenceDetails').textContent=(stats.examples||[]).map(x=>
       x.date+' · '+x.item+' · '+money(x.previous_amount_kopecks/100)+' → '+money(x.new_amount_kopecks/100)
-    ).join('\\n');
+    ).join('\n');
     allowChanges.checked=false;
     file._bpAutoStarted=false;
     $('confirmImport').hidden=false;
