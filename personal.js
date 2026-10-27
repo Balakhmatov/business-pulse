@@ -1349,8 +1349,12 @@
   };
   function showComparison(file,stats){
     differenceNotice.hidden=false;
-    $('importDifferenceText').textContent='В ранее загруженных данных обнаружены изменения: '+number(stats.updated)+
-      ' строк. Новые строки добавятся, совпадающие не продублируются.';
+    const corrections=stats.updated>0
+      ?'В ранее загруженных данных обнаружены изменения: '+number(stats.updated)+' строк. ':'';
+    const cancelled=file._bpCancelledCount>0
+      ?'В файле есть отменённые записи: '+number(file._bpCancelledCount)+'. Ранее сохранённые строки не удаляются. ':'';
+    $('importDifferenceText').textContent=corrections+cancelled+
+      'Новые строки добавятся, совпадающие не продублируются.';
     $('importDifferenceDetails').textContent=(stats.examples||[]).map(x=>
       x.date+' · '+x.item+' · '+money(x.previous_amount_kopecks/100)+' → '+money(x.new_amount_kopecks/100)
     ).join('\\n');
@@ -1358,7 +1362,7 @@
     file._bpAutoStarted=false;
     $('confirmImport').hidden=false;
     $('confirmImport').disabled=false;
-    recognitionMessage('Для изменений существующих строк нужно подтверждение.');
+    recognitionMessage('Проверьте предупреждение перед загрузкой.');
   }
   function showImportIssue(message){
     $('confirmImport').hidden=false;
@@ -1413,7 +1417,9 @@
       if(!file)throw Error('Сначала выберите файл.');
       const isCorrection=correctionMode.checked;
       const result=parseImported(file,columns);
-      if(result.cancelled>0&&!isCorrection)throw Error('В файле есть отменённые операции. Выберите режим исправлений и проверьте изменения.');
+      // Cancelled lines are not deletions. Keep prior values and warn before saving
+      // the other valid rows; partial exports must never delete missing entries.
+      file._bpCancelledCount=isCorrection?0:result.cancelled;
       if(result.invalid>0)throw Error('Обнаружено '+result.invalid+' строк с ошибками: '+result.invalidExamples.join('; ')+'. Исправьте данные перед загрузкой.');
       if(!result.rows.length&&!(isCorrection&&result.cancelled_ids.length))
         throw Error('Нет корректных оплаченных операций для импорта.');
@@ -1450,7 +1456,7 @@
         $('confirmImport').disabled=true;
         $('importAlert').textContent='Сравниваем с загруженными данными…';
         const differences=await compareImport(file,columns,financialBasis,rows);
-        if(differences.updated>0&&!allowChanges.checked){
+        if((differences.updated>0||file._bpCancelledCount>0)&&!allowChanges.checked){
           showComparison(file,differences);
           $('importAlert').textContent='';
           return;
@@ -1510,7 +1516,7 @@
       state.mineTemplateNotice=savedTemplate
         ?' Формат выгрузки запомнен для следующих загрузок.'
         :' Соответствие столбцов не удалось запомнить; операции сохранены.';
-      state.mineImportStats=answer.stats||null;
+      state.mineImportStats={...(answer.stats||{}),skipped:result.skipped,duplicate:result.duplicate,cancelled:result.cancelled};
       state.mineViewBasis=answer.stats?.financial_basis==='paid_fulfilled'?'cash_receipts':
         ['cash_receipts','recognized_revenue'].includes(answer.stats?.financial_basis)?
           answer.stats.financial_basis:null;
