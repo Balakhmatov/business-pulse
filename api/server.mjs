@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {createPlatformAdmin} from './platform-admin.mjs';
 import { createWebLogin } from './web-login.mjs';
 import { createWebsiteAccounts } from './website-accounts.mjs';
 import { createWebsiteSelfService } from './website-selfservice.mjs';
@@ -57,6 +58,7 @@ const customerIdentity=createCustomerIdentity(db);
 const accumulator=createAccumulator(db,{customerKeyFor:(c,row)=>customerIdentity.key(c.id,row.customer_ref,row.customer_ref_kind)});
 const correctionService=createCorrectionService({db,secret:token,prepareInput:customerInput});
 const importMapper=createImportMapper({db});
+const platformAdmin=createPlatformAdmin(db);
 const st={
   user:db.prepare('INSERT OR IGNORE INTO users(telegram_id) VALUES(?)'),
   newCompany:db.prepare('INSERT INTO companies(id,owner_id,name,industry) VALUES(?,?,?,?)'),
@@ -313,6 +315,10 @@ const server=http.createServer(async(req,res)=>{
   try{id=websiteActor||(paymentOnlyActor&&webPaymentRoute?paymentOnlyActor:telegramID(req.headers['x-telegram-init-data']));}
   catch{return reply(res,401,{error:'Войдите в личный кабинет или откройте приложение через Telegram.'},origin);}
   try{
+    if(url.pathname.startsWith('/api/admin/')){
+      if(req.method!=='GET')return reply(res,405,{error:'Только просмотр.'},origin);
+      return reply(res,200,platformAdmin.handle(id,url.pathname.slice('/api/admin/'.length),url.searchParams),origin);
+    }
     if(url.pathname==='/api/account-link/status'&&req.method==='GET'){
       if(!websiteActor)return reply(res,403,{error:'Войдите на сайт по email для привязки.'},origin);
       return reply(res,200,accountLink.linked(websiteActor),origin);

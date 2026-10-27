@@ -114,9 +114,10 @@ runuser -u business-pulse -- test -r "$REPO/bot/index.mjs"
 cd "$REPO"
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check api/server.mjs
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check bot/index.mjs
+runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check admin.js
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check web-access.js
 runuser -u business-pulse -- /usr/local/bin/node-business-pulse --check api/website-accounts.mjs
-runuser -u business-pulse -- /usr/local/bin/node-business-pulse --experimental-sqlite --test api/accumulate.test.mjs api/test-reset.test.mjs api/company-admin.test.mjs api/company-members.test.mjs api/company-access.test.mjs api/website-accounts.test.mjs api/web-login.test.mjs api/billing.test.mjs api/payment-links.test.mjs api/yookassa.test.mjs bot/digest.test.mjs bot/controls.test.mjs
+runuser -u business-pulse -- /usr/local/bin/node-business-pulse --experimental-sqlite --test api/platform-admin.test.mjs api/accumulate.test.mjs api/test-reset.test.mjs api/company-admin.test.mjs api/company-members.test.mjs api/company-access.test.mjs api/website-accounts.test.mjs api/web-login.test.mjs api/billing.test.mjs api/payment-links.test.mjs api/yookassa.test.mjs bot/digest.test.mjs bot/controls.test.mjs
 
 systemctl start "$API_SERVICE"
 ready=0

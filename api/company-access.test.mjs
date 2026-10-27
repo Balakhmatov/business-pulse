@@ -460,3 +460,22 @@ test('Minimal clinic API accepts names, dates, services and amounts without IDs 
   assert.equal(db.prepare('SELECT revision FROM ai_dataset_versions WHERE company_id=?').get(company.id).revision,records);
  }finally{db.close();}
 });
+
+test('Platform administration HTTP routes require verified operator identity, including when a client works in operator company',async t=>{
+ const {call,base,dbPath}=await apiFixture(t,false);
+ assert.equal((await fetch(base+'/api/admin/overview')).status,401);
+ assert.equal((await fetch(base+'/api/admin/overview',{headers:{'X-BP-Web-Session':'a'.repeat(48)}})).status,401);
+ assert.equal((await call('404','/admin/overview')).status,403);
+ const db=new DatabaseSync(dbPath);
+ try{assert.equal(db.prepare('SELECT COUNT(*) n FROM companies').get().n,0,'Admin lookup must never create company data');}finally{db.close();}
+ const owner=(await call('1296951270','/me')).data.company;
+ companyAdmin({dbPath,action:'addmember',ownerId:'1296951270',memberId:'404'});
+ assert.equal((await call('404','/admin/access')).status,403);
+ assert.equal((await call('1296951270','/admin/access')).data.admin,true);
+ const overview=await call('1296951270','/admin/overview');assert.equal(overview.status,200);assert.equal(overview.data.summary.admin_companies,1);
+ const companies=await call('1296951270','/admin/companies');assert.equal(companies.data.items[0].id,owner.id);
+ assert.equal((await call('1296951270','/admin/payments')).status,200);
+ assert.equal((await call('1296951270','/admin/companies',{delete:true})).status,405);
+ assert.equal((await call('1296951270','/admin/missing')).status,404);
+ assert.equal((await call('1296951270','/admin/companies?page=-1')).status,400);
+});
