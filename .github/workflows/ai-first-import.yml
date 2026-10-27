@@ -8,6 +8,9 @@ on:
       - 'api/import-mapping.mjs'
       - 'api/import-mapping.test.mjs'
       - 'api/ai.mjs'
+      - 'api/ai-inperiod.mjs'
+      - 'api/ai-inperiod.test.mjs'
+      - 'api/ai-period-facts.mjs'
       - 'api/ai-evidence.test.mjs'
       - 'api/accumulate.mjs'
       - 'api/accumulate.test.mjs'
@@ -38,4 +41,4 @@ jobs:
           node --check api/accumulate.mjs
           node --check api/billing.mjs
       - name: Run import and financial safety tests
-        run: node --experimental-sqlite --test api/import-mapping.test.mjs api/minimal-import.test.mjs api/financial-auto.test.mjs api/ai-evidence.test.mjs api/accumulate.test.mjs api/billing.test.mjs api/company-access.test.mjs
+        run: node --experimental-sqlite --test api/import-mapping.test.mjs api/minimal-import.test.mjs api/financial-auto.test.mjs api/ai-evidence.test.mjs api/ai-inperiod.test.mjs api/accumulate.test.mjs api/billing.test.mjs api/company-access.test.mjs
