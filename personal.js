@@ -1326,6 +1326,76 @@
     currentRecognition=work;
     void resolveRecognition(work);
   });
+  const differenceNotice=$('importDifferenceNotice'),allowChanges=$('importAllowChanges');
+  const importDetails=$('importAdvanced');
+  function clearComparison(){
+    differenceNotice.hidden=true;
+    allowChanges.checked=false;
+    $('importDifferenceDetails').hidden=true;
+    $('importDifferenceDetails').textContent='';
+    $('importInspectChanges').textContent='Проверить изменения';
+    if(state.fileTable)state.fileTable._bpPreflight=null;
+  }
+  document.addEventListener('bp:import-table-ready',()=>{
+    clearComparison();
+    importDetails.open=false;
+    $('importActionError').hidden=true;
+    $('importActionError').textContent='';
+  });
+  $('importInspectChanges').onclick=()=>{
+    const details=$('importDifferenceDetails');
+    details.hidden=!details.hidden;
+    $('importInspectChanges').textContent=details.hidden?'Проверить изменения':'Скрыть изменения';
+  };
+  function showComparison(file,stats){
+    differenceNotice.hidden=false;
+    $('importDifferenceText').textContent='В ранее загруженных данных обнаружены изменения: '+number(stats.updated)+
+      ' строк. Новые строки добавятся, совпадающие не продублируются.';
+    $('importDifferenceDetails').textContent=(stats.examples||[]).map(x=>
+      x.date+' · '+x.item+' · '+money(x.previous_amount_kopecks/100)+' → '+money(x.new_amount_kopecks/100)
+    ).join('\\n');
+    allowChanges.checked=false;
+    file._bpAutoStarted=false;
+    $('confirmImport').hidden=false;
+    $('confirmImport').disabled=false;
+    recognitionMessage('Для изменений существующих строк нужно подтверждение.');
+  }
+  function showImportIssue(message){
+    $('confirmImport').hidden=false;
+    $('confirmImport').disabled=false;
+    $('mappingSection').hidden=false;
+    const error=$('importActionError');
+    error.textContent=message;
+    error.hidden=false;
+    error.style.cssText='color:#b42318;background:#fff1f0;border:1px solid #e39b93;border-radius:9px;padding:10px;font-size:12px;line-height:1.5;flex-basis:100%';
+    importDetails.open=true;
+    let focus= /дата|дату/i.test(message)?$('col_date'):
+      /сумм|денежн|стоимост|выруч/i.test(message)?$('col_amount'):
+      /количеств/i.test(message)?$('col_quantity'):
+      $('mappingFields');
+    if(focus&&focus.classList)focus.classList.add('bp-import-error-field');
+    if(focus?.scrollIntoView)focus.scrollIntoView({behavior:'smooth',block:'center'});
+    if(focus?.focus&&focus.tagName==='SELECT')focus.focus({preventScroll:true});
+  }
+  async function compareImport(file,columns,basis,rows){
+    const fingerprint=JSON.stringify([columns,basis,file._bpRecognitionAttempt||0,rows.length]);
+    if(file._bpPreflight?.fingerprint===fingerprint)return file._bpPreflight.stats;
+    const combined={added:0,updated:0,unchanged:0,received:0,examples:[]};
+    for(let i=0;i<rows.length;i+=5000){
+      const answer=await request('/import/compare',{
+        source:file.name.slice(0,120),financial_basis:basis,
+        source_headers:file.head.slice(0,80),amount_index:columns.amount,
+        rows:rows.slice(i,i+5000)
+      });
+      if(state.fileTable!==file)throw Error('Выбран другой лист. Повторите загрузку.');
+      const stats=answer.stats||{};
+      for(const k of ['received','added','updated','unchanged'])combined[k]+=Number(stats[k]||0);
+      combined.examples.push(...(stats.examples||[]).slice(0,Math.max(0,5-combined.examples.length)));
+    }
+    file._bpPreflight={fingerprint,stats:combined};
+    return combined;
+  }
+
   const originalConfirm=$('confirmImport').onclick;
   $('confirmImport').onclick=async()=>{
     if(state.business!=='mine'){intro.textContent=localIntro;return originalConfirm();}
@@ -1339,8 +1409,10 @@
       if(financial?.needsConfirm&&!$('financialConfirm').checked){
         throw Error('Проверьте замечания к суммам и подтвердите их перед загрузкой.');
       }
+      const file=state.fileTable;
+      if(!file)throw Error('Сначала выберите файл.');
       const isCorrection=correctionMode.checked;
-      const result=parseImported(state.fileTable,columns);
+      const result=parseImported(file,columns);
       if(result.cancelled>0&&!isCorrection)throw Error('В файле есть отменённые операции. Выберите режим исправлений и проверьте изменения.');
       if(result.invalid>0)throw Error('Обнаружено '+result.invalid+' строк с ошибками: '+result.invalidExamples.join('; ')+'. Исправьте данные перед загрузкой.');
       if(!result.rows.length&&!(isCorrection&&result.cancelled_ids.length))
@@ -1370,6 +1442,20 @@
           JSON.stringify(correctionData)!==checkedCorrection.payloadText||
           Date.now()>=checkedCorrection.expires_at_ms)){
         throw Error('Сначала проверьте исправления и подтвердите список изменений.');
+      }
+      if(!isCorrection){
+        // The comparison is read-only. Only real changes to previously
+        // imported values require the owner's explicit opt-in.
+        state.mineSaving=true;
+        $('confirmImport').disabled=true;
+        $('importAlert').textContent='Сравниваем с загруженными данными…';
+        const differences=await compareImport(file,columns,financialBasis,rows);
+        if(differences.updated>0&&!allowChanges.checked){
+          showComparison(file,differences);
+          $('importAlert').textContent='';
+          return;
+        }
+        differenceNotice.hidden=true;
       }
       state.mineSaving=true;
       $('confirmImport').disabled=true;
@@ -1442,10 +1528,8 @@
     }catch(error){
       const message=error.message||'Не удалось сохранить отчёт.';
       submitError=message;
-      if(state.fileTable?._bpAutoStarted){
-        state.fileTable._bpAutoStarted=false;
-        showImportReview(state.fileTable,'Не удалось завершить автоматическую загрузку. '+message);
-      }
+      if(state.fileTable?._bpAutoStarted)state.fileTable._bpAutoStarted=false;
+      if($('modal').classList.contains('show'))showImportIssue(message);
       $('importAlert').textContent=message;
       const actionError=$('importActionError');
       if(actionError){actionError.textContent=message;actionError.hidden=false;}
