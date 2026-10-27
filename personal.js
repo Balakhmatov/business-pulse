@@ -901,7 +901,7 @@
   const localIntro=intro.textContent;
   function refreshIntro(){
     intro.textContent=state.business==='mine'
-      ?'CSV и Excel (.xlsx) дополняют историю: совпадающие операции обновляются. Можно загрузить отчёт без ID операции: записи будут связаны по пациенту и дате, с пометкой об оценке. Исходный файл читается в браузере; выбранные поля сохраняются для аналитики компании. Передавайте персональные данные только при наличии законного основания.'
+      ?'Выберите Excel или CSV. Бизнес Пульс сам определит показатели и подготовит аналитику. Если в данных будет неоднозначность, сервис попросит уточнение.'
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','sideImport'].forEach(id=>{
@@ -1182,6 +1182,7 @@
   function showImportReview(file,message){
     if(state.fileTable!==file||!$('modal').classList.contains('show'))return;
     $('mappingSection').hidden=false;
+    $('confirmImport').hidden=false;
     recognitionMessage(message||'Для этой выгрузки требуется уточнение. Проверьте поля ниже.');
   }
 
@@ -1293,6 +1294,7 @@
     }
     // Keep technical mapping and money confirmation out of the normal first-run flow.
     $('mappingSection').hidden=true;
+    $('confirmImport').hidden=true;
     recognitionMessage('Распознаём таблицу…');
     const header=file.head;
     const statistical=window.BP_SmartImport?.guess(header,file.rows.slice(0,80))?.profiles;
