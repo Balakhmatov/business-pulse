@@ -992,7 +992,7 @@
     const conflict=basisConflict();
     if(conflict)bookHelp.textContent=conflict;
     const approved=!!bookSelect.value&&(!earned||earnedConfirm.checked)&&!conflict;
-    if(!approved)$('confirmImport').disabled=true;
+    if(!approved&&state.business!=='mine')$('confirmImport').disabled=true;
     if(typeof correctionMode!=='undefined'&&correctionMode.checked)setCorrectionButton();
     return approved;
   }
@@ -1112,7 +1112,9 @@
     }
   });
   document.addEventListener('bp:import-table-ready',event=>{
-    correctionsPanel.hidden=state.business!=='mine';
+    // Routine data changes are handled by the automatic comparison dialog.
+    // Keep legacy cancellation tools out of the customer's upload flow.
+    correctionsPanel.hidden=true;
     correctionMode.checked=false;
     correctionDetails.hidden=true;
     invalidateCorrection();
@@ -1183,7 +1185,8 @@
     if(state.fileTable!==file||!$('modal').classList.contains('show'))return;
     $('mappingSection').hidden=false;
     $('confirmImport').hidden=false;
-    recognitionMessage(message||'Для этой выгрузки требуется уточнение. Проверьте поля ниже.');
+    $('confirmImport').disabled=false;
+    recognitionMessage(message||'Если файл определён неверно, откройте дополнительные настройки.');
   }
 
   function tryAutomaticImport(file){
@@ -1200,6 +1203,10 @@
       if(!decision?.ready)return decision||{ready:false,reason:'Нужно уточнить формат.'};
       if(!validateBookChoice())
         return {ready:false,reason:basisConflict()||'Нужно уточнить финансовый показатель.'};
+      if(file._bpMultipleSheets){
+        showImportReview(file,'Выбран первый лист. При необходимости выберите другой, затем нажмите «Применить данные».');
+        return {ready:true,requiresClick:true};
+      }
       file._bpAutoStarted=true;
       recognitionMessage('Файл распознан. Сохраняем данные и готовим аналитику…');
       // The existing submit handler performs the exact same validations,
@@ -1248,7 +1255,7 @@
           $('col_date').dispatchEvent(new Event('change'));
         }finally{file._bpApplying=false;}
         const automatic=tryAutomaticImport(file);
-        if(!automatic.ready)showImportReview(file,automatic.reason);
+        if(!automatic.ready)showImportReview(file,'Нужно уточнить формат таблицы.');
       }else{
         const seconds=Number(answer?.retry_after_seconds)||0;
         const minutes=Math.max(1,Math.ceil(seconds/60));
@@ -1260,7 +1267,7 @@
               ?'Система не смогла однозначно распознать таблицу. '
               :answer?.reason==='unavailable'||answer?.reason==='disabled'
                 ?'ИИ-распознавание сейчас недоступно. ':'';
-          showImportReview(file,reason+(automatic.reason||'Проверьте поля ниже.'));
+          showImportReview(file,reason+'При необходимости откройте дополнительные настройки.');
           retryRecognition.hidden=!(needsAI&&answer?.can_retry===true);
         }
       }
@@ -1268,7 +1275,7 @@
       if(state.fileTable!==file||file._bpRecognitionAttempt!==attempt)return;
       console.warn('Import mapping lookup unavailable:',error.message);
       const automatic=tryAutomaticImport(file);
-      if(!automatic.ready)showImportReview(file,'ИИ-распознавание временно недоступно. '+(automatic.reason||'Проверьте поля.'));
+      if(!automatic.ready)showImportReview(file,'Не удалось автоматически определить все данные.');
       retryRecognition.hidden=automatic.ready;
     }finally{
       if(state.fileTable===file&&file._bpRecognitionAttempt===attempt){
@@ -1289,7 +1296,7 @@
     currentRecognition=null;
     if(!file||state.business!=='mine')return;
     if(file.reportType==='aggregate'){
-      showImportReview(file,'Это сводный отчёт. Для точного учёта нужна детализация операций.');
+      showImportReview(file,'В этом листе обнаружена сводка вместо отдельных продаж. Выберите лист с данными.');
       return;
     }
     // Keep technical mapping and money confirmation out of the normal first-run flow.
