@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { TRIAL_MS,PLANS,ensureBillingSchema,ensureCompanyBilling,startCompanyTrial,subscriptionFor,assertSubscription,paymentConfirmation,confirmReceivedPayment,reminderFor,addCalendarMonths } from './billing.mjs';
+import { TRIAL_MS,PLANS,ensureBillingSchema,isAdminWorkspace,ensureCompanyBilling,startCompanyTrial,subscriptionFor,assertSubscription,paymentConfirmation,confirmReceivedPayment,reminderFor,addCalendarMonths } from './billing.mjs';
 
 const START=Date.parse('2026-10-19T10:00:00Z');
 function fixture(t,trial=true){
@@ -93,4 +93,43 @@ test('Migration revokes old automatic trials, preserves paid time and never gran
   assert.equal(subscriptionFor(db,{id:'b',owner_id:'202'},START+1000).state,'paid');
   ensureBillingSchema(db,START+2000);
   assert.equal(subscriptionFor(db,{id:'a',owner_id:'101'},START+2000).state,'pending');
+});
+
+test('Admin-owned company stays active after trial expiry, clients remain expired',t=>{
+  const {db,c}=fixture(t);
+  const admin={id:'admin-owned',owner_id:'1296951270'};
+  db.prepare('INSERT INTO companies(id,owner_id) VALUES(?,?)').run(admin.id,admin.owner_id);
+  ensureCompanyBilling(db,admin);
+  const after=START+TRIAL_MS+86400000;
+  assert.equal(subscriptionFor(db,admin,after).state,'admin');
+  assert.equal(subscriptionFor(db,admin,after).access,true);
+  assert.equal(subscriptionFor(db,admin,after).trial_ends_ms,0);
+  assert.equal(subscriptionFor(db,c,after).state,'expired');
+});
+test('An allowlisted website administrator has permanent access ONLY to owned workspace',t=>{
+  const {db,c}=fixture(t,false);
+  const actor='web:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
+  db.exec("CREATE TABLE web_accounts(actor_id TEXT PRIMARY KEY);");
+  db.prepare('INSERT INTO web_accounts(actor_id) VALUES(?)').run(actor);
+  db.prepare('INSERT INTO companies(id,owner_id) VALUES(?,?)').run('web-admin',actor);
+  const website={id:'web-admin',owner_id:actor};
+  ensureCompanyBilling(db,website);
+  const before=process.env.BP_ADMIN_WEB_IDS;
+  process.env.BP_ADMIN_WEB_IDS=actor;
+  t.after(()=>{if(before===undefined)delete process.env.BP_ADMIN_WEB_IDS;else process.env.BP_ADMIN_WEB_IDS=before;});
+  assert.equal(isAdminWorkspace(db,website),true);
+  assert.equal(subscriptionFor(db,website,START+864000000).state,'admin');
+  assert.equal(subscriptionFor(db,c,START+864000000).access,false);
+  const masquerade={id:c.id,owner_id:actor};
+  assert.equal(subscriptionFor(db,masquerade,START+864000000).state,'pending',
+    'Forged owner_id must never grant permanent admin access');
+});
+test('Website owner not allowlisted and not linked remains on normal billing',t=>{
+  const {db}=fixture(t,false);
+  const actor='web:bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
+  db.exec('CREATE TABLE web_accounts(actor_id TEXT PRIMARY KEY);');
+  db.prepare('INSERT INTO web_accounts(actor_id) VALUES(?)').run(actor);
+  db.prepare('INSERT INTO companies(id,owner_id) VALUES(?,?)').run('client',actor);
+  ensureCompanyBilling(db,{id:'client'});
+  assert.equal(subscriptionFor(db,{id:'client',owner_id:actor},START).state,'pending');
 });

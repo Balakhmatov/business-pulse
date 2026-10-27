@@ -35,6 +35,14 @@
 .modal-top{position:sticky;top:-27px;background:#fff;z-index:3;padding:3px 0 10px}
 .modal .import-actions{position:sticky;bottom:-27px;background:#fff;z-index:3;padding:13px 0 3px;margin-top:12px}
 .modal .file-status,#smartImportInfo,.modal .import-alert{overflow-wrap:anywhere;word-break:normal}
+#demoFinancialBookField[hidden],#importPreview[hidden],#correctionsPanel[hidden],#financialPanel[hidden],#mappingSection[hidden],#importDifferenceNotice[hidden]{display:none!important}
+#importAdvanced{margin-top:10px}
+#importAdvanced>summary{cursor:pointer;padding:10px 12px;border:1px solid #e2e7f0;border-radius:10px;color:#68758d;font-size:12px;font-weight:600;list-style-position:inside}
+#importAdvanced[open]>summary{border-color:#b9c7e3;background:#f7faff}
+#importAdvanced .map-grid{margin-top:12px}
+.bp-import-error-field{outline:2px solid #bc322f!important;outline-offset:2px}
+#importDifferenceNotice[hidden],#mappingSection[hidden],#importAdvanced:not([open])>div{display:none!important}
+
 .modal #sheetControl,.modal #excelSheet{max-width:100%;min-width:0}
 .modal .upload-zone{overflow:hidden}
 @media(max-width:680px){
@@ -178,8 +186,8 @@ body.private-workspace .demo-periods{display:none!important}
 <footer id="bpPaymentFooter" class="bp-payment-footer" aria-label="Оплата и тарифы"><a class="bp-prices-link" href="?view=payment" data-bp-pay>Цены</a></footer>
 <nav aria-label="Юридическая информация" style="display:flex;justify-content:center;text-align:center;flex-wrap:wrap;gap:10px 18px;font-size:12px;line-height:1.6;padding:8px 0 20px"><a href="./legal/offer.html">Оферта и соглашение</a><a href="./legal/privacy.html">Конфиденциальность</a><a href="./legal/tariffs.html">Тарифы</a><a href="./legal/refunds.html">Возвраты</a><a href="./legal/contacts.html">Контакты и реквизиты</a></nav>
 </main></div>
-<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Загрузить данные</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите Excel или CSV. Система определит показатели автоматически. В деморежиме данные остаются в браузере.</p><p style="font-size:12px;color:#626c85;line-height:1.6">Можно выбрать обычную выгрузку: исходный файл читается в браузере, неиспользуемые столбцы не сохраняются в истории операций. Если выбранные поля содержат персональные данные, убедитесь, что у вас есть законное основание передать их для аналитики компании. Данные отчётов не используются для рекламы. <a href="./legal/privacy.html" target="_blank" rel="noopener">Как обрабатываются данные</a></p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 32 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Уточнение данных</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Что означают суммы в этом столбце</strong><div id="financialType" style="font-size:14px;font-weight:750;color:#202848;margin-top:8px"></div><div id="financialMessage" style="margin-top:7px;line-height:1.6;white-space:pre-line"></div><label id="financialConfirmLabel" style="align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил авансы, частичные оплаты и возвраты. Эти суммы подходят для выбранного отчёта.</span></label></div><div class="import-preview" id="importPreview"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><div class="import-action-error" id="importActionError" role="alert" hidden></div><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
-<script src="smart-import.js?v=20261027-ai-first-v2"></script>
+<div class="modal-cover" id="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle"><div class="modal"><div class="modal-top"><h2 id="importTitle">Загрузить данные</h2><button class="close" id="closeModal" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button></div><p class="modal-intro">Загрузите Excel или CSV. Система определит показатели автоматически. В деморежиме данные остаются в браузере.</p><p style="font-size:12px;color:#626c85;line-height:1.6">Если файл содержит персональные данные, убедитесь, что у вас есть законное основание передать их для аналитики компании. Данные отчётов не используются для рекламы. <a href="./legal/privacy.html" target="_blank" rel="noopener">Как обрабатываются данные</a></p><div class="upload-zone" id="dropZone"><div class="upload-symbol"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#i-file"/></svg></div><strong>Выберите CSV / Excel или перетащите сюда</strong><span>CSV (UTF-8, Windows-1251) или Excel .xlsx · до 32 МБ</span><input type="file" id="fileInput" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Выбрать CSV или Excel"></div><div class="file-status" id="fileStatus"></div><div id="mappingSection" hidden><details id="importAdvanced"><summary>Дополнительные настройки</summary><div id="smartImportInfo" role="status" style="margin-top:14px;padding:12px;border-radius:10px;background:#f3f4fb;color:#464b66;font-size:12px;line-height:1.5" hidden></div><div style="font-size:13px;font-weight:800;margin-top:20px">Уточнение данных</div><div class="map-grid" id="mappingFields"></div><div id="financialPanel" class="import-preview" hidden><strong>Что означают суммы в этом столбце</strong><div id="financialType" style="font-size:14px;font-weight:750;color:#202848;margin-top:8px"></div><div id="financialMessage" style="margin-top:7px;line-height:1.6;white-space:pre-line"></div><label id="financialConfirmLabel" style="align-items:flex-start;gap:10px;margin-top:12px;color:#333b60;font-size:12px" hidden><input type="checkbox" id="financialConfirm" style="margin-top:2px;accent-color:#6561e6;flex:none"/><span>Я проверил авансы, частичные оплаты и возвраты. Эти суммы подходят для выбранного отчёта.</span></label></div><div class="import-preview" id="importPreview"></div></details></div><div id="importDifferenceNotice" hidden role="status" style="margin-top:12px;padding:12px 14px;border-radius:11px;background:#fff8e9;color:#5b4624;font-size:13px;line-height:1.5"><div id="importDifferenceText"></div><label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" id="importAllowChanges"/><span>Всё равно загрузить</span></label><button type="button" class="ghost-btn" id="importInspectChanges" style="margin-top:10px;min-height:36px">Проверить изменения</button><div id="importDifferenceDetails" hidden style="margin-top:8px;white-space:pre-line;max-height:180px;overflow:auto"></div></div><div class="import-alert" id="importAlert" role="alert"></div><div class="import-actions"><div class="import-action-error" id="importActionError" role="alert" hidden></div><button id="cancelImport" class="ghost-btn" type="button">Отмена</button><button id="confirmImport" class="primary-btn" type="button" disabled>Применить данные</button></div></div></div>
+<script src="smart-import.js?v=20261027-import-minimal-v3"></script>
 <script src="excel-adapter.js?v=20261018-smart-v2-fallback"></script>
 <script type="module">
 import { demoSummary, withDemoBooks, demoAnalysis } from './demo-data.mjs?v=20261026-demo90-v1';
@@ -329,7 +337,7 @@ function downloadSample(){if(state.business!=='mine')return;const exampleBusines
 let importReadToken=0,excelBook=null;
 const sheetControl=document.createElement('div');
 sheetControl.id='sheetControl';sheetControl.hidden=true;sheetControl.style.marginTop='12px';
-sheetControl.innerHTML='<label for="excelSheet" style="font-size:13px;font-weight:700;display:block;margin-bottom:6px">Лист Excel</label><select id="excelSheet" style="width:100%;padding:11px;border:1px solid #d7d9e6;border-radius:10px;background:#fff"></select>';
+sheetControl.innerHTML='<p style="font-size:12px;line-height:1.5;color:#66718a;margin:0 0 8px">По умолчанию расчёт идёт по первому листу. Если нужен другой лист для анализа, выберите его из списка ниже.</p><label for="excelSheet" style="font-size:13px;font-weight:700;display:block;margin-bottom:6px">Лист Excel</label><select id="excelSheet" style="width:100%;padding:11px;border:1px solid #d7d9e6;border-radius:10px;background:#fff"></select>';
 $('fileStatus').after(sheetControl);
 function showModal(open){
  if(open&&state.business!=='mine')return;
@@ -343,6 +351,9 @@ function showModal(open){
     $('importActionError').textContent='';
     $('mappingSection').hidden=true;
     $('confirmImport').disabled=true;
+    $('confirmImport').hidden=false;
+    $('importDifferenceNotice').hidden=true;
+    $('importAdvanced').open=false;
     sheetControl.hidden=true;
     excelBook=null;
     state.fileTable=null;
@@ -552,6 +563,7 @@ function financialReview(file,columns){
 function customerKindForPreview(f,m){return m.customer>=0?window.BP_SmartImport?.customerKind(f.head[m.customer]):null;}
 function preview(f){
   const panel=$('financialPanel');
+  $('importPreview').hidden=state.business==='mine';
   try{
     const m=mapping(),result=parseImported(f,m);
     const review=financialReview(f,m);
@@ -575,7 +587,7 @@ function preview(f){
     const correctionMode=typeof document!=='undefined'&&document.getElementById('useCorrections')?.checked===true;
     $('importActionError').textContent='';
     $('importActionError').hidden=true;
-    $('importAlert').textContent=result.cancelled>0&&!correctionMode
+    $('importAlert').textContent=state.business==='mine'?'':result.cancelled>0&&!correctionMode
       ?'Импорт остановлен: найдено '+number(result.cancelled)+' отменённых операций. Для них нужна отдельная проверка исправлений (режим ниже).'
       :result.invalid>0
         ?'Импорт остановлен: '+number(result.invalid)+' строк с ошибками. '+result.invalidExamples.join('; ')+'. Исправьте файл или выбор столбцов.'
@@ -590,16 +602,18 @@ function preview(f){
       selectedBook==='cash_receipts'?'Оплата':'Операция';
     const estimated=result.rows.some(row=>row.synthetic_id);
     const identityNote=(estimated?'Без ID операции: визиты сгруппированы по пациенту и дню; средний чек и число визитов — оценки. ':'')+(customerKindForPreview(f,m)==='name'?'Пациенты определены по ФИО: совпадения могут объединить людей, разное написание — разделить одного человека.':'');
-    $('importPreview').innerHTML='<strong>Предварительная проверка</strong><p>'+escapeHTML(identityNote)+'</p><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':positiveLabel)+'</td></tr>').join('')+'</tbody></table>';
-    $('confirmImport').disabled=review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked);
+    $('importPreview').innerHTML='<strong>Сведения о файле</strong><p>'+escapeHTML(identityNote)+'</p><div>Принято строк: '+number(result.rows.length)+' · пропущено: '+number(result.skipped)+' · ошибок: '+number(result.invalid)+' · точных дублей: '+number(result.duplicate)+' · возвратов: '+number(result.refunds)+'</div><table class="preview-table"><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th><th>Тип</th></tr></thead><tbody>'+examples.map(r=>'<tr><td>'+r.date+'</td><td>'+escapeHTML(r.item)+'</td><td>'+money(r.amount)+'</td><td>'+(r.status==='refund'?'Возврат':positiveLabel)+'</td></tr>').join('')+'</tbody></table>';
+    $('confirmImport').disabled=state.business==='mine'?false:(review.blocked||result.invalid>0||(!correctionMode&&(result.cancelled>0||!result.rows.length))||correctionMode||(review.needsConfirm&&!ack.checked));
   }catch(e){
     f._bpFinancialReview=null;
     panel.hidden=true;
-    $('importPreview').textContent='Выберите столбцы для просмотра данных.';
-    $('importAlert').textContent=e.message;
-    $('importActionError').textContent=e.message;
-    $('importActionError').hidden=false;
-    $('confirmImport').disabled=true;
+    $('importPreview').textContent='Не удалось прочитать данные.';
+    if(state.business!=='mine'){
+      $('importAlert').textContent=e.message;
+      $('importActionError').textContent=e.message;
+      $('importActionError').hidden=false;
+    }
+    $('confirmImport').disabled=state.business==='mine'?false:true;
   }
 }
 $('financialConfirm').addEventListener('change',()=>{
@@ -612,10 +626,12 @@ async function showExcelSheet(name){
   $('importAlert').textContent='';
   $('mappingSection').hidden=true;
   $('confirmImport').disabled=true;
+  $('confirmImport').hidden=true;
   state.fileTable=null;
   try{
     const parsed=await excelBook.readSheet(name);
     if(ticket!==importReadToken)return;
+    parsed._bpMultipleSheets=excelBook.names.length>1;
     renderMapping(parsed);
     $('fileStatus').textContent+=' Лист: '+name+'.';
   }catch(error){
@@ -634,6 +650,8 @@ async function readFile(file){
   $('demoFinancialBook').value='';
   $('mappingSection').hidden=true;
   $('confirmImport').disabled=true;
+  $('confirmImport').hidden=true;
+  $('importDifferenceNotice').hidden=true;
   $('importAlert').textContent='';
   try{
     if(file.size>32*1024*1024)throw Error('Файл должен быть не больше 32 МБ.');
@@ -650,16 +668,12 @@ async function readFile(file){
       excelBook=book;
       if(book.names.length>1){
         const select=$('excelSheet');
-        const placeholder=document.createElement('option');
-        placeholder.value='';
-        placeholder.textContent='Выберите лист с данными';
-        select.replaceChildren(placeholder,...book.names.map(name=>{
+        select.replaceChildren(...book.names.map(name=>{
           const option=document.createElement('option');
           option.value=name;option.textContent=name;return option;
         }));
+        select.value=book.names[0];
         sheetControl.hidden=false;
-        $('fileStatus').textContent='В файле несколько листов. Выберите лист с операциями.';
-        return; // Never auto-import the first sheet without user choosing it.
       }
       await showExcelSheet(book.names[0]);
     }else{
@@ -698,7 +712,7 @@ if(authenticatedShell&&demoRequested){
 })();
 </script>
 <script src="web-access.js?v=20261026-public-signup-v2"></script>
-<script type="module" src="personal.js?v=20261027-ai-first-v2"></script>
+<script type="module" src="personal.js?v=20261027-import-minimal-v3"></script>
 <script src="payments.js?v=20261027-admin-preview-v2" defer></script>
 <script src="admin.js?v=20261027-admin-preview-v2" defer></script>
 </body>

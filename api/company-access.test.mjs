@@ -503,3 +503,32 @@ test('Admin can inspect company workspace with expired access; client isolation 
  assert.equal(snapshot(),before,'Preview must never mutate client data, subscription, import history or AI cache');
  }finally{db.close();}
 });
+
+
+test('Read-only HTTP import comparison detects changed money without writing or disclosing other companies',async t=>{
+  const {call,dbPath}=await apiFixture(t);
+  await call('101','/me');
+  const date=(await call('101','/report')).data.as_of;
+  const item={date,id:'v1',item:'Приём',status:'sale',amount_kopecks:10000};
+  const base={source:'visits.xlsx',financial_basis:'cash_receipts',
+    source_headers:['Дата оплаты','Чек','Услуга','Сумма оплаты'],amount_index:3};
+  const preview1=await call('101','/import/compare',{...base,rows:[item]});
+  assert.equal(preview1.status,200);
+  assert.equal(preview1.data.stats.added,1);
+  assert.equal(preview1.data.stats.updated,0);
+  const db=new DatabaseSync(dbPath);
+  try{assert.equal(db.prepare('SELECT count(*) n FROM operations').get().n,0);}
+  finally{db.close();}
+  assert.equal((await call('101','/import',{...base,rows:[item]})).data.stats.added,1);
+  const preview2=await call('101','/import/compare',{...base,rows:[item]});
+  assert.equal(preview2.data.stats.unchanged,1);
+  const corrected={...item,amount_kopecks:12000};
+  const preview3=await call('101','/import/compare',{...base,rows:[corrected]});
+  assert.equal(preview3.data.stats.updated,1);
+  const db2=new DatabaseSync(dbPath);
+  try{assert.equal(db2.prepare('SELECT amount_kopecks FROM operations').get().amount_kopecks,10000);}
+  finally{db2.close();}
+  await call('202','/me');
+  const separate=await call('202','/import/compare',{...base,rows:[corrected]});
+  assert.equal(separate.data.stats.added,1);
+});

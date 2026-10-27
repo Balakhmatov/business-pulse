@@ -9,6 +9,25 @@ export const PLANS={
 };
 export const rub=value=>value.toLocaleString('ru-RU')+' ₽';
 export const isAdminCompany=c=>new Set((process.env.BP_ADMIN_IDS??'1296951270').split(',').map(x=>x.trim())).has(String(c.owner_id));
+// Permanent access is limited to the service administrator's OWN company.
+// A website admin must be explicitly allowlisted or securely linked to a
+// Telegram administrator. A staff role in another company never qualifies.
+export function isAdminWorkspace(db,c){
+  if(!c||!c.id||!c.owner_id)return false;
+  // Do not elevate based on a forged in-memory company object.
+  const actual=db.prepare('SELECT owner_id FROM companies WHERE id=?').get(c.id);
+  if(!actual||String(actual.owner_id)!==String(c.owner_id))return false;
+  if(isAdminCompany(c))return true;
+  const owner=String(c.owner_id);
+  if(!/^web:[0-9a-f-]{36}$/.test(owner))return false;
+  const webIds=new Set((process.env.BP_ADMIN_WEB_IDS||'').split(',').map(s=>s.trim()));
+  if(webIds.has(owner)&&db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_accounts'").get()&&
+    db.prepare('SELECT 1 FROM web_accounts WHERE actor_id=?').get(owner))return true;
+  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='account_links'").get())return false;
+  const link=db.prepare('SELECT telegram_id FROM account_links WHERE company_id=? AND web_actor_id=?').get(c.id,owner);
+  return Boolean(link&&isAdminCompany({owner_id:link.telegram_id}));
+}
+
 export function ensureBillingSchema(db,at=Date.now()){
   db.exec('CREATE TABLE IF NOT EXISTS company_billing (company_id TEXT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,trial_started_ms INTEGER NOT NULL,trial_ends_ms INTEGER NOT NULL,paid_until_ms INTEGER,plan TEXT);'+
     'CREATE TABLE IF NOT EXISTS billing_reminders (company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,kind TEXT NOT NULL,sent_ms INTEGER NOT NULL,PRIMARY KEY(company_id,kind));'+
@@ -42,7 +61,7 @@ export function subscriptionFor(db,c,at=Date.now()){
   if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='company_billing'").get())return null;
   const row=db.prepare('SELECT * FROM company_billing WHERE company_id=?').get(c.id);
   if(!row)return null;
-  const granted=Boolean(row.trial_granted_by),paid=Number(row.paid_until_ms)>at,trial=granted&&row.trial_started_ms<=at&&row.trial_ends_ms>at,admin=isAdminCompany(c);
+  const granted=Boolean(row.trial_granted_by),paid=Number(row.paid_until_ms)>at,trial=granted&&row.trial_started_ms<=at&&row.trial_ends_ms>at,admin=isAdminWorkspace(db,c);
   return {...row,trial_started_ms:granted?row.trial_started_ms:0,trial_ends_ms:granted?row.trial_ends_ms:0,
     state:admin?'admin':paid?'paid':trial?'trial':!granted&&row.plan===null?'pending':'expired',access:admin||paid||trial,
     promo_available:trial&&row.plan===null,remaining_trial_ms:granted?Math.max(0,row.trial_ends_ms-at):0,

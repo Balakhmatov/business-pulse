@@ -355,7 +355,9 @@
       if(financial.confidence!=='high'||aiBasis!==basis)
         return manual('ИИ не смог однозначно подтвердить тип выручки.');
     }
-    if(parsed.invalid>0||parsed.cancelled>0||parsed.skipped>0||parsed.duplicate>0||
+    // Exact duplicate rows are removed by the parser; unpaid/pending rows are
+    // excluded by status. Neither requires an extra user checkbox.
+    if(parsed.invalid>0||parsed.cancelled>0||
        !Array.isArray(parsed.rows)||parsed.rows.length===0||parsed.rows.length>100000)
       return manual('В строках отчёта есть неоднозначности, нужна проверка.');
     return {ready:true,reason:''};

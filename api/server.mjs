@@ -414,6 +414,18 @@ const server=http.createServer(async(req,res)=>{
       const result=resetTestData(db,c.id);
       return reply(res,200,{...result,report:report(c)},origin);
     }
+    if(req.method==='POST'&&url.pathname==='/api/import/compare'){
+      const input=await readCompanyJSON(req,c,id);
+      if(Array.isArray(input.source_headers)&&Number.isInteger(input.amount_index)){
+        const inference=inferImportedBasis(input.source_headers,input.amount_index);
+        input.financial_basis=inference.basis;
+      }
+      if(input.financial_basis==='paid_fulfilled'&&
+         (!['cafe','store'].includes(c.industry)||input.confirm_paid_fulfilled!==true))
+        return reply(res,400,{error:'Невозможно подтвердить совмещённые продажи и оплаты.'},origin);
+      const data=normalize(input); // Identical validation and deduplication as /import.
+      return reply(res,200,{stats:accumulator.preview(c,input,data)},origin);
+    }
     if(req.method==='POST'&&url.pathname==='/api/import'){
       const input=await readCompanyJSON(req,c,id);
       if(input.financial_basis==='paid_fulfilled'&&

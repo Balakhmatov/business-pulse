@@ -992,7 +992,7 @@
     const conflict=basisConflict();
     if(conflict)bookHelp.textContent=conflict;
     const approved=!!bookSelect.value&&(!earned||earnedConfirm.checked)&&!conflict;
-    if(!approved)$('confirmImport').disabled=true;
+    if(!approved&&state.business!=='mine')$('confirmImport').disabled=true;
     if(typeof correctionMode!=='undefined'&&correctionMode.checked)setCorrectionButton();
     return approved;
   }
@@ -1112,7 +1112,9 @@
     }
   });
   document.addEventListener('bp:import-table-ready',event=>{
-    correctionsPanel.hidden=state.business!=='mine';
+    // Routine data changes are handled by the automatic comparison dialog.
+    // Keep legacy cancellation tools out of the customer's upload flow.
+    correctionsPanel.hidden=true;
     correctionMode.checked=false;
     correctionDetails.hidden=true;
     invalidateCorrection();
@@ -1183,7 +1185,8 @@
     if(state.fileTable!==file||!$('modal').classList.contains('show'))return;
     $('mappingSection').hidden=false;
     $('confirmImport').hidden=false;
-    recognitionMessage(message||'Для этой выгрузки требуется уточнение. Проверьте поля ниже.');
+    $('confirmImport').disabled=false;
+    recognitionMessage(message||'Если файл определён неверно, откройте дополнительные настройки.');
   }
 
   function tryAutomaticImport(file){
@@ -1200,6 +1203,10 @@
       if(!decision?.ready)return decision||{ready:false,reason:'Нужно уточнить формат.'};
       if(!validateBookChoice())
         return {ready:false,reason:basisConflict()||'Нужно уточнить финансовый показатель.'};
+      if(file._bpMultipleSheets){
+        showImportReview(file,'Выбран первый лист. При необходимости выберите другой, затем нажмите «Применить данные».');
+        return {ready:true,requiresClick:true};
+      }
       file._bpAutoStarted=true;
       recognitionMessage('Файл распознан. Сохраняем данные и готовим аналитику…');
       // The existing submit handler performs the exact same validations,
@@ -1248,7 +1255,7 @@
           $('col_date').dispatchEvent(new Event('change'));
         }finally{file._bpApplying=false;}
         const automatic=tryAutomaticImport(file);
-        if(!automatic.ready)showImportReview(file,automatic.reason);
+        if(!automatic.ready)showImportReview(file,'Нужно уточнить формат таблицы.');
       }else{
         const seconds=Number(answer?.retry_after_seconds)||0;
         const minutes=Math.max(1,Math.ceil(seconds/60));
@@ -1260,7 +1267,7 @@
               ?'Система не смогла однозначно распознать таблицу. '
               :answer?.reason==='unavailable'||answer?.reason==='disabled'
                 ?'ИИ-распознавание сейчас недоступно. ':'';
-          showImportReview(file,reason+(automatic.reason||'Проверьте поля ниже.'));
+          showImportReview(file,reason+'При необходимости откройте дополнительные настройки.');
           retryRecognition.hidden=!(needsAI&&answer?.can_retry===true);
         }
       }
@@ -1268,7 +1275,7 @@
       if(state.fileTable!==file||file._bpRecognitionAttempt!==attempt)return;
       console.warn('Import mapping lookup unavailable:',error.message);
       const automatic=tryAutomaticImport(file);
-      if(!automatic.ready)showImportReview(file,'ИИ-распознавание временно недоступно. '+(automatic.reason||'Проверьте поля.'));
+      if(!automatic.ready)showImportReview(file,'Не удалось автоматически определить все данные.');
       retryRecognition.hidden=automatic.ready;
     }finally{
       if(state.fileTable===file&&file._bpRecognitionAttempt===attempt){
@@ -1289,7 +1296,7 @@
     currentRecognition=null;
     if(!file||state.business!=='mine')return;
     if(file.reportType==='aggregate'){
-      showImportReview(file,'Это сводный отчёт. Для точного учёта нужна детализация операций.');
+      showImportReview(file,'В этом листе обнаружена сводка вместо отдельных продаж. Выберите лист с данными.');
       return;
     }
     // Keep technical mapping and money confirmation out of the normal first-run flow.
@@ -1319,6 +1326,83 @@
     currentRecognition=work;
     void resolveRecognition(work);
   });
+  const differenceNotice=$('importDifferenceNotice'),allowChanges=$('importAllowChanges');
+  const importDetails=$('importAdvanced');
+  function clearComparison(){
+    differenceNotice.hidden=true;
+    allowChanges.checked=false;
+    $('importDifferenceDetails').hidden=true;
+    $('importDifferenceDetails').textContent='';
+    $('importInspectChanges').textContent='Проверить изменения';
+    if(state.fileTable)state.fileTable._bpPreflight=null;
+  }
+  document.addEventListener('bp:import-table-ready',()=>{
+    clearComparison();
+    importDetails.open=false;
+    $('importActionError').hidden=true;
+    $('importActionError').textContent='';
+  });
+  $('importInspectChanges').onclick=()=>{
+    const details=$('importDifferenceDetails');
+    details.hidden=!details.hidden;
+    $('importInspectChanges').textContent=details.hidden?'Проверить изменения':'Скрыть изменения';
+  };
+  function showComparison(file,stats){
+    differenceNotice.hidden=false;
+    const corrections=stats.updated>0
+      ?'В ранее загруженных данных обнаружены изменения: '+number(stats.updated)+' строк. ':'';
+    const cancelled=file._bpCancelledCount>0
+      ?'В файле есть отменённые записи: '+number(file._bpCancelledCount)+'. Ранее сохранённые строки не удаляются. ':'';
+    const missing=stats.possible_missing>0
+      ?'За те же даты есть '+number(stats.possible_missing)+' ранее сохранённых строк, которых нет в новом файле. Они не удаляются. ':'';
+    $('importDifferenceText').textContent=corrections+cancelled+missing+
+      'Новые строки добавятся, совпадающие не продублируются.';
+    $('importDifferenceDetails').textContent=(stats.examples||[]).map(x=>
+      x.date+' · '+x.item+' · '+money(x.previous_amount_kopecks/100)+' → '+money(x.new_amount_kopecks/100)
+    ).join('\n');
+    allowChanges.checked=false;
+    file._bpAutoStarted=false;
+    $('confirmImport').hidden=false;
+    $('confirmImport').disabled=false;
+    recognitionMessage('Проверьте предупреждение перед загрузкой.');
+  }
+  function showImportIssue(message){
+    $('confirmImport').hidden=false;
+    $('confirmImport').disabled=false;
+    $('mappingSection').hidden=false;
+    const error=$('importActionError');
+    error.textContent=message;
+    error.hidden=false;
+    error.style.cssText='color:#b42318;background:#fff1f0;border:1px solid #e39b93;border-radius:9px;padding:10px;font-size:12px;line-height:1.5;flex-basis:100%';
+    importDetails.open=true;
+    let focus= /дата|дату/i.test(message)?$('col_date'):
+      /сумм|денежн|стоимост|выруч/i.test(message)?$('col_amount'):
+      /количеств/i.test(message)?$('col_quantity'):
+      $('mappingFields');
+    if(focus&&focus.classList)focus.classList.add('bp-import-error-field');
+    if(focus?.scrollIntoView)focus.scrollIntoView({behavior:'smooth',block:'center'});
+    if(focus?.focus&&focus.tagName==='SELECT')focus.focus({preventScroll:true});
+  }
+  async function compareImport(file,columns,basis,rows){
+    const fingerprint=JSON.stringify([columns,basis,file._bpRecognitionAttempt||0,rows.length]);
+    if(file._bpPreflight?.fingerprint===fingerprint)return file._bpPreflight.stats;
+    const combined={added:0,updated:0,unchanged:0,received:0,possible_missing:0,examples:[]};
+    for(let i=0;i<rows.length;i+=5000){
+      const answer=await request('/import/compare',{
+        source:file.name.slice(0,120),financial_basis:basis,
+        source_headers:file.head.slice(0,80),amount_index:columns.amount,
+        check_missing:rows.length<=5000,
+        rows:rows.slice(i,i+5000)
+      });
+      if(state.fileTable!==file)throw Error('Выбран другой лист. Повторите загрузку.');
+      const stats=answer.stats||{};
+      for(const k of ['received','added','updated','unchanged','possible_missing'])combined[k]+=Number(stats[k]||0);
+      combined.examples.push(...(stats.examples||[]).slice(0,Math.max(0,5-combined.examples.length)));
+    }
+    file._bpPreflight={fingerprint,stats:combined};
+    return combined;
+  }
+
   const originalConfirm=$('confirmImport').onclick;
   $('confirmImport').onclick=async()=>{
     if(state.business!=='mine'){intro.textContent=localIntro;return originalConfirm();}
@@ -1332,9 +1416,13 @@
       if(financial?.needsConfirm&&!$('financialConfirm').checked){
         throw Error('Проверьте замечания к суммам и подтвердите их перед загрузкой.');
       }
+      const file=state.fileTable;
+      if(!file)throw Error('Сначала выберите файл.');
       const isCorrection=correctionMode.checked;
-      const result=parseImported(state.fileTable,columns);
-      if(result.cancelled>0&&!isCorrection)throw Error('В файле есть отменённые операции. Выберите режим исправлений и проверьте изменения.');
+      const result=parseImported(file,columns);
+      // Cancelled lines are not deletions. Keep prior values and warn before saving
+      // the other valid rows; partial exports must never delete missing entries.
+      file._bpCancelledCount=isCorrection?0:result.cancelled;
       if(result.invalid>0)throw Error('Обнаружено '+result.invalid+' строк с ошибками: '+result.invalidExamples.join('; ')+'. Исправьте данные перед загрузкой.');
       if(!result.rows.length&&!(isCorrection&&result.cancelled_ids.length))
         throw Error('Нет корректных оплаченных операций для импорта.');
@@ -1363,6 +1451,20 @@
           JSON.stringify(correctionData)!==checkedCorrection.payloadText||
           Date.now()>=checkedCorrection.expires_at_ms)){
         throw Error('Сначала проверьте исправления и подтвердите список изменений.');
+      }
+      if(!isCorrection){
+        // The comparison is read-only. Only real changes to previously
+        // imported values require the owner's explicit opt-in.
+        state.mineSaving=true;
+        $('confirmImport').disabled=true;
+        $('importAlert').textContent='Сравниваем с загруженными данными…';
+        const differences=await compareImport(file,columns,financialBasis,rows);
+        if((differences.updated>0||differences.possible_missing>0||file._bpCancelledCount>0)&&!allowChanges.checked){
+          showComparison(file,differences);
+          $('importAlert').textContent='';
+          return;
+        }
+        differenceNotice.hidden=true;
       }
       state.mineSaving=true;
       $('confirmImport').disabled=true;
@@ -1417,7 +1519,7 @@
       state.mineTemplateNotice=savedTemplate
         ?' Формат выгрузки запомнен для следующих загрузок.'
         :' Соответствие столбцов не удалось запомнить; операции сохранены.';
-      state.mineImportStats=answer.stats||null;
+      state.mineImportStats={...(answer.stats||{}),skipped:result.skipped,duplicate:result.duplicate,cancelled:result.cancelled};
       state.mineViewBasis=answer.stats?.financial_basis==='paid_fulfilled'?'cash_receipts':
         ['cash_receipts','recognized_revenue'].includes(answer.stats?.financial_basis)?
           answer.stats.financial_basis:null;
@@ -1435,10 +1537,8 @@
     }catch(error){
       const message=error.message||'Не удалось сохранить отчёт.';
       submitError=message;
-      if(state.fileTable?._bpAutoStarted){
-        state.fileTable._bpAutoStarted=false;
-        showImportReview(state.fileTable,'Не удалось завершить автоматическую загрузку. '+message);
-      }
+      if(state.fileTable?._bpAutoStarted)state.fileTable._bpAutoStarted=false;
+      if($('modal').classList.contains('show'))showImportIssue(message);
       $('importAlert').textContent=message;
       const actionError=$('importActionError');
       if(actionError){actionError.textContent=message;actionError.hidden=false;}

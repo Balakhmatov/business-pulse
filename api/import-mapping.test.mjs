@@ -311,8 +311,8 @@ test('AI-first import requires manual review for conflicting amounts, risks or i
   const cleanFile={...file,head:file.head.slice(0,3)};
   assert.equal(check({file:cleanFile}),true);
   assert.equal(check({file:cleanFile,parsed:{...parsed,invalid:1}}),false);
-  assert.equal(check({file:cleanFile,parsed:{...parsed,skipped:1}}),false);
-  assert.equal(check({file:cleanFile,parsed:{...parsed,duplicate:1}}),false);
+  assert.equal(check({file:cleanFile,parsed:{...parsed,skipped:1}}),true,'Unpaid rows are safely skipped');
+  assert.equal(check({file:cleanFile,parsed:{...parsed,duplicate:1}}),true,'Exact duplicate rows are safely deduplicated');
   assert.equal(check({file:cleanFile,parsed:{...parsed,cancelled:1}}),false);
   assert.equal(check({file:cleanFile,financial:{...financial,risk_flags:['partial_payments']}}),false);
   assert.equal(check({file:{...cleanFile,reportType:'aggregate'}}),false);

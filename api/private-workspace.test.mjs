@@ -70,3 +70,19 @@ test('Public demo shows selectable three-month analytics and private trial allow
   assert.match(personal,/button\.disabled=days>90&&!allowed/);
   assert.match(personal,/span>\(isLongPeriodAllowed\(\)\?1095:90\)/);
 });
+
+test('Normal upload hides technical field mapping and long financial preview',()=>{
+  assert.match(index,/<details id="importAdvanced"><summary>Дополнительные настройки<\/summary>/);
+  assert.match(index,/<div id="mappingSection" hidden>/);
+  assert.match(index,/\$\('importPreview'\)\.hidden=state\.business==='mine'/);
+  assert.match(personal,/correctionsPanel\.hidden=true/);
+  assert.match(index,/id="importDifferenceNotice" hidden/);
+  assert.match(index,/id="importAllowChanges"/);
+  assert.match(personal,/\/import\/compare/);
+});
+test('First worksheet is selected by default but users can switch before saving',()=>{
+  assert.match(index,/select\.value=book\.names\[0\]/);
+  assert.match(index,/await showExcelSheet\(book\.names\[0\]\)/);
+  assert.match(index,/parsed\._bpMultipleSheets=excelBook\.names\.length>1/);
+  assert.match(personal,/if\(file\._bpMultipleSheets\)/);
+});
