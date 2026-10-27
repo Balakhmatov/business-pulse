@@ -86,3 +86,12 @@ test('First worksheet is selected by default but users can switch before saving'
   assert.match(index,/parsed\._bpMultipleSheets=excelBook\.names\.length>1/);
   assert.match(personal,/if\(file\._bpMultipleSheets\)/);
 });
+
+test('AI recommendation panels explicitly show analysis in progress, then render actual recommendations',()=>{
+  assert.match(personal,/const aiPending=imported&&!adminView&&\(!ai\|\|ai\.status==='pending'\)/);
+  assert.match(personal,/const pendingHTML='<div class="bp-ai-pending" role="status">/);
+  assert.match(personal,/\$\('concerns'\)\.innerHTML=aiPending\?pendingHTML:insightHTML\(bad\.slice\(0,3\),true\)/);
+  assert.match(personal,/\$\('positives'\)\.innerHTML=aiPending\?pendingHTML:insightHTML\(good\.slice\(0,2\),false\)/);
+  assert.match(index,/\.bp-ai-pending-dot\{/);
+  assert.match(index,/prefers-reduced-motion:reduce/);
+});
