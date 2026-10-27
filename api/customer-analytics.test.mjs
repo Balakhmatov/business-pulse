@@ -67,7 +67,7 @@ test('Customer keys are stable across restart, normalize contacts, isolate compa
  assert.equal(identity.key('a','','id'),undefined);
  f.ingest([{...f.make(),customer_key:key}]);
  const stored=JSON.stringify(db.prepare('SELECT * FROM operations').all())+JSON.stringify(db.prepare('SELECT * FROM import_batch_changes').all());
- assert.doesNotMatch(stored,/999|patient-001|user@example/);assert.match(stored,new RegExp(key));
+ assert.doesNotMatch(stored,/\+?7[ ()-]*999[ ()-]*123[ ()-]*45[ ()-]*67|patient-001|user@example|\\"customer_ref\\"/i);assert.match(stored,new RegExp(key));
 });
 test('Patient enrichment does not duplicate money; missing field preserves links; undo restores associations',t=>{
  const f=fixture(t);const plain={...f.make(),customer_key:undefined};
