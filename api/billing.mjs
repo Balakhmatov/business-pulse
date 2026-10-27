@@ -13,7 +13,10 @@ export const isAdminCompany=c=>new Set((process.env.BP_ADMIN_IDS??'1296951270').
 // A website admin must be explicitly allowlisted or securely linked to a
 // Telegram administrator. A staff role in another company never qualifies.
 export function isAdminWorkspace(db,c){
-  if(!c||!c.owner_id)return false;
+  if(!c||!c.id||!c.owner_id)return false;
+  // Do not elevate based on a forged in-memory company object.
+  const actual=db.prepare('SELECT owner_id FROM companies WHERE id=?').get(c.id);
+  if(!actual||String(actual.owner_id)!==String(c.owner_id))return false;
   if(isAdminCompany(c))return true;
   const owner=String(c.owner_id);
   if(!/^web:[0-9a-f-]{36}$/.test(owner))return false;
