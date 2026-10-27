@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analysisSchema, validateAIAnalysis } from './ai-evidence.mjs';
+import { analysisModel } from './ai.mjs';
 
 const facts={
   revenue_change:'Поступления снизились на 28,3%.',
@@ -55,4 +56,12 @@ test('unverified numeric statements are skipped while valid items survive',()=>{
   },facts);
   assert.equal(result.analysis.issues.length,1);
   assert.doesNotMatch(result.analysis.summary,/99/);
+});
+
+
+test('Insight generation defaults to GPT-6 Luna even when legacy BP_OPENAI_MODEL is set',()=>{
+  assert.equal(analysisModel({}), 'gpt-6-luna');
+  assert.equal(analysisModel({BP_OPENAI_MODEL:'gpt-5.4-mini'}), 'gpt-6-luna');
+  assert.equal(analysisModel({BP_ANALYSIS_MODEL:'gpt-6.1-terra',BP_OPENAI_MODEL:'gpt-5.4-mini'}), 'gpt-6.1-terra');
+  assert.equal(analysisModel({BP_ANALYSIS_MODEL:'  '}), 'gpt-6-luna');
 });
