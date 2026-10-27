@@ -3,10 +3,17 @@ import { buildInsightFacts } from './ai-insights.mjs';
 import { buildHistoricalFacts } from './ai-period-facts.mjs';
 import { analysisSchema, validateAIAnalysis } from './ai-evidence.mjs';
 
+// Import recognition uses BP_IMPORT_MODEL independently. Analysis gets its
+// own explicit override; BP_OPENAI_MODEL is a legacy default that must not
+// silently keep the old 5.4-mini after the Luna migration.
+export function analysisModel(env=process.env) {
+  return String(env.BP_ANALYSIS_MODEL||'').trim() || 'gpt-6-luna';
+}
+
 // Isolated AI interpreter: no arithmetic by the model, no raw CSV, no Telegram identity.
 // Durable cache per dataset/range/basis; API keys stay in the API environment.
 export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch, now=()=>Date.now(), apiKey=(process.env.BP_OPENAI_API_KEY || '').trim() }) {
-  const model = (process.env.BP_OPENAI_MODEL || 'gpt-5.4-mini').trim();
+  const model = analysisModel();
   db.exec(
     "CREATE TABLE IF NOT EXISTS ai_analyses (" +
     "company_id TEXT PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE," +

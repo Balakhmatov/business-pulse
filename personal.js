@@ -901,7 +901,7 @@
   const localIntro=intro.textContent;
   function refreshIntro(){
     intro.textContent=state.business==='mine'
-      ?'CSV и Excel (.xlsx) дополняют историю: совпадающие операции обновляются. Можно загрузить отчёт без ID операции: записи будут связаны по пациенту и дате, с пометкой об оценке. Исходный файл читается в браузере; выбранные поля сохраняются для аналитики компании. Передавайте персональные данные только при наличии законного основания.'
+      ?'Выберите Excel или CSV. Бизнес Пульс сам определит показатели и подготовит аналитику. Если в данных будет неоднозначность, сервис попросит уточнение.'
       :'Файл обрабатывается только в браузере, на сервер не отправляется. Все данные демокомпаний остаются локальными.';
   }
   ['openImport','sideImport'].forEach(id=>{
@@ -1169,7 +1169,7 @@
   recognitionStatus.className='import-recognition-status';
   recognitionStatus.setAttribute('role','status');
   recognitionStatus.hidden=true;
-  $('smartImportInfo').after(recognitionStatus);
+  $('fileStatus').after(recognitionStatus);
   const retryRecognition=document.createElement('button');
   retryRecognition.id='retryRecognition';
   retryRecognition.className='ghost-btn import-recognition-retry';
@@ -1178,6 +1178,38 @@
   retryRecognition.hidden=true;
   recognitionStatus.after(retryRecognition);
   let currentRecognition=null;
+
+  function showImportReview(file,message){
+    if(state.fileTable!==file||!$('modal').classList.contains('show'))return;
+    $('mappingSection').hidden=false;
+    $('confirmImport').hidden=false;
+    recognitionMessage(message||'Для этой выгрузки требуется уточнение. Проверьте поля ниже.');
+  }
+
+  function tryAutomaticImport(file){
+    if(!canImport()||state.fileTable!==file||file._bpUserAdjusted||
+       file._bpAutoStarted||correctionMode.checked)return {ready:false,reason:'Требуется ручная проверка.'};
+    try{
+      demo.preview(file);
+      const columns=mapping();
+      const parsed=parseImported(file,columns);
+      const financial=file._bpAiMappingAmount===columns.amount?file._bpAiFinancial:null;
+      const decision=window.BP_SmartImport?.automaticDecision({
+        file,mapping:columns,parsed,basis:bookSelect.value,financial
+      });
+      if(!decision?.ready)return decision||{ready:false,reason:'Нужно уточнить формат.'};
+      if(!validateBookChoice())
+        return {ready:false,reason:basisConflict()||'Нужно уточнить финансовый показатель.'};
+      file._bpAutoStarted=true;
+      recognitionMessage('Файл распознан. Сохраняем данные и готовим аналитику…');
+      // The existing submit handler performs the exact same validations,
+      // accounting, chunking, deduplication and AI cache invalidation.
+      void $('confirmImport').onclick();
+      return {ready:true};
+    }catch(error){
+      return {ready:false,reason:error.message||'Не удалось проверить таблицу.'};
+    }
+  }
 
   function recognitionMessage(message){
     recognitionStatus.textContent=message||'';
@@ -1191,7 +1223,7 @@
     file._bpRecognitionAttempt=attempt;
     retryRecognition.hidden=true;
     retryRecognition.disabled=true;
-    recognitionMessage('Проверяем формат выгрузки…');
+    recognitionMessage('Распознаём данные и проверяем показатели…');
     try{
       const answer=await request('/import/mapping/resolve',{
         head:file.head,profiles,needs_ai:needsAI,retry
@@ -1215,30 +1247,29 @@
           }
           $('col_date').dispatchEvent(new Event('change'));
         }finally{file._bpApplying=false;}
-        recognitionMessage(answer.source==='template'
-          ?'Применён сохранённый формат компании. Проверьте поля.'
-          :answer.source==='suggestion'
-            ?'Восстановлено ранее найденное соответствие. Подтвердите поля перед импортом.'
-            :'Столбцы сопоставлены. Проверьте результат перед импортом.');
+        const automatic=tryAutomaticImport(file);
+        if(!automatic.ready)showImportReview(file,automatic.reason);
       }else{
         const seconds=Number(answer?.retry_after_seconds)||0;
         const minutes=Math.max(1,Math.ceil(seconds/60));
-        recognitionMessage(answer?.reason==='disabled'
-          ?'Автоматическое распознавание недоступно. Выберите столбцы вручную.'
-          :answer?.reason==='limit'&&!answer?.can_retry
-            ?'Дополнительная проверка временно ограничена. Повторите через '+minutes+' мин или выберите столбцы вручную.'
+        const automatic=tryAutomaticImport(file);
+        if(!automatic.ready){
+          const reason=answer?.reason==='limit'&&!answer?.can_retry
+            ?'ИИ-проверка временно ограничена. Можно повторить через '+minutes+' мин. '
             :answer?.reason==='unrecognized'
-              ?'Не удалось однозначно распознать формат. Проверьте поля вручную.'
-              :needsAI
-                ?'Не удалось определить все поля. Можно повторить или выбрать их вручную.'
-                :'Проверьте соответствие столбцов перед импортом.');
-        retryRecognition.hidden=!(needsAI&&answer?.can_retry===true);
+              ?'Система не смогла однозначно распознать таблицу. '
+              :answer?.reason==='unavailable'||answer?.reason==='disabled'
+                ?'ИИ-распознавание сейчас недоступно. ':'';
+          showImportReview(file,reason+(automatic.reason||'Проверьте поля ниже.'));
+          retryRecognition.hidden=!(needsAI&&answer?.can_retry===true);
+        }
       }
     }catch(error){
       if(state.fileTable!==file||file._bpRecognitionAttempt!==attempt)return;
       console.warn('Import mapping lookup unavailable:',error.message);
-      recognitionMessage('Сопоставление временно недоступно. Проверьте столбцы или повторите попытку.');
-      retryRecognition.hidden=false;
+      const automatic=tryAutomaticImport(file);
+      if(!automatic.ready)showImportReview(file,'ИИ-распознавание временно недоступно. '+(automatic.reason||'Проверьте поля.'));
+      retryRecognition.hidden=automatic.ready;
     }finally{
       if(state.fileTable===file&&file._bpRecognitionAttempt===attempt){
         retryRecognition.disabled=false;
@@ -1256,10 +1287,21 @@
     retryRecognition.hidden=true;
     recognitionMessage('');
     currentRecognition=null;
-    if(!file||state.business!=='mine'||file.reportType==='aggregate')return;
+    if(!file||state.business!=='mine')return;
+    if(file.reportType==='aggregate'){
+      showImportReview(file,'Это сводный отчёт. Для точного учёта нужна детализация операций.');
+      return;
+    }
+    // Keep technical mapping and money confirmation out of the normal first-run flow.
+    $('mappingSection').hidden=true;
+    $('confirmImport').hidden=true;
+    recognitionMessage('Распознаём таблицу…');
     const header=file.head;
     const statistical=window.BP_SmartImport?.guess(header,file.rows.slice(0,80))?.profiles;
-    if(!Array.isArray(statistical))return;
+    if(!Array.isArray(statistical)){
+      showImportReview(file,'Не удалось проверить структуру таблицы.');
+      return;
+    }
     const profiles=statistical.map(p=>({
       dates:p.dates,nums:p.nums,statuses:p.statuses,unique:p.unique,
       words:p.words,zeroids:p.zeroids,filled:p.filled
@@ -1270,7 +1312,9 @@
     const financialAmbiguity=(localFinance?.flags?.length||0)>0 ||
       ['accrual','advance','debt','tax','unit_price'].includes(localFinance?.basis) ||
       /аванс|предоплат|депозит|задат|задолж|дебитор|долг|частичн|рассроч|зачет|зачёт|сторно|возврат|ндс|налог|начислен|акт выполненных/i.test(header.join(' '));
-    const needsAI=missing||ambiguous||file.mappingGuess?.item<0||financialAmbiguity;
+    // AI-first for unfamiliar exports. The server reuses company templates and
+    // cached suggestions, so repeated uploads do not spend tokens again.
+    const needsAI=true;
     const work={file,profiles,needsAI};
     currentRecognition=work;
     void resolveRecognition(work);
@@ -1391,6 +1435,10 @@
     }catch(error){
       const message=error.message||'Не удалось сохранить отчёт.';
       submitError=message;
+      if(state.fileTable?._bpAutoStarted){
+        state.fileTable._bpAutoStarted=false;
+        showImportReview(state.fileTable,'Не удалось завершить автоматическую загрузку. '+message);
+      }
       $('importAlert').textContent=message;
       const actionError=$('importActionError');
       if(actionError){actionError.textContent=message;actionError.hidden=false;}
