@@ -9,10 +9,14 @@ export function buildHistoricalFacts(report,operations){
   const total=arr=>arr.reduce((v,x)=>v+x.amount_kopecks,0);
   const count=arr=>new Set(arr.filter(x=>x.status==='sale').map(x=>x.sold_on+'\u0000'+x.source_id)).size;
   const facts={
-    selected_period:'Выбранный период: '+from+' — '+to+' ('+days+' дней), '+now.length+' строк операций, сумма '+money(total(now))+', уникальных чеков '+count(now)+'.',
-    previous_period:'Предыдущий равный по длине период: '+previous_from+' — '+previous_to+', сумма '+money(total(old))+', уникальных чеков '+count(old)+'.',
-    period_coverage:'Дней с операциями: '+distinctDays(now)+' из '+days+' в выбранном периоде; в предыдущем '+distinctDays(old)+' из '+days+'. Дни без выгрузок не доказывают нулевую выручку.'
+    selected_period:'Выбранный период: '+from+' — '+to+' ('+days+' дней), '+now.length+' строк операций, сумма '+money(total(now))+'.'
   };
+  // An unavailable earlier history must not become the dominant AI "problem".
+  // Within-period rolling windows are supplied independently by ai-inperiod.mjs.
+  if(report.coverage?.comparable){
+    facts.previous_period='Предыдущий равный по длине период: '+previous_from+' — '+previous_to+
+      ', сумма '+money(total(old))+', уникальных чеков '+count(old)+'.';
+  }
   const months=new Map(),years=new Map();
   for(const row of now){
     const m=row.sold_on.slice(0,7),y=row.sold_on.slice(0,4);
