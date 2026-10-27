@@ -479,3 +479,27 @@ test('Platform administration HTTP routes require verified operator identity, in
  assert.equal((await call('1296951270','/admin/missing')).status,404);
  assert.equal((await call('1296951270','/admin/companies?page=-1')).status,400);
 });
+
+test('Admin can inspect company workspace with expired access; client isolation and all writes remain blocked',async t=>{
+ const {call,dbPath}=await apiFixture(t);
+ const client=(await call('101','/me')).data.company;
+ const day=(await call('101','/report')).data.as_of;
+ await call('101','/import',{source:'diagnostic.xlsx',financial_basis:'recognized_revenue',rows:[{date:day,id:'visit',item:'Приём',amount_kopecks:123400,status:'sale',quantity_milli:1000}]});
+ const db=new DatabaseSync(dbPath);try{
+ db.prepare('UPDATE company_billing SET trial_ends_ms=1 WHERE company_id=?').run(client.id);
+ const snapshot=()=>JSON.stringify({ops:db.prepare('SELECT * FROM operations ORDER BY id').all(),billing:db.prepare('SELECT * FROM company_billing').all(),cache:db.prepare('SELECT * FROM ai_analysis_cache').all(),versions:db.prepare('SELECT * FROM ai_dataset_versions').all(),batches:db.prepare('SELECT * FROM import_batches').all()});
+ const before=snapshot(),root='/admin/workspaces/'+client.id;
+ assert.equal((await call('101','/report')).status,402);
+ assert.equal((await call('101',root+'/report')).status,403);
+ const viewed=await call('1296951270',root+'/report');assert.equal(viewed.status,200);assert.equal(viewed.data.company.id,client.id);assert.equal(viewed.data.company.access_role,'admin_view');assert.equal(viewed.data.subscription.state,'expired');assert.equal(viewed.data.revenue30_kopecks,123400);
+ const history=await call('1296951270',root+'/import/history');assert.equal(history.status,200);assert.ok(history.data.history.length>0);assert.ok(history.data.history.every(b=>!b.can_undo));
+ assert.equal((await call('1296951270',root+'/analysis')).data.status,'not_generated');
+ for(const route of ['/import','/import/undo','/clear-company-data','/company/industry','/payments']){
+  assert.equal((await call('1296951270',root+route,{confirm:'DELETE_ALL_COMPANY_DATA'})).status,405);
+  assert.equal((await call('1296951270',root+route)).status,404);
+ }
+ assert.equal((await call('1296951270','/admin/workspaces/missing/report')).status,404);
+ assert.equal((await call('1296951270',root+'/report?days=1095')).status,403,'Preview retains the target company history limits');
+ assert.equal(snapshot(),before,'Preview must never mutate client data, subscription, import history or AI cache');
+ }finally{db.close();}
+});

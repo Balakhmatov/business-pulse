@@ -80,3 +80,14 @@ test('failed generation backs off durably; only one worker retries after cooldow
   assert.equal(f.calls(),2);f.requests.shift()();await settle();
   assert.equal(b.get(company,range).status,'ready');
 });
+
+test('Administrative AI preview reads ready results but never claims, retries or generates an analysis',async t=>{
+ const f=fixture(t),engine=f.engine(),preview=()=>engine.get(company,range,null,{readOnly:true});
+ assert.equal(preview().status,'not_generated');assert.equal(f.calls(),0);
+ assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_analysis_cache').get().n,0);
+ engine.get(company,range);assert.equal(f.calls(),1);
+ const pending=f.db.prepare('SELECT * FROM ai_analysis_cache').all();f.tick(600001);
+ assert.equal(preview().status,'pending');assert.equal(f.calls(),1);assert.deepEqual(f.db.prepare('SELECT * FROM ai_analysis_cache').all(),pending);
+ f.requests.shift()();await settle();
+ const ready=engine.get(company,range);assert.equal(ready.status,'ready');assert.deepEqual(preview(),ready);assert.equal(f.calls(),1);
+});

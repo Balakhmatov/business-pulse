@@ -10,17 +10,26 @@
   if(new URLSearchParams(location.search).get('demo')==='1')return;
   const {state,parseImported,mapping,showModal,chart,insightHTML,escapeHTML,svgIcon,money,number,verboseDate,dateLabel,dateShift,yesterday}=demo;
   const $=id=>document.getElementById(id);
+  const adminCompany=new URLSearchParams(location.search).get('admin_company');
+  const adminView=Boolean(adminCompany);
+  if(adminView){
+    document.body.classList.add('bp-admin-view');
+    const notice=document.createElement('div');notice.className='bp-admin-view-notice';notice.setAttribute('role','status');
+    notice.textContent='Административный просмотр · только чтение. Загружаем компанию…';
+    document.querySelector('.topbar').after(notice);
+  }
   const accessStyle=document.createElement('style');
-  accessStyle.textContent='.bp-access-locked .main > :not(.topbar):not(#subscriptionInfo):not(nav){display:none!important} .bp-access-locked #importUtilities{display:none!important}';
+  accessStyle.textContent='.bp-access-locked .main > :not(.topbar):not(#subscriptionInfo):not(.bp-admin-view-notice):not(nav){display:none!important} .bp-access-locked #importUtilities{display:none!important}';
   document.head.appendChild(accessStyle);
   const URL_ROOT='https://pulse.cityai.site/api';
   function companySubscription(){
     const s=state.mineReport?.subscription||state.mineSubscription;
+    if(adminView&&s)return {...s,access:true};
     if(!s?.access||s.state==='admin')return s;
     const end=s.state==='paid'?s.paid_until_ms:s.state==='trial'?s.trial_ends_ms:null;
     return end&&Number(end)<=Date.now()?{...s,state:'expired',access:false}:s;
   }
-  function canImport(){return state.business==='mine'&&companySubscription()?.access===true;}
+  function canImport(){return !adminView&&state.business==='mine'&&companySubscription()?.access===true;}
   const accessMessage=()=>state.mineError||'Загрузка недоступна: нужен действующий пробный период или подписка.';
   function requireImportAccess(){
     if(canImport())return;
@@ -122,8 +131,8 @@
   const pageEyebrow=document.querySelector('.topbar .eyebrow');
   const sideHeading=document.querySelector('.sidebar .nav-heading');
   const sideOverview=document.querySelector('.sidebar .nav-item.active');
-  pageHeading.textContent='Моя компания';
-  pageEyebrow.textContent='Личный кабинет';
+  pageHeading.textContent=adminView?'Кабинет компании':'Моя компания';
+  pageEyebrow.textContent=adminView?'Административный просмотр':'Личный кабинет';
   if(sideHeading)sideHeading.textContent='ЛИЧНЫЙ КАБИНЕТ';
   if(sideOverview)sideOverview.lastChild.textContent=' Мои показатели';
   const demoLink=document.createElement('a');
@@ -194,7 +203,7 @@
   const linkButton=$('privateLinkTelegram'),linkOpen=$('privateOpenLink');
   const linkRefresh=$('privateLinkRefresh'),linkStatus=$('privateLinkStatus');
   const showLinkStatus=async()=>{
-    if(tg.initData)return;
+    if(tg.initData||adminView)return;
     try{
       const data=await request('/account-link/status');
       if(data.linked){
@@ -418,7 +427,7 @@
           (entry.undone?' · отменён':''),true);
         historyText(block,'Новых: '+entry.added+' · исправлено: '+entry.updated+
           (entry.deleted?' · отменено: '+entry.deleted:'')+' · без изменений: '+entry.unchanged);
-        if(entry.can_undo){
+        if(entry.can_undo&&!adminView){
           const undo=document.createElement('button');
           undo.type='button';
           undo.className='ghost-btn';
@@ -519,7 +528,7 @@
         if(current!==analysisSeq)return;
         state.mineAI=result;
         if(state.business==='mine')renderMine();
-        if(result.status!=='pending')return;
+        if(adminView||result.status!=='pending')return;
       }catch(error){
         if(current!==analysisSeq)return;
         console.warn('AI analysis unavailable:',error.message);
@@ -537,6 +546,12 @@
   }
   function fmtK(x){return Number.isFinite(x)?money(x/100):'—'}
   async function request(route,body){
+    if(adminView){
+      if(body)throw Error('Административный просмотр доступен только для чтения.');
+      const path=route.split('?')[0];
+      if(!['/report','/me','/subscription','/analysis','/import/history'].includes(path))throw Error('Раздел недоступен в административном просмотре.');
+      route='/admin/workspaces/'+encodeURIComponent(adminCompany)+route;
+    }
     if(body&&(route.startsWith('/import')||route==='/reset-test-data'))requireImportAccess();
     // VPS may briefly restart the API after a new commit. Retry READS only.
     // Never retry POST: repeating financial imports or deletion is unsafe.
@@ -713,8 +728,8 @@
     const subscription=companySubscription();
     const locked=!subscription?.access;
     document.body.classList.toggle('bp-access-locked',locked);
-    $('openImport').disabled=locked||!!state.mineLoading;
-    $('sideImport').disabled=locked||!!state.mineLoading;
+    $('openImport').disabled=adminView||locked||!!state.mineLoading;
+    $('sideImport').disabled=adminView||locked||!!state.mineLoading;
     const operator=subscription?.state==='admin'&&r?.company?.access_role==='owner';
     window.dispatchEvent(new CustomEvent('bp:workspace-access',{detail:{admin:operator,pending:!subscription&&!!state.mineLoading}}));
 
@@ -738,6 +753,12 @@
       industrySelect.disabled=currentCompany.access_role!=='owner';
       industrySave.hidden=currentCompany.access_role!=='owner';
       industrySave.disabled=industrySaving;
+    }
+    if(adminView){
+      linkSection.hidden=true;
+      subscriptionBox.querySelectorAll('a').forEach(a=>a.remove());
+      const notice=document.querySelector('.bp-admin-view-notice');
+      notice.textContent='Административный просмотр · '+(currentCompany?.name||'Компания')+' · только чтение. '+(state.mineError||'Подписка и данные не изменяются.');
     }
     if(state.fileTable)refreshBothOption();
     renderPeriodControls();
@@ -843,9 +864,10 @@
         }
         if(state.mineTemplateNotice)$('bottomDataHint').textContent+=state.mineTemplateNotice;
       }
-      const message=ready?' Выводы готовы.':ai?.status==='pending'?' Готовим выводы по загруженным данным…':ai?.status==='disabled'?' Автоматические выводы недоступны, но основные показатели рассчитаны.':ai?.status==='error'?' Автоматические выводы временно недоступны. Основные показатели рассчитаны.':'';
+      const message=ready?' Выводы готовы.':ai?.status==='pending'?' Готовим выводы по загруженным данным…':ai?.status==='not_generated'?' Сохранённого AI-анализа для этого периода нет. В административном просмотре новый анализ не запускается.':ai?.status==='disabled'?' Автоматические выводы недоступны, но основные показатели рассчитаны.':ai?.status==='error'?' Автоматические выводы временно недоступны. Основные показатели рассчитаны.':'';
       $('bottomDataHint').textContent+=message;
     }
+    if(adminView&&noData){empty.querySelector('h2').textContent='У компании пока нет загруженных данных';empty.querySelector('p').textContent='Показатели появятся после загрузки отчёта владельцем компании.';}
     $('clearImport').hidden=true;
     document.querySelector('.side-foot').textContent='Личные данные компании';
     activeTab();

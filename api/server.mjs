@@ -317,6 +317,17 @@ const server=http.createServer(async(req,res)=>{
   try{
     if(url.pathname.startsWith('/api/admin/')){
       if(req.method!=='GET')return reply(res,405,{error:'Только просмотр.'},origin);
+      const preview=url.pathname.match(/^\/api\/admin\/workspaces\/([^/]+)\/(report|me|subscription|analysis|import\/history)$/);
+      if(preview){
+        platformAdmin.handle(id,'access');
+        const company=db.prepare('SELECT * FROM companies WHERE id=?').get(decodeURIComponent(preview[1]));
+        if(!company)return reply(res,404,{error:'Компания не найдена.'},origin);
+        const target={...company,access_role:'admin_view'},route=preview[2];
+        if(route==='report')return reply(res,200,{...report(target,url.searchParams.get('basis'),resolveRange(target,url.searchParams)),admin_view:true},origin);
+        if(route==='analysis')return reply(res,200,ai.get(target,resolveRange(target,url.searchParams),url.searchParams.get('basis'),{readOnly:true}),origin);
+        if(route==='import/history')return reply(res,200,{history:accumulator.history(target).map(row=>({...row,can_undo:false})),admin_view:true},origin);
+        return reply(res,200,{company:target,subscription:subscriptionFor(db,target),stored_operations:st.total.get(target.id).n,admin_view:true},origin);
+      }
       return reply(res,200,platformAdmin.handle(id,url.pathname.slice('/api/admin/'.length),url.searchParams),origin);
     }
     if(url.pathname==='/api/account-link/status'&&req.method==='GET'){
