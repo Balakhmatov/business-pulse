@@ -1353,7 +1353,9 @@
       ?'В ранее загруженных данных обнаружены изменения: '+number(stats.updated)+' строк. ':'';
     const cancelled=file._bpCancelledCount>0
       ?'В файле есть отменённые записи: '+number(file._bpCancelledCount)+'. Ранее сохранённые строки не удаляются. ':'';
-    $('importDifferenceText').textContent=corrections+cancelled+
+    const missing=stats.possible_missing>0
+      ?'За те же даты есть '+number(stats.possible_missing)+' ранее сохранённых строк, которых нет в новом файле. Они не удаляются. ':'';
+    $('importDifferenceText').textContent=corrections+cancelled+missing+
       'Новые строки добавятся, совпадающие не продублируются.';
     $('importDifferenceDetails').textContent=(stats.examples||[]).map(x=>
       x.date+' · '+x.item+' · '+money(x.previous_amount_kopecks/100)+' → '+money(x.new_amount_kopecks/100)
@@ -1384,16 +1386,17 @@
   async function compareImport(file,columns,basis,rows){
     const fingerprint=JSON.stringify([columns,basis,file._bpRecognitionAttempt||0,rows.length]);
     if(file._bpPreflight?.fingerprint===fingerprint)return file._bpPreflight.stats;
-    const combined={added:0,updated:0,unchanged:0,received:0,examples:[]};
+    const combined={added:0,updated:0,unchanged:0,received:0,possible_missing:0,examples:[]};
     for(let i=0;i<rows.length;i+=5000){
       const answer=await request('/import/compare',{
         source:file.name.slice(0,120),financial_basis:basis,
         source_headers:file.head.slice(0,80),amount_index:columns.amount,
+        check_missing:rows.length<=5000,
         rows:rows.slice(i,i+5000)
       });
       if(state.fileTable!==file)throw Error('Выбран другой лист. Повторите загрузку.');
       const stats=answer.stats||{};
-      for(const k of ['received','added','updated','unchanged'])combined[k]+=Number(stats[k]||0);
+      for(const k of ['received','added','updated','unchanged','possible_missing'])combined[k]+=Number(stats[k]||0);
       combined.examples.push(...(stats.examples||[]).slice(0,Math.max(0,5-combined.examples.length)));
     }
     file._bpPreflight={fingerprint,stats:combined};
@@ -1456,7 +1459,7 @@
         $('confirmImport').disabled=true;
         $('importAlert').textContent='Сравниваем с загруженными данными…';
         const differences=await compareImport(file,columns,financialBasis,rows);
-        if((differences.updated>0||file._bpCancelledCount>0)&&!allowChanges.checked){
+        if((differences.updated>0||differences.possible_missing>0||file._bpCancelledCount>0)&&!allowChanges.checked){
           showComparison(file,differences);
           $('importAlert').textContent='';
           return;
