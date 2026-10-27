@@ -829,6 +829,9 @@
     if(!bad.length)bad.push({title:'Начните с загрузки отчёта',desc:'Выберите CSV или Excel (.xlsx) с датой, суммой и названиями товаров или услуг.'});
     if(!good.length)good.push({title:'Показатели появятся здесь',desc:'После загрузки CSV или Excel увидите результаты и изменения.'});
     const ai=state.mineAI;
+    // Do not display preliminary KPI-based suggestions as though the AI
+    // recommendations were already ready.
+    const aiPending=imported&&!adminView&&(!ai||ai.status==='pending');
     const ready=imported&&ai?.status==='ready'&&ai.analysis&&
       ai.primary_basis===r?.primary_basis&&ai.period_key===(r?.period?.from+'_'+r?.period?.to);
     if(ready){
@@ -843,10 +846,11 @@
     }
     for(const [id] of [['concerns'],['positives']]){
       const chip=$(id).closest('.panel')?.querySelector('.subtle-chip');
-      if(chip)chip.textContent=ready?'Анализ OpenAI':imported&&ai?.status==='pending'?'OpenAI анализирует':imported&&ai?.status==='disabled'?'OpenAI не подключён':imported&&ai?.status==='error'?'Ошибка анализа OpenAI':'Базовые показатели';
+      if(chip)chip.textContent=ready?'Анализ OpenAI':aiPending?'Идёт анализ':imported&&ai?.status==='disabled'?'OpenAI не подключён':imported&&ai?.status==='error'?'Ошибка анализа OpenAI':'Базовые показатели';
     }
-    $('concerns').innerHTML=insightHTML(bad.slice(0,3),true);
-    $('positives').innerHTML=insightHTML(good.slice(0,2),false);
+    const pendingHTML='<div class="bp-ai-pending" role="status"><span class="bp-ai-pending-dot" aria-hidden="true"></span>Идёт анализ</div>';
+    $('concerns').innerHTML=aiPending?pendingHTML:insightHTML(bad.slice(0,3),true);
+    $('positives').innerHTML=aiPending?pendingHTML:insightHTML(good.slice(0,2),false);
     $('warningBanner').classList.toggle('show',!!state.mineError);
     $('warningBanner').textContent=state.mineError||'';
     $('bottomDataTitle').textContent=imported?'Данные сохранены. Новые отчёты дополняют историю.':(loading?'Получаем показатели…':state.mineError?'Не удалось получить сохранённые данные.':'Загрузите первый отчёт вашей компании.');
