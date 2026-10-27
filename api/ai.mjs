@@ -161,11 +161,11 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
         result.diagnostics.unknownRefs + ')');
     return result.analysis;
   }
-  function get(c,range=null,basis=null) {
+  function get(c,range=null,basis=null,{readOnly=false}={}) {
     let snapshot, cacheKey, token, r, saved;
     // Read version, normalize the range/basis and acquire a durable lease in one
     // transaction. Other workers/devices cannot claim the same snapshot.
-    db.exec('BEGIN IMMEDIATE');
+    db.exec(readOnly?'BEGIN':'BEGIN IMMEDIATE');
     try {
       if(!hasImport.get(c.id)){db.exec('COMMIT');return {status:'no_data',analysis:null};}
       r=report(c,basis,range);
@@ -176,7 +176,7 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
       if(r.customers?.available){identity.push('customers-v1',r.customers.history_window_days??null);if(r.customers.financial.estimated||!r.customers.visits.available)identity.push('minimal-v1');}
       cacheKey=createHash('sha256').update(JSON.stringify(identity)).digest('hex');
       saved=read.get(c.id,cacheKey);
-      if(apiKey&&saved?.status!=='ready'){
+      if(!readOnly&&apiKey&&saved?.status!=='ready'){
         token=randomUUID();
         const timestamp=now();
         const won=claim.run(c.id,cacheKey,model,token,timestamp,
@@ -197,7 +197,7 @@ export function createAI({ db, report, listOperations, fetchFn=globalThis.fetch,
       console.error('Business Pulse AI analysis: '+error.message);
       finish.run('error',null,now(),c.id,cacheKey,token);
     });
-    return {status:!apiKey?'disabled':saved?.status==='error'?'error':'pending',analysis:null,...meta};
+    return {status:readOnly?(saved?.status||'not_generated'):!apiKey?'disabled':saved?.status==='error'?'error':'pending',analysis:null,...meta};
   }
   // Generate lazily for the range actually viewed after the upload completes.
   // Dataset triggers invalidate all ranges without speculative model calls.

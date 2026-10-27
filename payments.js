@@ -1,5 +1,6 @@
 'use strict';
 (function(){
+  if(new URLSearchParams(location.search).has('admin_company')){document.getElementById('bpPaymentFooter')?.remove();return;}
   const root='https://pulse.cityai.site/api';
   const tg=window.Telegram?.WebApp;
   const isTelegram=Boolean(tg?.initData);
