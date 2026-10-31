@@ -447,6 +447,13 @@ function parseImported(f,m){
     throw Error('Для пациента выберите отдельный столбец ID, телефона или email.');
   const customerKind=customerColumn>=0?window.BP_SmartImport?.customerKind(f.head[customerColumn]):null;
   if(customerColumn>=0&&!customerKind)throw Error('Выберите ФИО, ID, телефон или email пациента. Для ФИО достаточно фамилии и отчества.');
+  // Some medical exports put VisitID=0 on services without an actual visit.
+  // Treat it as missing rather than merging unrelated patients under ID "0".
+  const missingVisitID=m.id>=0&&/^(?:visit\s*id|номер\s+визита|id\s*визита)$/i.test(String(f.head?.[m.id]??'').replace(/[_-]/g,' ').trim());
+  const operationID=value=>{
+    const id=String(value??'').trim();
+    return missingVisitID&&/^0+(?:[.,]0+)?$/.test(id)?'':id;
+  };
   const rows=[],seen=new Set();
   const invalidExamples=[];
   const cancelled_ids=[];
@@ -455,7 +462,7 @@ function parseImported(f,m){
     const raw=m.status>=0?String(values[m.status]??'').toLowerCase():'';
     // Fully cancelled/unpaid entries are legitimately excluded from payments.
     if(/отмен|cancel/.test(raw)){
-      const id=m.id>=0?String(values[m.id]??'').trim():'';
+      const id=m.id>=0?operationID(values[m.id]):'';
       if(!id){
         invalid++;
         if(invalidExamples.length<5)invalidExamples.push('строка '+((f.headerRow||1)+i+1)+': отсутствует ID отменённой операции');
@@ -470,12 +477,12 @@ function parseImported(f,m){
     }
     const date=parseDate(values[m.date]),amount=parseAmount(values[m.amount]);
     const quantity=m.quantity>=0?parseQuantity(values[m.quantity]):null;
-    const explicitID=m.id>=0?String(values[m.id]??'').trim():'';
+    const explicitID=m.id>=0?operationID(values[m.id]):'';
     const identifier=explicitID||'AUTO-DAY';
     const rowNumber=(f.headerRow||1)+i+1;
     let reason='';
     if(!date)reason='некорректная дата';
-    else if(amount===null||amount===0)reason='отсутствует или некорректна сумма';
+    else if(amount===null)reason='отсутствует или некорректна сумма';
     else if(Number.isNaN(quantity))reason='некорректное количество';
     else if(!Number.isSafeInteger(Math.round(amount*100))||Math.abs(amount*100)>1e12)reason='сумма вне допустимого диапазона';
     if(reason){

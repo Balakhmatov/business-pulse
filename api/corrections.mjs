@@ -28,7 +28,7 @@ function canonical(input,nowMs){
        !dayOK(row.date,nowMs)||typeof row.id!=='string'||
        !row.id.trim()||row.id.length>100||typeof row.item!=='string'||
        !row.item.trim()||row.item.length>140||!Number.isSafeInteger(row.amount_kopecks)||
-       !row.amount_kopecks||Math.abs(row.amount_kopecks)>1e12||
+       Math.abs(row.amount_kopecks)>1e12||
        !(row.quantity_milli===undefined||row.quantity_milli===null||
          (Number.isSafeInteger(row.quantity_milli)&&row.quantity_milli>0&&row.quantity_milli<=1000000000))||
        !['sale','refund'].includes(row.status)||
