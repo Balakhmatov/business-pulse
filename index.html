@@ -449,7 +449,7 @@ function parseImported(f,m){
   if(customerColumn>=0&&!customerKind)throw Error('Выберите ФИО, ID, телефон или email пациента. Для ФИО достаточно фамилии и отчества.');
   // Some medical exports put VisitID=0 on services without an actual visit.
   // Treat it as missing rather than merging unrelated patients under ID "0".
-  const missingVisitID=m.id>=0&&/^(?:visit\s*id|номер\s+визита|id\s*визита)$/i.test(String(f.head[m.id]??'').replace(/[_-]/g,' ').trim());
+  const missingVisitID=m.id>=0&&/^(?:visit\s*id|номер\s+визита|id\s*визита)$/i.test(String(f.head?.[m.id]??'').replace(/[_-]/g,' ').trim());
   const operationID=value=>{
     const id=String(value??'').trim();
     return missingVisitID&&/^0+(?:[.,]0+)?$/.test(id)?'':id;
