@@ -1461,7 +1461,7 @@
         return {date,id,item,synthetic_id:x.synthetic_id,amount_kopecks:Math.round(x.amount*100),status,
           quantity_milli:x.quantity_milli??null,customer_ref:x.customer_ref,customer_ref_kind:x.customer_ref_kind,occurrence};
       });
-      if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||x.amount_kopecks===0||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте нулевые и слишком большие значения.');
+      if(rows.some(x=>!Number.isSafeInteger(x.amount_kopecks)||Math.abs(x.amount_kopecks)>1e12))throw Error('Некорректные суммы: проверьте формат и слишком большие значения.');
       // Automatic server-side classification from the mapped amount header.
       // Unknown source semantics remain unverified, never guessed as sales.
       if(!validateBookChoice())

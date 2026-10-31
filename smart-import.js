@@ -76,6 +76,9 @@
     if(key==='item'&&/код.{0,12}(товар|услуг)|артикул|sku/i.test(s))score=0;
     if(key==='date'&&/дата.{0,15}(рождени|поставк|регистрац|доставк)/i.test(s))score=1;
     if(key==='amount'&&/факт.{0,20}поступлен|фактически оплачено|оплачено|сумма оплат|сумма платеж|поступило|получено денег|paid|payment/i.test(s))score+=5;
+    // An item-level paid amount must win over a repeated total per clinic visit.
+    if(key==='amount'&&/стоимость\s+услуг[и]\s+по\s+факту\s+оплаты/i.test(s))score+=8;
+    if(key==='amount'&&/^сумма\s+визита$/.test(s))score-=3;
     if(key==='amount'&&/поступлен.{0,15}денег|выручк|revenue/i.test(s))score+=3;
     if(key==='amount'&&/\bитого\b|сумма к оплате/i.test(s))score+=1;
     return score;
@@ -254,7 +257,10 @@
       else if(severity!=='blocked')severity='warning';
     };
     if(amount){
-      if(cues.advance.test(amount)){
+      if(/^сумма\s+визита$/.test(amount)&&normalized.some((h,i)=>i!==amountIndex&&/^(?:стоимость|сумма)\s+услуг[и](?:\s|$)/.test(h))){
+        basis='mixed';
+        flag('repeated_visit_total','«Сумма визита» может повторяться в каждой строке услуги и завысить выручку. Выберите сумму отдельной услуги, например «Стоимость услуги по факту оплаты».','blocked');
+      }else if(cues.advance.test(amount)){
         basis='advance';
         flag('advance_amount','Выбран столбец авансов. Это деньги, полученные заранее, а не стоимость уже выполненных продаж. Для поступлений выберите столбец фактических оплат.', 'blocked');
       }else if(cues.debt.test(amount)){

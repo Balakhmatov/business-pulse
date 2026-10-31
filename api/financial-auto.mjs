@@ -14,7 +14,7 @@ export function inferImportedBasis(headers,amountIndex) {
     return {basis:'unverified',reason:'Этот столбец может отражать начисление, долг, цену единицы или налог.'};
   if(/аванс|предоплат|депозит|задаток/i.test(text))
     return {basis:'cash_receipts',reason:'Столбец прямо обозначает полученные авансы.'};
-  const paid=/сумма.{0,20}оплат|сумма.{0,12}поступ|оплачено|получен.{0,15}ден|фактически.{0,15}оплач|поступлен.{0,15}ден|эквайринг|кассов.{0,15}поступ|paid amount|amount paid|cash received|payment received/i.test(text);
+  const paid=/сумма.{0,20}оплат|сумма.{0,12}поступ|оплачено|получен.{0,15}ден|фактически.{0,15}оплач|по факту оплат|поступлен.{0,15}ден|эквайринг|кассов.{0,15}поступ|paid amount|amount paid|cash received|payment received/i.test(text);
   const earned=/стоимость.{0,25}(оказан|выполн|реализован|продан)|сумма.{0,25}(оказан|выполн|реализован|продан)|выручка от оказан|выполнен.{0,15}работ|оказан.{0,15}услуг|продано.{0,15}на сумму|recognized revenue|fulfilled sale/i.test(text);
   const ambiguity=/аванс|предоплат|задолж|дебитор|частичн.{0,12}оплат|отложен.{0,15}оплат|сч[её]т к оплате/i.test(all);
   if(paid&&!earned) return {basis:'cash_receipts',reason:'В названии столбца указаны фактически полученные деньги.'};
