@@ -222,3 +222,16 @@ test('Signed correction changes quantity alone and undo restores it with no impa
   assert.equal(restored.amount_kopecks,180000);
   assert.equal(restored.quantity_milli,2000);
 });
+
+test('Corrections retain complete medical service names longer than 140 characters',t=>{
+  const f=fixture();t.after(f.close);
+  const item='Повторная комплексная диагностическая процедура с расширенным описанием и контрольными измерениями. '.repeat(3).trim();
+  assert.ok(item.length>140&&item.length<512);
+  f.seed('a',[f.row('S-LONG','2026-10-12',0,item)]);
+  const corrected=f.input([f.row('S-LONG','2026-10-12',50000,item)]);
+  const preview=f.preview('a',corrected);
+  const applied=f.apply('a',corrected,preview);
+  assert.equal(applied.changed,true);
+  assert.equal(f.values()[0].item,item);
+  assert.equal(f.values()[0].amount_kopecks,50000);
+});

@@ -65,3 +65,20 @@ test('clinic export keeps zero-price services, treats VisitID=0 as missing, and 
   assert.equal(smart.financialSemantics(headers,chosen).basis,'cash_receipts');
   assert.equal(inferImportedBasis(headers,10).basis,'cash_receipts');
 });
+
+test('Long medical service labels from spreadsheets are kept intact by the parser',()=>{
+  const longName='Медицинская услуга с подробным описанием состава обследования и перечнем контрольных диагностических действий. '.repeat(3).trim();
+  assert.ok(longName.length>270&&longName.length<512);
+  const file=smart.detect([
+    ['Дата оказания','Номер визита','Наименование услуги','Стоимость'],
+    ['2026-10-25','S-1',longName,'0']
+  ],'medical-services.xlsx');
+  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const parser=Function('dayStamp',html.slice(html.indexOf('function parseDate('),html.indexOf('const financialFlagLabels='))+'return parseImported;')(
+    date=>date.toISOString().slice(0,10));
+  const mapped={date:0,id:1,item:2,amount:3,status:-1,quantity:-1};
+  const result=parser(file,mapped);
+  assert.equal(result.invalid,0);
+  assert.equal(result.rows[0].item,longName);
+  assert.equal(result.rows[0].amount,0);
+});
