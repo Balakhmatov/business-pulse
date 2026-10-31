@@ -532,3 +532,37 @@ test('Read-only HTTP import comparison detects changed money without writing or 
   const separate=await call('202','/import/compare',{...base,rows:[corrected]});
   assert.equal(separate.data.stats.added,1);
 });
+
+test('Clinic import preserves long medical procedure names and zero-price services',async t=>{
+  const {call,dbPath}=await apiFixture(t);
+  await call('101','/me');
+  await call('101','/company/industry',{industry:'clinic'});
+  const date=(await call('101','/report')).data.as_of;
+  const longService='Комплексное лабораторное исследование с расширенными показателями, консультацией и расшифровкой результата. '.repeat(3).trim();
+  assert.ok(longService.length>270&&longService.length<512);
+  const rows=[
+    {date,id:'AUTO-DAY',synthetic_id:true,item:longService,status:'sale',amount_kopecks:0,
+      customer_ref:'patient-test-a',customer_ref_kind:'id'},
+    {date,id:'visit-2',item:'УЗИ',status:'sale',amount_kopecks:250000}
+  ];
+  const data={source:'clinic-services.csv',financial_basis:'cash_receipts',rows};
+  const first=await call('101','/import',data);
+  assert.equal(first.status,200,JSON.stringify(first.data));
+  assert.equal(first.data.stats.added,2);
+  const repeat=await call('101','/import',data);
+  assert.equal(repeat.status,200,JSON.stringify(repeat.data));
+  assert.equal(repeat.data.stats.unchanged,2);
+  const db=new DatabaseSync(dbPath);
+  try {
+    const saved=db.prepare('SELECT item,amount_kopecks FROM operations ORDER BY amount_kopecks').all();
+    assert.equal(saved.length,2);
+    assert.equal(saved[0].item,longService);
+    assert.equal(saved[0].amount_kopecks,0);
+  } finally { db.close(); }
+  const oversize=await call('101','/import',{
+    source:'invalid-service.csv',financial_basis:'cash_receipts',
+    rows:[{date,id:'too-long',item:'x'.repeat(513),status:'sale',amount_kopecks:10000}]
+  });
+  assert.equal(oversize.status,400);
+  assert.match(oversize.data.error,/512 символов/);
+});

@@ -173,7 +173,9 @@ function normalize(input){
     const missingID=raw&&(raw.id==null||typeof raw.id==='string'&&!raw.id.trim());
     const r=raw&&(raw.synthetic_id===true||missingID)?{...raw,id:'AUTO-DAY',synthetic_id:true}:raw;
     if(!r||typeof r.date!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(r.date)||Number.isNaN(Date.parse(r.date+'T00:00:00Z'))||new Date(r.date+'T00:00:00Z').toISOString().slice(0,10)!==r.date||r.date>today||r.date<shift(today,-3650))throw Error('Invalid date');
-    if(typeof r.id!=='string'||!r.id.trim()||r.id.length>100||typeof r.item!=='string'||!r.item.trim()||r.item.length>140)throw Error('Invalid ID or item');
+    if(typeof r.id!=='string'||!r.id.trim()||r.id.length>100)throw Error('Некорректный ID операции (максимум 100 символов).');
+    // Medical procedure names can exceed 140 characters; keep the full name for analytics.
+    if(typeof r.item!=='string'||!r.item.trim()||r.item.length>512)throw Error('Название товара или услуги отсутствует или длиннее 512 символов.');
     if(!Number.isSafeInteger(r.amount_kopecks)||Math.abs(r.amount_kopecks)>1e12)throw Error('Invalid amount');
     if(!(r.quantity_milli===undefined||r.quantity_milli===null||
       (Number.isSafeInteger(r.quantity_milli)&&r.quantity_milli>0&&r.quantity_milli<=1000000000)))
