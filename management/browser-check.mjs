@@ -148,6 +148,8 @@ try {
   }).filter(Boolean));
   assert.ok(bars.length>0);assert.ok(bars.every(b=>b.pw>=16&&b.aw>=16&&b.ax>=b.px+b.pw+4));
   assert.ok(bars.some(b=>b.ah>15&&b.ph>15),'Sales facts and plans must both be visible at daily scale');
+  assert.ok(new Set(bars.map(b=>b.ph)).size>1,'Daily sales targets must change with achieved results');
+  await page.getByText('Дневные цели пересчитываются',{exact:false}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.locator('.kpi-chart-scroll').evaluate(el=>{el.scrollLeft=150;});
   await page.waitForTimeout(50);
@@ -379,7 +381,8 @@ try {
   assert.equal(s.snapshot(a).plans.length,3);
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'KPI mobile overflow');
-  await page.screenshot({path:'/tmp/business-pulse-kpi-mobile.png',fullPage:true});
+  await page.mouse.move(0,0);
+  await page.screenshot({path:'/tmp/business-pulse-kpi-mobile.png',fullPage:true,timeout:30000});
   await page.setViewportSize({width:1440,height:1000});
   await page.screenshot({path:'/tmp/business-pulse-kpi-desktop.png',fullPage:true});
   console.log('Custom KPI definition, range plan, calendar, manual entry, CSV, chart keyboard, history, copy and mobile passed');

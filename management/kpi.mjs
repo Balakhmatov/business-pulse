@@ -34,6 +34,30 @@ export function evaluateKpi(p,actual,asof,additive,options={}) {
     timeline:calendar.map(d=>({date:d.date,weight:d.weight})),
   };
 }
+// Daily recovery goals use only facts available before that day. Future dates
+// share one remaining balance, so an empty future day never becomes a shortfall.
+export function adaptiveDailyTargets(calendar, target, facts, asOf, {enabled=true, knownThrough=''}={}) {
+  const totalWeight=calendar.reduce((n,d)=>n+d.weight,0);
+  let remainingWeight=totalWeight, actualBefore=0, hasFact=false, missingPast=false, invalidPast=false;
+  return calendar.map(d=>{
+    const baseline=target*d.weight/totalWeight;
+    const mayAdjust=enabled&&!invalidPast&&(hasFact||knownThrough>=asOf&&asOf>=calendar[0].date);
+    const goal=mayAdjust&&remainingWeight>0?Math.max(0,target-actualBefore)*d.weight/remainingWeight:baseline;
+    const out={date:d.date,weight:d.weight,baseline,goal,
+      provisional:enabled&&missingPast,adjusted:mayAdjust,actual_before:hasFact?actualBefore:null};
+    if(d.date<=asOf) {
+      const value=facts.get(d.date);
+      if(Number.isFinite(value)){actualBefore+=value;hasFact=true;}
+      else if(facts.has(d.date)){invalidPast=true;}
+      else if(d.date<=knownThrough){hasFact=true;}
+      else if(d.weight>0)missingPast=true;
+      remainingWeight-=d.weight;
+    }
+    // For all future days keep the same balance and denominator. Each receives
+    // its own calendar-weighted share, rather than consuming fictitious sales.
+    return out;
+  });
+}
 export function createKpi({db,fail,text,number,day,today,can,within,ref,transaction,audit}) {
   const records=(a)=>db.prepare('SELECT * FROM mg_kpi_definitions WHERE company_id=? ORDER BY rowid').all(a.company_id).map(r=>({id:r.id,...JSON.parse(r.payload_json)}));
   const definitions=(a)=>Object.fromEntries(records(a).map(r=>[r.id,r]));

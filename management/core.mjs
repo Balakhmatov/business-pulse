@@ -1,4 +1,4 @@
-import { initKpi, createKpi, evaluateKpi } from "./kpi.mjs";
+import { initKpi, createKpi, evaluateKpi, adaptiveDailyTargets } from "./kpi.mjs";
 import { buildTrend } from "./trend.mjs";
 import { buildSalesReport } from "./sales-analytics.mjs";
 import { DatabaseSync } from "node:sqlite";
@@ -996,10 +996,19 @@ export function createService(db) {
         const actual=def?kpi.aggregateCustom(def,selectedRows):selectedRows.length?aggregate(selectedRows)[p.metric]:health?.through_date>=cut&&['sales','receipts','profit'].includes(p.metric)?0:null;
         const additive=def ? def.aggregation==='sum' : ['sales','receipts','quantity','profit'].includes(p.metric);
         const evaluated=evaluateKpi(p,actual,asof,additive,opts);
+        const adaptiveEnabled=additive&&p.direction==='up'&&p.target>=0;
+        const nextDay=evaluated.timeline.find(d=>d.date>cut&&d.weight>0);
+        const adaptive={enabled:adaptiveEnabled,available:adaptiveEnabled&&actual!==null,
+          as_of:cut,provisional:!coverage,remaining_target:actual===null?null:Math.max(0,p.target-actual),
+          next_date:nextDay?.date||null,next_goal:adaptiveEnabled&&nextDay&&evaluated.required_rate!==null?evaluated.required_rate*nextDay.weight:null};
         let cumulative=0;
         const step=Math.max(1,Math.ceil(evaluated.timeline.length/40));
         const includeChart=p.id===chartPlanId;
         const timeline=includeChart?evaluated.timeline.map((d,i)=>{cumulative+=d.weight;return {...d,plan:additive?p.target*cumulative/evaluated.total_weight:p.target,upper:p.direction==='range'?(additive?opts.upper*cumulative/evaluated.total_weight:opts.upper):null,index:i};}).filter((d,i,ds)=>i%step===0||i===ds.length-1||d.date===cut).map(d=>({...d,actual:d.date>cut?null:def?kpi.aggregateCustom(def,selectedRows.filter(r=>r.date<=d.date)):aggregate(selectedRows.filter(r=>r.sold_on<=d.date))[p.metric]})):[];
+        const dayGroups=new Map();
+        if(includeChart&&adaptiveEnabled)for(const row of selectedRows){const date=row.date||row.sold_on;if(!dayGroups.has(date))dayGroups.set(date,[]);dayGroups.get(date).push(row);}
+        const dailyFacts=new Map([...dayGroups].map(([date,rs])=>[date,def?kpi.aggregateCustom(def,rs):aggregate(rs)[p.metric]]));
+        const dailyGoals=includeChart&&adaptiveEnabled?adaptiveDailyTargets(evaluated.timeline,p.target,dailyFacts,cut,{enabled:p.metric==='quantity'?actual!==null:true,knownThrough:health?.through_date||''}):[];
         // Bars compare each displayed interval, while lines retain cumulative progress.
         for (const [i, point] of timeline.entries()) {
           const previous = timeline[i-1];
@@ -1009,12 +1018,15 @@ export function createService(db) {
             ? kpi.aggregateCustom(def,def.aggregation==='latest'?selectedRows.filter(r=>r.date<=point.date):periodRows)
             : periodRows.length ? aggregate(periodRows)[p.metric]
             : health?.through_date>=point.date&&['sales','receipts','profit'].includes(p.metric)?0:null;
+          const goals=dailyGoals.filter(d=>d.date>=from&&d.date<=point.date);
+          const basePlan=additive?point.plan-(previous?.plan||0):point.plan;
           point.interval={from,to:point.date,actual:periodActual,
-            plan:additive?point.plan-(previous?.plan||0):point.plan,
+            base_plan:basePlan,adaptive:adaptiveEnabled,provisional:goals.some(d=>d.provisional)||!coverage,
+            plan:goals.length?goals.reduce((n,d)=>n+d.goal,0):basePlan,
             upper:p.direction==='range'?(additive?point.upper-(previous?.upper||0):point.upper):null};
         }
         const lastUpdate=def?selectedRows.reduce((last,r)=>r.updated_at>last?r.updated_at:last,''):selectedRows.reduce((last,r)=>{const at=r.updated_at||'';return at>last?at:last;},'');
-        return {...p,...evaluated,timeline,as_of:cut,data_through:dataThrough||null,coverage_confirmed:coverage,last_update:[lastUpdate,health?.updated_at||''].sort().at(-1)||null,elapsed_days:elapsed,total_days:totalDays};
+        return {...p,...evaluated,adaptive,timeline,as_of:cut,data_through:dataThrough||null,coverage_confirmed:coverage,last_update:[lastUpdate,health?.updated_at||''].sort().at(-1)||null,elapsed_days:elapsed,total_days:totalDays};
       });
     const contacts =
       can(a, "clients") && !scoped

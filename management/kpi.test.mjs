@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {openStore,createService,today} from './core.mjs';
-import {evaluateKpi} from './kpi.mjs';
+import {evaluateKpi,adaptiveDailyTargets} from './kpi.mjs';
 import {createApp} from './server.mjs';
 import {configuredDemo} from './demo.mjs';
 import {once} from 'node:events';
@@ -140,7 +140,63 @@ test('bar intervals compare daily plan and actual in the same units without cumu
   assert.equal(current.actual,2500000);
   assert.equal(current.interval.actual,2500000);
   assert.ok(Math.abs(current.interval.plan-100000000/30)<1e-7);
-  assert.ok(Math.abs(p.timeline.reduce((n,d)=>n+d.interval.plan,0)-p.target)<1e-6);
+  assert.ok(Math.abs(p.timeline.reduce((n,d)=>n+d.interval.base_plan,0)-p.target)<1e-6);
   assert.ok(p.timeline.filter(d=>d.date>end).every(d=>d.interval.actual===null));
   assert.ok(p.timeline.filter(d=>d.date<end).every(d=>d.interval.actual===null));
+});
+const calendar=(weights)=>weights.map((weight,i)=>({date:'2026-11-'+String(i+1).padStart(2,'0'),weight}));
+const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-6,`${a} != ${b}`);
+test('daily recovery goals rise after shortfall, fall after overperformance and reconcile the remaining goal',()=>{
+  const days=calendar([1,1,1,1]);
+  const facts=new Map([['2026-11-01',1000],['2026-11-02',4000]]);
+  const targets=adaptiveDailyTargets(days,10000,facts,'2026-11-02');
+  near(targets[0].goal,2500);near(targets[1].goal,3000);near(targets[2].goal,2500);near(targets[3].goal,2500);
+  near(5000+targets.slice(2).reduce((n,d)=>n+d.goal,0),10000);
+  assert.ok(targets.every(d=>d.baseline===2500));
+  const ahead=adaptiveDailyTargets(days,10000,new Map([['2026-11-01',7000]]),'2026-11-01');
+  assert.deepEqual(ahead.slice(1).map(d=>d.goal),[1000,1000,1000]);
+});
+test('future days do not create fictional shortfalls; weights and closed days are preserved',()=>{
+  const targets=adaptiveDailyTargets(calendar([1,1,0,2]),1000,new Map([['2026-11-01',100]]),'2026-11-01');
+  near(targets[1].goal,300);near(targets[2].goal,0);near(targets[3].goal,600);
+  near(targets.slice(1).reduce((n,d)=>n+d.goal,0),900);
+});
+test('targets for a historical day never use its own result or a later result',()=>{
+  const days=calendar([1,1,1,1]);
+  const first=adaptiveDailyTargets(days,10000,new Map([['2026-11-01',1000],['2026-11-02',4000]]),'2026-11-02');
+  const changed=adaptiveDailyTargets(days,10000,new Map([['2026-11-01',1000],['2026-11-02',9000],['2026-11-03',10000]]),'2026-11-03');
+  near(first[0].goal,changed[0].goal);near(first[1].goal,changed[1].goal);
+  near(changed[2].goal,0);
+});
+test('reached plan gives zero future goals, refunds restore a remaining goal, and ended plans stay finite',()=>{
+  const days=calendar([1,1,1]);
+  const reached=adaptiveDailyTargets(days,1000,new Map([['2026-11-01',1200]]),'2026-11-01');
+  assert.deepEqual(reached.map(d=>d.goal),[1000/3,0,0]);
+  const refund=adaptiveDailyTargets(days,1000,new Map([['2026-11-01',1200],['2026-11-02',-500]]),'2026-11-02');
+  near(refund[2].goal,300);
+  const ended=adaptiveDailyTargets(days,1000,new Map([['2026-11-01',1200]]),'2026-11-30');
+  assert.ok(ended.every(d=>Number.isFinite(d.goal)));
+});
+test('missing observations do not masquerade as confirmed zero, incomplete costs block recovery targets',()=>{
+  const days=calendar([1,1,1]);
+  const empty=adaptiveDailyTargets(days,900,new Map(),'2026-11-02');
+  assert.deepEqual(empty.map(d=>d.goal),[300,300,300]);
+  const confirmed=adaptiveDailyTargets(days,900,new Map(),'2026-11-02',{knownThrough:'2026-11-02'});
+  near(confirmed[2].goal,900);
+  const invalid=adaptiveDailyTargets(days,900,new Map([['2026-11-01',100],['2026-11-02',null]]),'2026-11-02');
+  near(invalid[1].goal,400);near(invalid[2].goal,300);assert.equal(invalid[2].adjusted,false);
+});
+test('sales snapshot publishes adaptive daily goals while the period target and baseline remain unchanged',t=>{
+  const {s,a,l,start,end}=fixture(t);
+  const product=s.save(a,'products',{name:'Item',category:'Cat',unit:'шт.'}).id;
+  const row={external_id:'day1',receipt_id:'one',date:start,location_id:l,product_id:product,status:'sale',quantity:1,amount_kopecks:1000000,cost_kopecks:100000};
+  s.importSales(a,{source:'pos',rows:[row]});
+  const id=s.plan(a,{metric:'sales',target:30000000,start_on:start,end_on:start.slice(0,7)+'-30',location_id:l}).id;
+  const p=s.snapshot(a,{plan_chart_id:id}).plans[0];
+  near(p.timeline[0].interval.plan,1000000);
+  const future=p.timeline.filter(d=>d.date>end);
+  near(future.reduce((n,d)=>n+d.interval.plan,0),29000000);
+  near(p.adaptive.next_goal,29000000/p.remaining_weight);
+  near(p.target,30000000);near(p.target_to_date,30000000*p.elapsed_days/30);
+  assert.equal(s.planHistory(a,id).length,1,'Automatic recalculation must not rewrite the agreed plan');
 });
