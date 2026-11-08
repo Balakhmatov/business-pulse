@@ -339,12 +339,13 @@ const views = {
         "Сотрудники",
         "Сотрудник может работать в нескольких точках",
         table(
-          ["Имя / ID", "Точки", "Продажи", "Чеки"],
+          ["Имя / ID", "Точки", "Продажи", "Чеки", ""],
           state.employees.map((e) => [
             `${esc(e.name)}<span class="id">${esc(e.id)}</span>`,
-            esc(e.location_ids.map(locName).join(", ")),
+            esc(e.location_ids.map(locName).join(", ") || "Не назначены"),
             money(state.by_employee.find((r) => r.id === e.id)?.sales || 0),
             num(state.by_employee.find((r) => r.id === e.id)?.receipts || 0),
+            action("Редактировать", "employee", "structure", e.id),
           ]),
         ),
         action("Добавить сотрудника", "employee", "structure"),
@@ -539,6 +540,7 @@ function open(kind, id = "") {
       customer: "customers",
       campaign: "campaigns",
       member: "members",
+      employee: "employees",
     },
     r = id
       ? state[collection[kind]].find((x) => (x.id || x.user_id) === id)
@@ -554,17 +556,20 @@ function open(kind, id = "") {
     fields = input("name", "Название", "", "text", true);
   }
   if (kind === "employee") {
-    title = "Новый сотрудник";
+    title = id ? "Редактировать сотрудника" : "Новый сотрудник";
+    const selected = new Set(r.location_ids || []);
     fields =
-      input("name", "Имя", "", "text", true) +
-      textarea(
-        "location_ids",
-        "ID точек через запятую",
-        state.locations.map((x) => x.id).join(", "),
-      ) +
-      '<p class="small">Доступные точки: ' +
-      state.locations.map((x) => esc(x.name) + " — " + esc(x.id)).join("<br>") +
-      "</p>";
+      input("name", "Имя", r.name || "", "text", true) +
+      '<fieldset class="full employee-locations"><legend>Точки работы</legend>' +
+      (state.locations.length
+        ? state.locations
+            .map(
+              (l) =>
+                `<label class="check-line"><input type="checkbox" name="employee_location_ids" value="${esc(l.id)}" ${selected.has(l.id) ? "checked" : ""}>${esc(l.name)}</label>`,
+            )
+            .join("")
+        : '<p class="small">Сначала добавьте точки в разделе «Точки и команда».</p>') +
+      '<p class="small">Можно выбрать несколько точек или назначить их позже.</p></fieldset>';
   }
   if (kind === "product") {
     title = "Новый товар или услуга";
@@ -886,7 +891,8 @@ $("editor").addEventListener("submit", async (e) => {
         customer: "customers",
         campaign: "campaigns",
       };
-      if (kind === "employee") v.location_ids = split(v.location_ids);
+      if (kind === "employee")
+        v.location_ids = fd.getAll("employee_location_ids");
       if (kind === "customer") {
         v.tags = split(v.tags);
         v.external_ids = JSON.parse(v.external_ids);
