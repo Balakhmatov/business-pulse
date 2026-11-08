@@ -517,6 +517,12 @@ const textarea = (name, label, value) =>
   `<label class="full">${esc(label)}<textarea name="${name}">${esc(value)}</textarea></label>`;
 const select = (name, label, options, value = "", required = false) =>
   `<label>${esc(label)}<select name="${name}" ${required ? "required" : ""}>${options.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
+function categoryField(label, value = "") {
+  const categories = [
+    ...new Set(state.products.map((p) => p.category.trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, "ru"));
+  return `<label>${esc(label)}<input name="category" type="text" list="category-options" value="${esc(value)}" maxlength="160" autocomplete="off" placeholder="Выберите или введите новую"><datalist id="category-options">${categories.map((category) => `<option value="${esc(category)}"></option>`).join("")}</datalist></label>`;
+}
 const locOptions = () => [
   ["", "Вся компания"],
   ...state.locations.map((l) => [l.id, l.name]),
@@ -575,7 +581,7 @@ function open(kind, id = "") {
     title = "Новый товар или услуга";
     fields =
       input("name", "Название", "", "text", true) +
-      input("category", "Категория", "Без категории") +
+      categoryField("Категория") +
       input("unit", "Единица измерения", "шт.");
   }
   if (kind === "plan") {
@@ -607,7 +613,7 @@ function open(kind, id = "") {
         [["", "Все сотрудники"], ...state.employees.map((e) => [e.id, e.name])],
         r.employee_id || "",
       ) +
-      input("category", "Категория (необязательно)", r.category || "") +
+      categoryField("Категория (необязательно)", r.category || "") +
       select(
         "product_id",
         "Товар",
