@@ -1,0 +1,25 @@
+[Unit]
+Description=Business Pulse management (separate workspace)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=business-pulse-management
+Group=business-pulse-management
+WorkingDirectory=/opt/business-pulse-management
+EnvironmentFile=/etc/business-pulse-management/app.env
+Environment=BPM_PORT=3128
+Environment=BPM_DB_FILE=/var/lib/business-pulse-management/management.db
+ExecStart=/usr/local/bin/node-business-pulse /opt/business-pulse-management/management/server.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/business-pulse-management
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

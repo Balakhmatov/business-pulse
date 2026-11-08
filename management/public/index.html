@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#171d36" />
+    <title>Бизнес Пульс — управление</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section id="welcome" class="welcome">
+      <div class="welcome-card">
+        <div class="brand"><span class="brand-mark">БП</span>Бизнес Пульс</div>
+        <div class="eyebrow">УПРАВЛЕНИЕ РЕЗУЛЬТАТОМ</div>
+        <h1>Все точки.<br />Одна картина.</h1>
+        <p>
+          Планы, продажи, команда и маркетинг.<br />От общего результата — до
+          конкретного товара.
+        </p>
+        <form id="login">
+          <label
+            >Email<input
+              name="email"
+              type="email"
+              autocomplete="username"
+              required /></label
+          ><label
+            >Пароль<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required /></label
+          ><button class="primary" type="submit">Войти в компанию</button>
+        </form>
+        <button id="demo" class="secondary">Посмотреть пример</button>
+        <p class="small">Расширенная версия · отдельный рабочий кабинет</p>
+      </div>
+    </section>
+    <div id="workspace" class="layout" hidden>
+      <aside>
+        <a class="brand" href="./"
+          ><span class="brand-mark">БП</span>Бизнес Пульс</a
+        >
+        <div class="aside-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+        <nav id="nav" aria-label="Разделы"></nav>
+        <div class="aside-bottom">
+          <div id="identity"></div>
+          <button id="logout" class="aside-link">Выйти</button>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <div id="company" class="eyebrow"></div>
+            <h1 id="title">Обзор</h1>
+            <p id="subtitle"></p>
+          </div>
+          <div class="header-meta">
+            <span id="mode" class="badge"></span
+            ><button id="exit-workspace" class="secondary">Выйти</button>
+          </div>
+        </header>
+        <div class="filters">
+          <label>С<input id="from" type="date" required /></label
+          ><label>По<input id="to" type="date" required /></label
+          ><label class="location-filter"
+            >Точка<select id="location">
+              <option value="">Все доступные точки</option>
+            </select></label
+          ><button id="apply" class="secondary">Показать</button
+          ><span class="small">Даты и время — МСК</span>
+        </div>
+        <div id="content" aria-live="polite"></div>
+      </main>
+    </div>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="dialog">
+      <form id="editor">
+        <div class="dialog-head">
+          <h2 id="dialog-title"></h2>
+          <button
+            id="close-dialog"
+            type="button"
+            class="icon-button"
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+        </div>
+        <div id="fields"></div>
+        <p id="form-error" class="error" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" id="cancel-dialog" class="secondary">
+            Отмена</button
+          ><button type="submit" id="save-dialog" class="primary">
+            Сохранить
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
