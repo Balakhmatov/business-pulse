@@ -1000,6 +1000,19 @@ export function createService(db) {
         const step=Math.max(1,Math.ceil(evaluated.timeline.length/40));
         const includeChart=p.id===chartPlanId;
         const timeline=includeChart?evaluated.timeline.map((d,i)=>{cumulative+=d.weight;return {...d,plan:additive?p.target*cumulative/evaluated.total_weight:p.target,upper:p.direction==='range'?(additive?opts.upper*cumulative/evaluated.total_weight:opts.upper):null,index:i};}).filter((d,i,ds)=>i%step===0||i===ds.length-1||d.date===cut).map(d=>({...d,actual:d.date>cut?null:def?kpi.aggregateCustom(def,selectedRows.filter(r=>r.date<=d.date)):aggregate(selectedRows.filter(r=>r.sold_on<=d.date))[p.metric]})):[];
+        // Bars compare each displayed interval, while lines retain cumulative progress.
+        for (const [i, point] of timeline.entries()) {
+          const previous = timeline[i-1];
+          const from = previous ? shift(previous.date,1) : p.start_on;
+          const periodRows = selectedRows.filter(r => (r.date||r.sold_on)>=from && (r.date||r.sold_on)<=point.date);
+          const periodActual = point.date>cut ? null : def
+            ? kpi.aggregateCustom(def,def.aggregation==='latest'?selectedRows.filter(r=>r.date<=point.date):periodRows)
+            : periodRows.length ? aggregate(periodRows)[p.metric]
+            : health?.through_date>=point.date&&['sales','receipts','profit'].includes(p.metric)?0:null;
+          point.interval={from,to:point.date,actual:periodActual,
+            plan:additive?point.plan-(previous?.plan||0):point.plan,
+            upper:p.direction==='range'?(additive?point.upper-(previous?.upper||0):point.upper):null};
+        }
         const lastUpdate=def?selectedRows.reduce((last,r)=>r.updated_at>last?r.updated_at:last,''):selectedRows.reduce((last,r)=>{const at=r.updated_at||'';return at>last?at:last;},'');
         return {...p,...evaluated,timeline,as_of:cut,data_through:dataThrough||null,coverage_confirmed:coverage,last_update:[lastUpdate,health?.updated_at||''].sort().at(-1)||null,elapsed_days:elapsed,total_days:totalDays};
       });

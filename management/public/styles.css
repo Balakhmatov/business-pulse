@@ -995,3 +995,5 @@ details .id {
 .kpi-chart-legend i { display:inline-block;width:10px;height:10px;border-radius:2px; }
 .kpi-chart-legend .actual { background:#665fe2; }
 .kpi-chart-legend .plan { background:#969cb0; }
+.kpi-chart-scroll { width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch; }
+.kpi-chart-scroll .kpi-chart { width:auto;max-width:none;height:280px; }

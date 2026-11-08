@@ -136,6 +136,29 @@ try {
   console.log(
     "Interactive chart metric switches, hover, keyboard and mobile passed",
   );
+  await page.locator('#nav').getByRole('button',{name:'Планы и KPI',exact:true}).click();
+  const salesPlan=await page.locator('[name=kpi_chart] option').evaluateAll(opts=>opts.find(o=>o.textContent.startsWith('Продажи'))?.value);
+  await Promise.all([page.waitForResponse(r=>r.url().includes('/api/demo?')&&r.status()===200),page.locator('[name=kpi_chart]').selectOption(salesPlan)]);
+  await page.waitForFunction(()=>!document.body.classList.contains('loading'));
+  await page.getByRole('button',{name:'Столбики',exact:true}).click();
+  await page.setViewportSize({width:390,height:844});
+  const bars=await page.locator('.kpi-chart [data-kpi-group]').evaluateAll(groups=>groups.map(g=>{
+    const p=g.querySelector('[data-kpi-bar=plan]'),a=g.querySelector('[data-kpi-bar=actual]');
+    return p&&a?{pw:+p.getAttribute('width'),aw:+a.getAttribute('width'),px:+p.getAttribute('x'),ax:+a.getAttribute('x'),ph:+p.getAttribute('height'),ah:+a.getAttribute('height')}:null;
+  }).filter(Boolean));
+  assert.ok(bars.length>0);assert.ok(bars.every(b=>b.pw>=16&&b.aw>=16&&b.ax>=b.px+b.pw+4));
+  assert.ok(bars.some(b=>b.ah>15&&b.ph>15),'Sales facts and plans must both be visible at daily scale');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.locator('.kpi-chart-scroll').evaluate(el=>{el.scrollLeft=150;});
+  await page.waitForTimeout(50);
+  await page.locator('[name=kpi_point]').focus();await page.keyboard.press('Home');
+  assert.ok(await page.locator('.kpi-chart-scroll').evaluate(el=>el.scrollLeft)>100,'Date selection preserves the scrolled chart');
+  await page.locator('.kpi-chart-scroll').evaluate(el=>{el.scrollLeft=0;});
+  await page.locator('.kpi-chart').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'/tmp/business-pulse-paired-sales-bars-mobile.png',fullPage:true});
+  await page.getByRole('button',{name:'Линии',exact:true}).click();
+  await page.setViewportSize({width:1440,height:1000});
+  console.log('Sales bars: adjacent 18px plan/fact pairs, daily scale, horizontal mobile scrolling');
   for (const name of [
     "Планы и KPI",
     "Продажи",

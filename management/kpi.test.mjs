@@ -130,3 +130,17 @@ test('chart requests cannot expose a hidden plan and old plan history is scoped'
   const history=s.planHistory(manager,id);assert.equal(history.length,1);assert.equal(history[0].before,null);assert.equal(history[0].before_hidden,true);
   const visible=s.snapshot(manager,{plan_chart_id:other}).plans;assert.equal(visible.length,1);assert.ok(visible[0].timeline.length>0);
 });
+test('bar intervals compare daily plan and actual in the same units without cumulative future scale',t=>{
+  const {s,a,l,start,end}=fixture(t);
+  const product=s.save(a,'products',{name:'Item',category:'Category',unit:'шт.'}).id;
+  s.importSales(a,{source:'pos',rows:[{external_id:'today',receipt_id:'one',date:end,location_id:l,product_id:product,status:'sale',quantity:1,amount_kopecks:2500000,cost_kopecks:1000000}]});
+  const id=s.plan(a,{metric:'sales',target:100000000,start_on:start,end_on:start.slice(0,7)+'-30',location_id:l}).id;
+  const p=s.snapshot(a,{plan_chart_id:id}).plans[0];
+  const current=p.timeline.find(d=>d.date===end);
+  assert.equal(current.actual,2500000);
+  assert.equal(current.interval.actual,2500000);
+  assert.ok(Math.abs(current.interval.plan-100000000/30)<1e-7);
+  assert.ok(Math.abs(p.timeline.reduce((n,d)=>n+d.interval.plan,0)-p.target)<1e-6);
+  assert.ok(p.timeline.filter(d=>d.date>end).every(d=>d.interval.actual===null));
+  assert.ok(p.timeline.filter(d=>d.date<end).every(d=>d.interval.actual===null));
+});
