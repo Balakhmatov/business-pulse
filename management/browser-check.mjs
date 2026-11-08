@@ -291,6 +291,60 @@ try {
   await page.locator("#dialog").waitFor({ state: "hidden" });
   assert.equal(s.snapshot(a).customers[0].loyalty.balance, 200);
   console.log("Plans/customer passed");
+
+  await page.locator('#nav').getByRole('button',{name:'Планы и KPI',exact:true}).click();
+  await page.getByRole('button',{name:'Добавить показатель',exact:true}).click();
+  await page.locator('#editor [name=label]').fill('Загрузка команды');
+  await page.locator('#editor [name=aggregation]').selectOption('ratio');
+  await page.locator('#editor [name=unit]').selectOption('percent');
+  await page.locator('#editor [name=direction]').selectOption('range');
+  await page.locator('#editor [name=source]').fill('manual');
+  await page.locator('#save-dialog').click();
+  await page.locator('#dialog').waitFor({state:'hidden'});
+  const custom=s.snapshot(a).kpi_definitions[0].id;
+  await page.getByRole('button',{name:'Добавить план',exact:true}).click();
+  await page.locator('#editor [name=metric]').selectOption(custom);
+  await page.locator('#editor [name=target]').fill('70');
+  await page.locator('#editor [name=upper]').fill('85');
+  await page.locator('#editor [name=weekday_0]').fill('0');
+  await page.locator('#editor [name=location_id]').selectOption(location);
+  await page.locator('#save-dialog').click();
+  await page.locator('#dialog').waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Ввести факт',exact:true}).click();
+  await page.locator('#editor [name=metric]').selectOption(custom);
+  await page.locator('#editor [name=location_id]').selectOption(location);
+  await page.locator('#editor [name=numerator]').fill('30');
+  await page.locator('#editor [name=denominator]').fill('40');
+  await page.locator('#save-dialog').click();
+  await page.locator('#dialog').waitFor({state:'hidden'});
+  assert.equal(s.snapshot(a).plans.find(p=>p.metric===custom).actual,75);
+  await Promise.all([page.waitForResponse(r=>r.url().includes('/api/workspace')&&r.status()===200),page.locator('[name=kpi_chart]').selectOption(s.snapshot(a).plans.find(p=>p.metric===custom).id)]);
+  await page.waitForFunction(()=>!document.body.classList.contains('loading'));
+  await page.locator('[name=kpi_point]').focus();
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('[name=kpi_point]').evaluate(el=>el===document.activeElement),true);
+  const blob='metric;date;location_id;employee_id;external_id;value;numerator;denominator\n'+[custom,today(),location,'','file-test','','2','10'].join(';');
+  await page.getByRole('button',{name:'Загрузить KPI',exact:true}).click();
+  await page.locator('#editor [name=file]').setInputFiles({name:'kpi.csv',mimeType:'text/csv',buffer:Buffer.from(blob)});
+  await page.locator('#save-dialog').click();
+  await page.locator('#dialog').waitFor({state:'hidden'});
+  assert.equal(s.snapshot(a).plans.find(p=>p.metric===custom).actual,64);
+  await page.locator('[data-kpi-history]').first().click();
+  await page.getByRole('heading',{name:'История плана',exact:true}).waitFor();
+  await page.locator('#close-dialog').click();
+  await page.getByRole('button',{name:'Копировать планы',exact:true}).click();
+  await page.locator('#editor [name=copy_ids]').first().check();
+  await page.locator('#save-dialog').click();
+  await page.locator('#dialog').waitFor({state:'hidden'});
+  assert.equal(s.snapshot(a).plans.length,3);
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'KPI mobile overflow');
+  await page.screenshot({path:'/tmp/business-pulse-kpi-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.screenshot({path:'/tmp/business-pulse-kpi-desktop.png',fullPage:true});
+  console.log('Custom KPI definition, range plan, calendar, manual entry, CSV, chart keyboard, history, copy and mobile passed');
+
   await page
     .locator("#nav")
     .getByRole("button", { name: "Данные и интеграции", exact: true })

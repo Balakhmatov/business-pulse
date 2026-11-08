@@ -79,6 +79,7 @@ export function createApp({
       const live = service.snapshot(actor, range);
       const config = {
         actor: live.actor,
+        kpi_definitions:live.kpi_definitions,
         locations: live.locations,
         products: live.products,
         employees: live.employees,
@@ -93,6 +94,7 @@ export function createApp({
             employee_id,
             category,
             product_id,
+            options,
           }) => ({
             id,
             metric,
@@ -103,6 +105,7 @@ export function createApp({
             employee_id,
             category,
             product_id,
+            options,
           }),
         ),
       };
@@ -202,6 +205,8 @@ export function createApp({
           (req.headers.authorization || "").replace(/^Bearer /, ""),
         );
         if (!a) fail("Ключ интеграции недействителен.", 401);
+        if (req.method === "POST" && p === "/api/v1/heartbeat") return json(res,200,service.heartbeat(a,await body(req)));
+        if (req.method === "POST" && p === "/api/v1/kpi-values") return json(res,200,service.importKpi(a,await body(req)));
         if (req.method === "POST" && p === "/api/v1/catalog")
           return json(res, 200, service.catalog(a, await body(req)));
         if (req.method === "POST" && p === "/api/v1/sales")
@@ -258,6 +263,7 @@ export function createApp({
             await insights(snapshot, a.company_id + ":" + a.user_id),
           );
         }
+        if (p === "/api/plans/history" && req.method === "GET") return json(res,200,service.planHistory(a,url.searchParams.get("id")));
         if (p === "/api/workspace" && req.method === "GET")
           return json(
             res,
@@ -273,6 +279,10 @@ export function createApp({
           if (p === "/api/catalog")
             return json(res, 200, service.catalog(a, input));
           if (p === "/api/plans") return json(res, 200, service.plan(a, input));
+          if (p === "/api/plans/copy") return json(res,200,service.copyPlans(a,input));
+          if (p === "/api/kpi-definitions") return json(res,200,service.defineKpi(a,input));
+          if (p === "/api/kpi-values") return json(res,200,service.importKpi(a,input));
+          if (p === "/api/notifications/seen") return json(res,200,service.acknowledge(a,input.id));
           if (p === "/api/invites")
             return json(res, 200, service.invite(a, input));
           if (p === "/api/keys")
@@ -288,6 +298,7 @@ export function createApp({
       const files = {
         "/": "index.html",
         "/app.js": "app.js",
+        "/kpi.js":"kpi.js",
         "/import.js": "import.js",
         "/styles.css": "styles.css",
       };

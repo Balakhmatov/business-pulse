@@ -1,3 +1,4 @@
+import { createKpiUI } from "./kpi.js";
 import { readFile, fields, tableToSales } from "./import.js";
 const baseURL = new URL("./", import.meta.url);
 const publicBase = baseURL.href.replace(/\/$/, "");
@@ -109,6 +110,7 @@ const query = () =>
   new URLSearchParams({
     from: $("from").value,
     to: $("to").value,
+    ...(kpiUI.chartId()?{plan_chart_id:kpiUI.chartId()}:{}),
     ...($("location").value ? { location_id: $("location").value } : {}),
   });
 async function load() {
@@ -176,6 +178,7 @@ function render() {
       ? '<div class="notice">Это демонстрация с синтетическими продажами. Реальные данные компании не изменяются. Для редактирования нажмите «Вернуться».</div>'
       : "") + views[tab]();
   mountMetricChart();
+  kpiUI.mount();
 }
 function action(label, kind, permission, id = "") {
   return state.permissions[permission]
@@ -219,7 +222,7 @@ function planRows(plans) {
     ? plans
         .map(
           (p) =>
-            `<div class="plan-row"><div class="row-between"><div><h3>${esc(state.metrics[p.metric].label)}</h3><div class="small">${esc(planName(p))}</div></div><span class="pill ${p.status}">${status(p)}</span></div><div class="row-between"><strong>${format(p.actual, p.metric)}</strong><span class="small">План к дате: ${format(p.target_to_date, p.metric)}</span></div>${p.completion === null ? "" : `<progress max="100" value="${Math.max(0, Math.min(100, p.completion))}" aria-label="Выполнение плана"></progress>`}<div class="small">План на период: ${format(p.target, p.metric)} · ${esc(p.start_on)} — ${esc(p.end_on)}</div>${p.forecast === null ? "" : `<div class="small">При текущем темпе: ${format(p.forecast, p.metric)} за весь период</div>`}${action("Изменить", "plan", "plans", p.id)}</div>`,
+            `<div class="plan-row"><div class="row-between"><div><h3>${esc(state.metrics[p.metric].label)}</h3><div class="small">${esc(planName(p))}</div></div><span class="pill ${p.status}">${status(p)}</span></div><div class="row-between"><strong>${format(p.actual, p.metric)}</strong><span class="small">План к дате: ${format(p.target_to_date, p.metric)}</span></div>${p.completion === null ? "" : `<progress max="100" value="${Math.max(0, Math.min(100, p.completion))}" aria-label="Выполнение плана"></progress>`}<div class="small">План на период: ${format(p.target, p.metric)} · ${esc(p.start_on)} — ${esc(p.end_on)}</div>${p.forecast === null ? "" : `<div class="small">При текущем темпе: ${format(p.forecast, p.metric)} за весь период</div>`}${p.coverage_confirmed?"":`<p class="small">Актуальность не подтверждена. Последняя дата факта: ${esc(p.data_through||"нет данных")}</p>`}${p.required_rate===null||p.required_rate===undefined?"":`<p class="small">Осталось: ${format(p.remaining,p.metric)} · Нужно ${format(p.required_rate,p.metric)} на единицу рабочего веса · Осталось веса: ${num(p.remaining_weight)}</p>`}${p.direction!=="up"?`<p class="small">${p.direction==="down"?"Не выше":"Диапазон"}: ${format(p.target,p.metric)}${p.direction==="range"?" — "+format(p.options.upper,p.metric):""}</p>`:""}<div class="actions">${action("Изменить", "plan", "plans", p.id)}<button class="inline-link" data-kpi-history="${esc(p.id)}" ${demo?"disabled":""}>История</button></div></div>`,
         )
         .join("")
     : empty(
@@ -515,6 +518,7 @@ const views = {
       .slice(0, 3);
     return (
       cards() +
+      ((state.notifications||[]).length?panel("Уведомления по KPI","Отклонения и актуальность источников",kpiUI.notifications()):"") +
       `<div class="grid-two">${metricChartPanel()}${panel("Требует внимания", "Отклонения от плана к выбранной дате", bad.length ? bad.map((p) => `<div class="attention-item"><h3>${esc(state.metrics[p.metric].label)} · ${esc(planName(p))}</h3><p>Факт ${format(p.actual, p.metric)}. Отклонение ${format(p.deviation, p.metric)}.</p><button class="inline-link" data-tab="plans">Открыть планы →</button></div>`).join("") : empty(state.plans.length ? "Нет отклонений от заданных целей" : "Добавьте планы", "Система сравнивает результат с планом на прошедшую часть периода."))}</div>` +
       panel(
         "Выполнение планов",
@@ -534,17 +538,7 @@ const views = {
       )
     );
   },
-  plans() {
-    return (
-      `<div class="notice">План продаж, количества и прибыли распределяется равномерно по дням. Для среднего чека, маржи и доли возвратов сравниваем фактический уровень с заданной целью. Прогноз — продолжение текущего темпа.</div>` +
-      panel(
-        "Планы компании",
-        "Факт считается от начала каждого плана до выбранной даты. Изменения сохраняются с историей версий.",
-        planRows(state.plans),
-        action("Добавить план", "plan", "plans"),
-      )
-    );
-  },
+  plans() { return kpiUI.render(); },
   sales() {
     return renderSales();
   },
@@ -1151,6 +1145,8 @@ function open(kind, id = "") {
       member: "members",
       employee: "employees",
       product: "products",
+      kpiDefinition:"kpi_definitions",
+      kpiValue:"kpi_values",
     },
     r = id
       ? state[collection[kind]].find((x) => (x.id || x.user_id) === id)
@@ -1233,8 +1229,10 @@ function open(kind, id = "") {
         "Товар",
         [["", "Все товары"], ...state.products.map((p) => [p.id, p.name])],
         r.product_id || "",
-      );
+      ) + kpiUI.planFields(r);
   }
+  const kpiForm=kpiUI.form(kind,r,id);
+  if(kpiForm){title=kpiForm.title;fields=kpiForm.fields;}
   if (kind === "customer") {
     title = id ? "Карточка клиента" : "Новый клиент";
     fields =
@@ -1369,8 +1367,9 @@ function open(kind, id = "") {
     .querySelectorAll('input[type="number"]')
     .forEach((el) => {
       el.step = "any";
-      el.min = "0";
+      if(kind!=="kpiValue" && !(kind==="plan"&&["target","upper"].includes(el.name))) el.min = "0";
     });
+  kpiUI.editor(kind);
 }
 const split = (v) =>
   (v || "")
@@ -1423,6 +1422,7 @@ function renderMapping() {
     `<p class="small">${Math.max(0, matrix.length - 1)} строк. Первая строка должна содержать заголовки. Для одного чека с несколькими товарами каждой строке нужен свой ID.</p>`;
 }
 $("editor").addEventListener("change", async (e) => {
+  if(e.target.name==="metric")kpiUI.editor(editing?.kind);
   if (editing?.kind !== "import") return;
   if (e.target.name === "sheet") {
     renderMapping();
@@ -1470,7 +1470,9 @@ $("editor").addEventListener("submit", async (e) => {
     if (kind === "plan") {
       v.target =
         Number(v.target) * (state.metrics[v.metric].unit === "money" ? 100 : 1);
-      result = await api("/api/plans", { ...v, id: id || undefined });
+      result = await api("/api/plans", { ...v, options:kpiUI.planOptions(v,v.metric), id: id || undefined });
+    } else if(kind.startsWith("kpi")) {
+      result=await kpiUI.submit(kind,v,fd,id);
     } else if (kind === "invite")
       result = await api("/api/invites", {
         ...v,
@@ -1648,6 +1650,7 @@ $("content").addEventListener("submit", (e) => {
   load().catch((e) => toast(e.message));
 });
 $("content").addEventListener("change", (e) => {
+  if(kpiUI.change(e))return;
   if (e.target.id === "sales-point") {
     $("location").value = e.target.value;
     salesPage = 1;
@@ -1667,6 +1670,7 @@ $("content").addEventListener("change", (e) => {
 $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button");
   if (!b) return;
+  try { if(await kpiUI.click(b))return; } catch(e){toast(e.message);return;}
   if (b.dataset.chartMetric && chartMetrics[b.dataset.chartMetric]) {
     chartMetric = b.dataset.chartMetric;
     render();
@@ -1813,6 +1817,13 @@ async function boot() {
     /* Login is shown for a new session. */
   }
 }
+const kpiUI=createKpiUI({esc,input,select,textarea,table,panel,action,format,num,api,readFile,planRows,planName,locName,empName,date,
+  error:toast,state:()=>state,demo:()=>demo,from:()=>$("from").value,to:()=>$("to").value,render,load,
+  history:html=>{$("dialog-title").textContent="История плана";$("fields").innerHTML=html;$("save-dialog").hidden=true;$("dialog").showModal();}
+});
+$("editor").addEventListener("click",e=>{const b=e.target.closest("[data-kpi-template]");if(b)kpiUI.click(b).catch(e=>toast(e.message));});
+setInterval(()=>{if(state&&!demo&&["plans","overview"].includes(tab)&&!$("dialog").open&&!document.hidden&&!document.body.classList.contains("loading"))load().catch(()=>{});},60000);
+window.addEventListener("resize",()=>{if(state&&tab==="plans")render();});
 boot();
 window.addEventListener("hashchange", () => {
   if (new URLSearchParams(location.hash.slice(1)).has("invite")) boot();

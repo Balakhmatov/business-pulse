@@ -1,3 +1,4 @@
+import { initKpi, createKpi, evaluateKpi } from "./kpi.mjs";
 import { buildTrend } from "./trend.mjs";
 import { buildSalesReport } from "./sales-analytics.mjs";
 import { DatabaseSync } from "node:sqlite";
@@ -123,16 +124,21 @@ export function openStore(file = ":memory:") {
     .map((c) => c.name);
   if (!productColumns.includes("sku"))
     db.exec("ALTER TABLE mg_products ADD COLUMN sku TEXT NOT NULL DEFAULT ''");
+  initKpi(db);
+  db.exec("CREATE TABLE IF NOT EXISTS mg_sales_updated(sale_id TEXT PRIMARY KEY,updated_at TEXT NOT NULL)");
   return db;
 }
+let transactionId=0;
 const transaction = (db, fn) => {
-  db.exec("BEGIN IMMEDIATE");
+  const name="bp_"+(++transactionId);
+  db.exec("SAVEPOINT "+name);
   try {
     const v = fn();
-    db.exec("COMMIT");
+    db.exec("RELEASE "+name);
     return v;
   } catch (e) {
-    db.exec("ROLLBACK");
+    db.exec("ROLLBACK TO "+name);
+    db.exec("RELEASE "+name);
     throw e;
   }
 };
@@ -310,7 +316,7 @@ export function createService(db) {
     if (filters.location_id) within(a, filters.location_id);
     return db
       .prepare(
-        "SELECT s.*,p.name AS product_name,p.category,p.unit,p.sku,l.name AS location_name,e.name AS employee_name FROM mg_sales s JOIN mg_products p ON p.id=s.product_id JOIN mg_locations l ON l.id=s.location_id LEFT JOIN mg_employees e ON e.id=s.employee_id WHERE s.company_id=? AND s.sold_on>=? AND s.sold_on<=?",
+        "SELECT s.*,su.updated_at,p.name AS product_name,p.category,p.unit,p.sku,l.name AS location_name,e.name AS employee_name FROM mg_sales s LEFT JOIN mg_sales_updated su ON su.sale_id=s.id JOIN mg_products p ON p.id=s.product_id JOIN mg_locations l ON l.id=s.location_id LEFT JOIN mg_employees e ON e.id=s.employee_id WHERE s.company_id=? AND s.sold_on>=? AND s.sold_on<=?",
       )
       .all(a.company_id, from, to)
       .filter(
@@ -468,6 +474,7 @@ export function createService(db) {
     )
       fail("Кампания вне области доступа.", 403);
   }
+  const kpi=createKpi({db,fail,text,number,day,today,can,within,ref,transaction,audit});
   function plan(a, input) {
     requireAction(a, "plans");
     const id = input.id || randomUUID(),
@@ -478,8 +485,9 @@ export function createService(db) {
       else if (a.scope.length || a.role === "manager")
         fail("Нет доступа к общему плану.", 403);
     }
-    const metric = text(input.metric, 40);
-    if (!METRICS[metric]) fail("Неизвестный KPI.");
+    const metric = text(input.metric, 80);
+    const definition=({...METRICS,...kpi.definitions(a)})[metric];
+    if (!Object.hasOwn({...METRICS,...kpi.definitions(a)},metric)) fail("Неизвестный KPI.");
     const start = day(input.start_on),
       end = day(input.end_on);
     if (end < start || days(start, end) > 1096) fail("Неверный период плана.");
@@ -497,9 +505,12 @@ export function createService(db) {
       ).includes(location)
     )
       fail("Сотрудник не относится к точке.");
-    const target = number(input.target),
-      direction = METRICS[metric].direction,
+    const target = number(input.target, {min: metric.startsWith("custom_") ? -1e12 : 0}),
+      direction = definition.direction,
       category = text(input.category, 160, false) || null;
+    if (metric.startsWith("custom_") && (category || product)) fail("Для собственного KPI доступны компания, точка и сотрудник.");
+    const priorOptions=input.id?kpi.options(a,input.id):{};
+    const planOptions=kpi.validateOptions(a,input,{id:input.id,start_on:start,end_on:end,target,direction});
     return transaction(db, () => {
       db.prepare(
         "INSERT INTO mg_plans VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET target=excluded.target,start_on=excluded.start_on,end_on=excluded.end_on,metric=excluded.metric,location_id=excluded.location_id,employee_id=excluded.employee_id,category=excluded.category,product_id=excluded.product_id,direction=excluded.direction,version=mg_plans.version+1",
@@ -517,6 +528,7 @@ export function createService(db) {
         direction,
         old ? old.version + 1 : 1,
       );
+      kpi.saveOptions(a,id,planOptions);
       db.prepare("INSERT INTO mg_plan_history VALUES(?,?,?,?,?,?)").run(
         randomUUID(),
         id,
@@ -524,8 +536,8 @@ export function createService(db) {
         a.user_id,
         new Date().toISOString(),
         JSON.stringify({
-          before: old || null,
-          after: get("plans", a.company_id, id),
+          before: old ? {...old,options:input.id ? priorOptions : {}} : null,
+          after: {...get("plans", a.company_id, id), options:planOptions},
         }),
       );
       audit(a, "save:plan", id);
@@ -745,6 +757,7 @@ export function createService(db) {
           r.cost,
           r.discount,
         );
+        db.prepare("INSERT INTO mg_sales_updated VALUES(?,?) ON CONFLICT(sale_id) DO UPDATE SET updated_at=excluded.updated_at").run(r.id,new Date().toISOString());
         r.prior ? updated++ : inserted++;
       }
       const at = new Date().toISOString();
@@ -961,64 +974,34 @@ export function createService(db) {
     );
     const scoped =
       Boolean(a.scope.length) || ["manager", "employee"].includes(a.role);
-    const plans = list("plans", a.company_id)
+    const visiblePlanRecords = list("plans", a.company_id)
       .filter(
         (p) =>
           (!scoped || (p.location_id && a.scope.includes(p.location_id))) &&
           (a.role !== "employee" || p.employee_id === a.employee_id) &&
           (!filters.location_id || p.location_id === filters.location_id),
-      )
-      .map((p) => {
+      );
+    const chartPlanId=visiblePlanRecords.some(p=>p.id===filters.plan_chart_id)?filters.plan_chart_id:visiblePlanRecords[0]?.id;
+    const plans=visiblePlanRecords.map((p) => {
         const asof =
             (filters.to || today()) > today() ? today() : filters.to || today(),
           cut = asof < p.end_on ? asof : p.end_on,
           elapsed = cut < p.start_on ? 0 : days(p.start_on, cut),
           totalDays = days(p.start_on, p.end_on);
-        const facts = aggregate(
-          elapsed
-            ? rows(a, {
-                from: p.start_on,
-                to: cut,
-                location_id: p.location_id,
-                employee_id: p.employee_id,
-                category: p.category,
-                product_id: p.product_id,
-              })
-            : [],
-        );
-        const actual = facts[p.metric],
-          additive = ["sales", "receipts", "quantity", "profit"].includes(
-            p.metric,
-          );
-        const targetToDate = additive
-          ? (p.target * elapsed) / totalDays
-          : p.target;
-        return {
-          ...p,
-          actual,
-          target_to_date: targetToDate,
-          deviation: actual === null ? null : actual - targetToDate,
-          completion:
-            p.target > 0 && actual !== null ? (actual / p.target) * 100 : null,
-          forecast:
-            additive && elapsed > 0 && actual !== null
-              ? (actual / elapsed) * totalDays
-              : null,
-          status:
-            elapsed === 0
-              ? "pending"
-              : actual === null
-                ? "unknown"
-                : (
-                      p.direction === "up"
-                        ? actual >= targetToDate
-                        : actual <= targetToDate
-                    )
-                  ? "good"
-                  : "attention",
-          elapsed_days: elapsed,
-          total_days: totalDays,
-        };
+        const opts=kpi.options(a,p.id), defs=kpi.definitions(a), def=defs[p.metric];
+        const selectedRows=def ? (elapsed?kpi.customRows(a,{...p,options:{...opts,source:opts.source||def.source}},cut):[]) : (elapsed?rows(a,{from:p.start_on,to:cut,location_id:p.location_id,employee_id:p.employee_id,category:p.category,product_id:p.product_id}).filter(r=>!opts.source||r.source===opts.source):[]);
+        const health=kpi.health(a,p,opts.source||def?.source);
+        const dataThrough=selectedRows.reduce((d,r)=>(r.date||r.sold_on)>d?(r.date||r.sold_on):d,health?.through_date||'');
+        const coverage=dataThrough>=cut;
+        const actual=def?kpi.aggregateCustom(def,selectedRows):selectedRows.length?aggregate(selectedRows)[p.metric]:health?.through_date>=cut&&['sales','receipts','profit'].includes(p.metric)?0:null;
+        const additive=def ? def.aggregation==='sum' : ['sales','receipts','quantity','profit'].includes(p.metric);
+        const evaluated=evaluateKpi(p,actual,asof,additive,opts);
+        let cumulative=0;
+        const step=Math.max(1,Math.ceil(evaluated.timeline.length/40));
+        const includeChart=p.id===chartPlanId;
+        const timeline=includeChart?evaluated.timeline.map((d,i)=>{cumulative+=d.weight;return {...d,plan:additive?p.target*cumulative/evaluated.total_weight:p.target,upper:p.direction==='range'?(additive?opts.upper*cumulative/evaluated.total_weight:opts.upper):null,index:i};}).filter((d,i,ds)=>i%step===0||i===ds.length-1||d.date===cut).map(d=>({...d,actual:d.date>cut?null:def?kpi.aggregateCustom(def,selectedRows.filter(r=>r.date<=d.date)):aggregate(selectedRows.filter(r=>r.sold_on<=d.date))[p.metric]})):[];
+        const lastUpdate=def?selectedRows.reduce((last,r)=>r.updated_at>last?r.updated_at:last,''):selectedRows.reduce((last,r)=>{const at=r.updated_at||'';return at>last?at:last;},'');
+        return {...p,...evaluated,timeline,as_of:cut,data_through:dataThrough||null,coverage_confirmed:coverage,last_update:[lastUpdate,health?.updated_at||''].sort().at(-1)||null,elapsed_days:elapsed,total_days:totalDays};
       });
     const contacts =
       can(a, "clients") && !scoped
@@ -1077,7 +1060,10 @@ export function createService(db) {
       permissions: Object.fromEntries(
         Object.keys(writeRoles).map((k) => [k, can(a, k)]),
       ),
-      metrics: METRICS,
+      metrics: {...METRICS,...kpi.definitions(a)},
+      kpi_definitions:kpi.records(a),
+      kpi_values: kpi.visibleValues(a),
+      notifications:(!filters.to||filters.to===today())?kpi.notifications(a,plans):[],
       totals,
       comparison: {
         from: shift(rangeFrom, -length),
@@ -1139,12 +1125,33 @@ export function createService(db) {
     audit(a, "revoke:key", id);
     return { ok: true };
   }
+  const locationsForCopy=(a,ids)=>locations(a,ids);
   return {
     owner,
     login,
     actor,
     save,
     plan,
+    defineKpi:kpi.definition,
+    importKpi:kpi.values,
+    heartbeat:kpi.heartbeat,
+    planHistory:(a,id)=>kpi.history(a,id,snapshot(a).plans),
+    acknowledge:(a,id)=>kpi.acknowledge(a,id,kpi.notifications(a,snapshot(a).plans)),
+    copyPlans:(a,input)=>transaction(db,()=>{
+      if(!Array.isArray(input.ids)||!input.ids.length||input.ids.length>100) fail("Выберите от 1 до 100 планов.");
+      const visible=snapshot(a).plans;
+      const targetStart=day(input.start_on), targetEnd=day(input.end_on);
+      const locations=input.location_ids?.length?locationsForCopy(a,input.location_ids):[null];
+      if(input.ids.length*locations.length>500) fail("За один раз можно создать до 500 планов.");
+      const saved=[];
+      for(const id of [...new Set(input.ids)]) {
+        const old=visible.find(p=>p.id===id);if(!old) fail("План недоступен.",403);
+        const offset=Math.round((Date.parse(targetStart)-Date.parse(old.start_on))/86400000);
+        const dates=Object.fromEntries(Object.entries(old.options.dates).map(([d,w])=>[shift(d,offset),w]).filter(([d])=>d>=targetStart&&d<=targetEnd));
+        for(const location of locations) saved.push(plan(a,{...old,id:undefined,start_on:targetStart,end_on:targetEnd,location_id:location||old.location_id,options:{...old.options,dates}}).id);
+      }
+      return {ids:saved};
+    }),
     invite,
     accept,
     key,

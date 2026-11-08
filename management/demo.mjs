@@ -114,6 +114,9 @@ export function demoWorkspace() {
     start_on: start,
     end_on: monthEnd,
   });
+  const capacity=service.defineKpi(a,{label:"Загрузка специалистов",aggregation:"ratio",unit:"percent",direction:"range",source:"demo",numerator_label:"Занято часов",denominator_label:"Доступно часов"}).id;
+  service.plan(a,{metric:capacity,target:70,start_on:start,end_on:monthEnd,location_id:north,options:{upper:85,tolerance:5}});
+  service.importKpi(a,{source:"demo",rows:Array.from({length:span},(_,i)=>({metric:capacity,external_id:"capacity-"+i,date:start.slice(0,8)+String(i+1).padStart(2,"0"),location_id:north,numerator:24+i%9,denominator:40}))});
   return { db, service, actor: a, start, end };
 }
 
@@ -182,6 +185,10 @@ export function configuredDemo(source, range = {}) {
         JSON.stringify(e.location_ids),
       );
     }
+    for(const def of source.kpi_definitions||[]) {
+      const {id,...payload}=def;
+      db.prepare('INSERT INTO mg_kpi_definitions VALUES(?,?,?)').run(id,a.company_id,JSON.stringify(payload));
+    }
     const plans = source.plans.filter(
       (p) =>
         (!p.location_id || allowed.has(p.location_id)) &&
@@ -198,6 +205,7 @@ export function configuredDemo(source, range = {}) {
         employee_id: p.employee_id,
         category: p.category,
         product_id: p.product_id,
+        options:p.options,
       });
     const customers = Array.from(
       { length: 12 },
@@ -293,6 +301,19 @@ export function configuredDemo(source, range = {}) {
         source: "synthetic-demo",
         rows: rows.slice(i, i + 5000),
       });
+    const syntheticSeries=new Set();
+    for(const p of plans.filter(p=>p.metric.startsWith('custom_'))) {
+      const series=[p.metric,p.location_id||'',p.employee_id||''].join(':');
+      if(syntheticSeries.has(series))continue;syntheticSeries.add(series);
+      const def=(source.kpi_definitions||[]).find(d=>d.id===p.metric);
+      if(!def)continue;
+      const first=p.start_on>start?p.start_on:start,last=p.end_on<end?p.end_on:end;
+      const synthetic=[];
+      for(let d=first;d<=last;d=shift(d,1)) {
+        synthetic.push({metric:p.metric,date:d,external_id:'demo:'+p.id+':'+d,location_id:p.location_id,employee_id:p.employee_id,...(def.aggregation==='ratio'?{numerator:3,denominator:4}:{value:p.target*(def.aggregation==='sum'?0.8/Math.max(1,span):0.8)})});
+      }
+      if(synthetic.length)service.importKpi(a,{source:def.source||'synthetic-demo',rows:synthetic});
+    }
     if (!plans.length)
       service.plan(a, {
         metric: "sales",
