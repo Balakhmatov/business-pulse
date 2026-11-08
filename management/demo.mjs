@@ -58,16 +58,22 @@ export function demoWorkspace() {
     consents: [],
   }).id;
   const rows = [];
-  for (let d = 1; d <= Number(end.slice(8)); d++) {
+  const span = Number(end.slice(8));
+  const historyStart = Date.parse(start) - span * 86400000;
+  for (let d = 1; d <= span * 2; d++) {
+    const date = new Date(historyStart + (d - 1) * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    const current = date >= start;
     for (let l = 0; l < 2; l++)
       for (let n = 0; n < 9; n++) {
         const p = products[(d + n) % 3],
           q = 1 + (n % 3),
-          promo = n % 3 === 0 && (d + n) % 3 < 2;
+          promo = current && n % 3 === 0 && (d + n) % 3 < 2;
         rows.push({
           external_id: `${d}-${l}-${n}`,
           receipt_id: `${d}-${l}-${Math.floor(n / 2)}`,
-          date: start.slice(0, 8) + String(d).padStart(2, "0"),
+          date,
           location_id: l ? south : north,
           employee_id: l ? ivan : anna,
           product_id: p.id,
@@ -75,7 +81,9 @@ export function demoWorkspace() {
           campaign_id: promo ? campaign : null,
           status: "sale",
           quantity: q,
-          amount_kopecks: p.price * q - (promo ? 2000 : 0),
+          amount_kopecks:
+            Math.round(p.price * q * (current ? (l ? 0.88 : 1.08) : 1)) -
+            (promo ? 2000 : 0),
           cost_kopecks: p.cost * q,
           discount_kopecks: promo ? 2000 : 0,
         });
@@ -153,19 +161,18 @@ export function configuredDemo(source, range = {}) {
         l.name,
       );
     for (const p of prods)
-      db.prepare("INSERT INTO mg_products VALUES(?,?,?,?,?)").run(
-        p.id,
-        a.company_id,
-        p.name,
-        p.category,
-        p.unit,
-      );
-    const staff = source.employees
-      .slice(0, 120)
-      .map((e, i) => ({
-        ...e,
-        location_ids: e.location_ids.filter((id) => allowed.has(id)),
-      }));
+      db.prepare(
+        "INSERT INTO mg_products(id,company_id,name,category,unit,sku) VALUES(?,?,?,?,?,?)",
+      ).run(p.id, a.company_id, p.name, p.category, p.unit, p.sku || "");
+    for (const p of prods)
+      for (const code of p.external_ids || [])
+        db.prepare(
+          "INSERT OR IGNORE INTO mg_catalog_ids VALUES(?,?,?,?,?)",
+        ).run(a.company_id, code.source, "products", code.external_id, p.id);
+    const staff = source.employees.slice(0, 120).map((e, i) => ({
+      ...e,
+      location_ids: e.location_ids.filter((id) => allowed.has(id)),
+    }));
     for (const [i, e] of staff.entries()) {
       if (!e.location_ids.length) e.location_ids = [locs[i % locs.length].id];
       db.prepare("INSERT INTO mg_employees VALUES(?,?,?,?)").run(

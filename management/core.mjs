@@ -1,3 +1,4 @@
+import { buildSalesReport } from "./sales-analytics.mjs";
 import { DatabaseSync } from "node:sqlite";
 import {
   randomUUID,
@@ -115,6 +116,12 @@ export function openStore(file = ":memory:") {
  CREATE TABLE IF NOT EXISTS mg_catalog_ids(company_id TEXT NOT NULL,source TEXT NOT NULL,kind TEXT NOT NULL,external_id TEXT NOT NULL,entity_id TEXT NOT NULL,PRIMARY KEY(company_id,source,kind,external_id));
  CREATE TABLE IF NOT EXISTS mg_audit(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,actor_id TEXT NOT NULL,action TEXT NOT NULL,entity_id TEXT NOT NULL,created_at TEXT NOT NULL);
  `);
+  const productColumns = db
+    .prepare("PRAGMA table_info(mg_products)")
+    .all()
+    .map((c) => c.name);
+  if (!productColumns.includes("sku"))
+    db.exec("ALTER TABLE mg_products ADD COLUMN sku TEXT NOT NULL DEFAULT ''");
   return db;
 }
 const transaction = (db, fn) => {
@@ -240,6 +247,60 @@ export function createService(db) {
       return false;
     return true;
   }
+  function productRecords(a) {
+    const aliases = db
+      .prepare(
+        "SELECT source,external_id,entity_id FROM mg_catalog_ids WHERE company_id=? AND kind='products'",
+      )
+      .all(a.company_id);
+    const byId = new Map();
+    for (const alias of aliases) {
+      if (!byId.has(alias.entity_id)) byId.set(alias.entity_id, []);
+      byId
+        .get(alias.entity_id)
+        .push({ source: alias.source, external_id: alias.external_id });
+    }
+    return list("products", a.company_id).map((p) => ({
+      ...p,
+      external_ids: byId.get(p.id) || [],
+    }));
+  }
+  function products(a, filters = {}) {
+    const term = text(filters.q, 160, false).toLocaleLowerCase("ru"),
+      category = text(filters.category, 160, false);
+    const all = productRecords(a),
+      categories = [...new Set(all.map((p) => p.category))].sort((a, b) =>
+        a.localeCompare(b, "ru"),
+      );
+    const matches = all
+      .filter(
+        (p) =>
+          (!category || p.category === category) &&
+          (!term ||
+            [p.name, p.sku, p.id, ...p.external_ids.map((x) => x.external_id)]
+              .join(" ")
+              .toLocaleLowerCase("ru")
+              .includes(term)),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    const size = Math.min(
+        100,
+        Math.max(1, Math.floor(Number(filters.page_size)) || 50),
+      ),
+      pages = Math.max(1, Math.ceil(matches.length / size)),
+      page = Math.min(
+        pages,
+        Math.max(1, Math.floor(Number(filters.page)) || 1),
+      );
+    return {
+      items: matches.slice((page - 1) * size, page * size),
+      total: matches.length,
+      page,
+      page_size: size,
+      pages,
+      categories,
+    };
+  }
   function rows(a, filters = {}) {
     const from = day(filters.from || today().slice(0, 7) + "-01"),
       to = day(filters.to || today());
@@ -248,7 +309,7 @@ export function createService(db) {
     if (filters.location_id) within(a, filters.location_id);
     return db
       .prepare(
-        "SELECT s.*,p.name AS product_name,p.category,p.unit,l.name AS location_name,e.name AS employee_name FROM mg_sales s JOIN mg_products p ON p.id=s.product_id JOIN mg_locations l ON l.id=s.location_id LEFT JOIN mg_employees e ON e.id=s.employee_id WHERE s.company_id=? AND s.sold_on>=? AND s.sold_on<=?",
+        "SELECT s.*,p.name AS product_name,p.category,p.unit,p.sku,l.name AS location_name,e.name AS employee_name FROM mg_sales s JOIN mg_products p ON p.id=s.product_id JOIN mg_locations l ON l.id=s.location_id LEFT JOIN mg_employees e ON e.id=s.employee_id WHERE s.company_id=? AND s.sold_on>=? AND s.sold_on<=?",
       )
       .all(a.company_id, from, to)
       .filter(
@@ -293,13 +354,16 @@ export function createService(db) {
     } else if (type === "products") {
       requireAction(a, "structure");
       db.prepare(
-        "INSERT INTO mg_products VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,category=excluded.category,unit=excluded.unit",
+        "INSERT INTO mg_products(id,company_id,name,category,unit,sku) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,category=excluded.category,unit=excluded.unit,sku=excluded.sku",
       ).run(
         id,
         c,
         text(input.name),
         text(input.category || "Без категории"),
         text(input.unit || "шт.", 30),
+        input.sku === undefined
+          ? get("products", c, id)?.sku || ""
+          : text(input.sku, 160, false),
       );
     } else if (type === "customers") {
       requireAction(a, "clients");
@@ -808,6 +872,61 @@ export function createService(db) {
     audit(a, "update:member", current.user_id);
     return { ok: true };
   }
+  function salesReport(a, filters = {}) {
+    const from = day(filters.from || today().slice(0, 7) + "-01"),
+      to = day(filters.to || today()),
+      span = days(from, to),
+      shift = (d, n) =>
+        new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
+    const current = rows(a, filters),
+      previous = rows(a, {
+        ...filters,
+        from: shift(from, -span),
+        to: shift(from, -1),
+      });
+    const baseFilters = { ...filters, category: null, product_id: null };
+    const baselineCurrent =
+      filters.category || filters.product_id ? rows(a, baseFilters) : current;
+    const baselinePrevious =
+      filters.category || filters.product_id
+        ? rows(a, {
+            ...baseFilters,
+            from: shift(from, -span),
+            to: shift(from, -1),
+          })
+        : previous;
+    const records = productRecords(a),
+      byId = new Map(records.map((p) => [p.id, p]));
+    for (const row of [...current, ...previous])
+      row.product_codes = byId.get(row.product_id)?.external_ids || [];
+    const report = buildSalesReport(current, previous, {
+      aggregate,
+      group: ["product", "location"].includes(filters.group)
+        ? filters.group
+        : "category",
+      layout: filters.layout,
+      page: filters.page,
+      pageSize: filters.page_size,
+      query: text(filters.q, 160, false),
+      sort: filters.sort,
+      baselineCurrent,
+      baselinePrevious,
+    });
+    return {
+      ...report,
+      period: {
+        from,
+        to,
+        previous_from: shift(from, -span),
+        previous_to: shift(from, -1),
+      },
+      selection: {
+        location_id: filters.location_id || null,
+        category: filters.category || null,
+        product_id: filters.product_id || null,
+      },
+    };
+  }
   function snapshot(a, filters = {}) {
     const rs = rows(a, filters),
       totals = aggregate(rs);
@@ -969,7 +1088,7 @@ export function createService(db) {
         ...e,
         location_ids: JSON.parse(e.locations_json),
       })),
-      products: list("products", a.company_id),
+      products: productRecords(a),
       customers: contacts,
       plans,
       campaigns,
@@ -1019,6 +1138,8 @@ export function createService(db) {
     catalog,
     member,
     snapshot,
+    products,
+    salesReport,
     revoke,
     logout: (token) =>
       db.prepare("DELETE FROM mg_sessions WHERE token_hash=?").run(hash(token)),
@@ -1052,6 +1173,19 @@ export function aggregate(rs) {
     profit,
     margin: profit !== null && sales > 0 ? (profit / sales) * 100 : null,
     refund_rate: gross > 0 ? (returned / gross) * 100 : null,
+    gross_sales: gross,
+    sold_quantity: units.length === 1 ? sum(active, "quantity") : null,
+    returned_quantity: units.length === 1 ? sum(refunds, "quantity") : null,
+    unit_price:
+      units.length === 1 && sum(active, "quantity") > 0
+        ? gross / sum(active, "quantity")
+        : null,
+    cost: costComplete ? sum(active, "cost") - sum(refunds, "cost") : null,
+    profit_per_unit: profit !== null && quantity > 0 ? profit / quantity : null,
+    discount_rate:
+      gross + sum(active, "discount") > 0
+        ? (sum(active, "discount") / (gross + sum(active, "discount"))) * 100
+        : null,
     refunds: returned,
     discount: sum(active, "discount") - sum(refunds, "discount"),
     cost_complete: costComplete,

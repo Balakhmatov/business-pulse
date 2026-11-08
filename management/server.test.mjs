@@ -40,6 +40,8 @@ test("HTTP cookie auth, CSRF, isolated demo, invalid JSON and bearer import", as
       body: data === undefined ? undefined : JSON.stringify(data),
     });
   assert.equal((await request("/api/workspace")).status, 401);
+  assert.equal((await request("/api/sales")).status, 401);
+  assert.equal((await request("/api/products")).status, 401);
   assert.equal((await request("/api/demo")).status, 200);
   assert.equal((await request("/api/demo?configured=1")).status, 401);
   assert.equal(s.snapshot(a).totals.sales, 0);
@@ -71,6 +73,20 @@ test("HTTP cookie auth, CSRF, isolated demo, invalid JSON and bearer import", as
   assert.equal(illustrated.demo_configured, true);
   assert.equal(illustrated.locations[0].name, "Location");
   assert.ok(illustrated.totals.sales > 0);
+  assert.equal(s.snapshot(a).totals.sales, 0);
+  const catalogue = await (
+    await request("/api/products?q=Product", undefined, { Cookie: cookie })
+  ).json();
+  assert.equal(catalogue.total, 1);
+  const demoSales = await (
+    await request(
+      "/api/demo/sales?configured=1&group=product&layout=locations",
+      undefined,
+      { Cookie: cookie },
+    )
+  ).json();
+  assert.ok(demoSales.items.length > 0);
+  assert.ok(demoSales.totals.sales > 0);
   assert.equal(s.snapshot(a).totals.sales, 0);
   const k = s.key(a, "POS");
   assert.equal(

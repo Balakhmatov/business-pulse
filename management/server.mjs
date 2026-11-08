@@ -69,6 +69,67 @@ export function createApp({
     if (attempts.size > 10000)
       for (const [k, v] of attempts) if (v.until < now) attempts.delete(k);
   }
+  function demoFor(req, url) {
+    let workspace = example;
+    const filters = Object.fromEntries(url.searchParams);
+    if (url.searchParams.get("configured") === "1") {
+      const actor = service.actor(cookie(req));
+      if (!actor) fail("Войдите в компанию для демо на её структуре.", 401);
+      const range = { from: filters.from, to: filters.to };
+      const live = service.snapshot(actor, range);
+      const config = {
+        actor: live.actor,
+        locations: live.locations,
+        products: live.products,
+        employees: live.employees,
+        plans: live.plans.map(
+          ({
+            id,
+            metric,
+            target,
+            start_on,
+            end_on,
+            location_id,
+            employee_id,
+            category,
+            product_id,
+          }) => ({
+            id,
+            metric,
+            target,
+            start_on,
+            end_on,
+            location_id,
+            employee_id,
+            category,
+            product_id,
+          }),
+        ),
+      };
+      const cacheKey = createHash("sha256")
+        .update(
+          JSON.stringify({
+            company: actor.company_id,
+            role: actor.role,
+            scope: actor.scope,
+            config,
+            range,
+          }),
+        )
+        .digest("hex");
+      workspace = demoCache.get(cacheKey);
+      if (!workspace) {
+        workspace = configuredDemo(config, range);
+        if (demoCache.size >= 6) {
+          const first = demoCache.keys().next().value;
+          demoCache.get(first).db.close();
+          demoCache.delete(first);
+        }
+        demoCache.set(cacheKey, workspace);
+      }
+    }
+    return workspace;
+  }
   return http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, origin);
@@ -98,71 +159,24 @@ export function createApp({
           ok: db.prepare("SELECT 1 AS n").get().n === 1,
           service: "business-pulse-management",
         });
-      if (p === "/api/demo" && req.method === "GET" && example) {
-        let workspace = example;
-        const filters = Object.fromEntries(url.searchParams);
-        if (url.searchParams.get("configured") === "1") {
-          const actor = service.actor(cookie(req));
-          if (!actor) fail("Войдите в компанию для демо на её структуре.", 401);
-          const { location_id, configured, ...range } = filters;
-          const live = service.snapshot(actor, range);
-          const config = {
-            actor: live.actor,
-            locations: live.locations,
-            products: live.products,
-            employees: live.employees,
-            plans: live.plans.map(
-              ({
-                id,
-                metric,
-                target,
-                start_on,
-                end_on,
-                location_id,
-                employee_id,
-                category,
-                product_id,
-              }) => ({
-                id,
-                metric,
-                target,
-                start_on,
-                end_on,
-                location_id,
-                employee_id,
-                category,
-                product_id,
-              }),
-            ),
-          };
-          const cacheKey = createHash("sha256")
-            .update(
-              JSON.stringify({
-                company: actor.company_id,
-                role: actor.role,
-                scope: actor.scope,
-                config,
-                range,
-              }),
-            )
-            .digest("hex");
-          workspace = demoCache.get(cacheKey);
-          if (!workspace) {
-            workspace = configuredDemo(config, range);
-            if (demoCache.size >= 6) {
-              const first = demoCache.keys().next().value;
-              demoCache.get(first).db.close();
-              demoCache.delete(first);
-            }
-            demoCache.set(cacheKey, workspace);
-          }
-        }
-        return json(res, 200, {
-          ...workspace.service.snapshot(workspace.actor, {
+      if (
+        ["/api/demo", "/api/demo/sales", "/api/demo/products"].includes(p) &&
+        req.method === "GET" &&
+        example
+      ) {
+        const workspace = demoFor(req, url),
+          filters = {
             from: workspace.start,
             to: workspace.end,
-            ...filters,
-          }),
+            ...Object.fromEntries(url.searchParams),
+          };
+        const result = p.endsWith("/sales")
+          ? workspace.service.salesReport(workspace.actor, filters)
+          : p.endsWith("/products")
+            ? workspace.service.products(workspace.actor, filters)
+            : workspace.service.snapshot(workspace.actor, filters);
+        return json(res, 200, {
+          ...result,
           demo: true,
           demo_configured: Boolean(workspace.configured),
         });
@@ -209,11 +223,35 @@ export function createApp({
             },
           );
         }
+        if (p === "/api/products" && req.method === "GET")
+          return json(
+            res,
+            200,
+            service.products(a, Object.fromEntries(url.searchParams)),
+          );
+        if (p === "/api/sales" && req.method === "GET")
+          return json(
+            res,
+            200,
+            service.salesReport(a, Object.fromEntries(url.searchParams)),
+          );
         if (p === "/api/insights" && req.method === "GET") {
           const snapshot = service.snapshot(
             a,
             Object.fromEntries(url.searchParams),
           );
+          if (url.searchParams.get("sales") === "1") {
+            const params = Object.fromEntries(url.searchParams);
+            snapshot.sales_analysis = service.salesReport(a, {
+              ...params,
+              page_size: 5,
+            });
+            snapshot.plans = snapshot.plans.filter(
+              (p) =>
+                (!params.category || p.category === params.category) &&
+                (!params.product_id || p.product_id === params.product_id),
+            );
+          }
           return json(
             res,
             200,

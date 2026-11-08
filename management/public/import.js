@@ -244,7 +244,14 @@ export function tableToSales(
     data = matrix.slice(1).filter((r) => r.some((v) => String(v).trim()));
   const resolve = (kind, value) => {
     if (!value) return null;
-    const all = state[kind].filter((x) => x.id === value || x.name === value);
+    const all = state[kind].filter(
+      (x) =>
+        x.id === value ||
+        x.name === value ||
+        (kind === "products" &&
+          (x.sku === value ||
+            (x.external_ids || []).some((c) => c.external_id === value))),
+    );
     if (all.length !== 1)
       throw Error(
         `Не удалось однозначно найти «${value}» в справочнике ${kind}.`,

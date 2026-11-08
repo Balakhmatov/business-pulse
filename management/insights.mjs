@@ -9,6 +9,28 @@ const money = (n) =>
 export function insightFacts(snapshot) {
   return {
     totals: snapshot.totals,
+    ...(snapshot.sales_analysis
+      ? {
+          sales_analysis: {
+            group: snapshot.sales_analysis.group,
+            layout: snapshot.sales_analysis.layout,
+            selection: snapshot.sales_analysis.selection,
+            period: snapshot.sales_analysis.period,
+            comparison_available: snapshot.sales_analysis.comparison_available,
+            declines: snapshot.sales_analysis.declines.map((r) => ({
+              name: r.name,
+              location: r.location_name,
+              category: r.category,
+              current: r.current,
+              previous: r.previous,
+              sales_delta: r.sales_delta,
+              profit_delta: r.profit_delta,
+              quantity_effect: r.quantity_effect,
+              price_mix_effect: r.price_mix_effect,
+            })),
+          },
+        }
+      : {}),
     comparison: snapshot.comparison,
     plans: snapshot.plans.map((p) => ({
       metric: p.metric,
@@ -28,6 +50,25 @@ export function insightFacts(snapshot) {
   };
 }
 export function rulesInsights(snapshot) {
+  if (snapshot.sales_analysis) {
+    const r = snapshot.sales_analysis;
+    return {
+      mode: "rules",
+      summary: `Продажи в выбранном разрезе: ${money(r.totals.sales)}. ${r.comparison_available ? "Сравнение с предыдущим равным периодом." : "Для сравнения нет операций в одном из периодов."}`,
+      attention: r.declines
+        .slice(0, 3)
+        .map(
+          (x) =>
+            `${x.name}${x.location_name ? " · " + x.location_name : ""}: изменение продаж ${money(x.sales_delta)}, валовой прибыли ${money(x.profit_delta)}.`,
+        ),
+      actions: r.declines.length
+        ? [
+            "Проверьте изменение количества и цены в проблемных товарах или категориях.",
+            "Сопоставьте скидки, возвраты и полноту выгрузки. Наличие товара на остатках из продаж не определяется.",
+          ]
+        : ["Проверьте показатели по точкам и категориям в таблице."],
+    };
+  }
   const t = snapshot.totals,
     bad = snapshot.plans.filter((p) => p.status === "attention");
   return {

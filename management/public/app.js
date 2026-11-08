@@ -21,7 +21,11 @@ const roleNames = {
 const titles = {
   overview: ["Обзор бизнеса", "Результаты, планы и отклонения на одном экране"],
   plans: ["Планы и KPI", "Цели компании, точек, сотрудников и товаров"],
-  sales: ["Продажи и ассортимент", "От общей картины — до конкретного товара"],
+  sales: [
+    "Продажи",
+    "Продажи, отклонения и доходность по точкам, категориям и товарам",
+  ],
+  assortment: ["Ассортимент", "Справочник товаров, SKU и коды учётных систем"],
   team: ["Точки и команда", "Структура компании и результаты сотрудников"],
   clients: ["Клиенты", "Контакты, покупки и данные программ лояльности"],
   marketing: ["Маркетинг", "Кампании, акции и связанные продажи"],
@@ -31,6 +35,7 @@ const icons = {
   overview: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
   plans: "M4 20V10m8 10V4m8 16v-7",
   sales: "M3 17l6-6 4 3 8-10 M15 4h6v6",
+  assortment: "M3 5h18v15H3z M3 10h18 M9 10v10",
   team: "M3 21V7l9-4 9 4v14 M8 21v-6h8v6 M8 9h1m6 0h1",
   clients:
     "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M18 8a3 3 0 0 1 0 6 M22 21v-2a4 4 0 0 0-3-4",
@@ -44,7 +49,19 @@ let state = null,
   salesGroup = "by_category",
   editing = null,
   inviteToken = null,
-  pendingFile = null;
+  pendingFile = null,
+  salesReport = null,
+  catalogReport = null,
+  salesLayout = "summary",
+  salesPreset = "main",
+  salesCategory = "",
+  salesProduct = "",
+  salesSearch = "",
+  salesSort = "sales",
+  salesPage = 1,
+  catalogSearch = "",
+  catalogCategory = "",
+  catalogPage = 1;
 const money = (n) =>
   n === null || n === undefined
     ? "—"
@@ -96,8 +113,6 @@ async function load() {
     const params = query();
     if (demo && demoConfigured) params.set("configured", "1");
     state = await api((demo ? "/api/demo" : "/api/workspace") + "?" + params);
-    $("welcome").hidden = true;
-    $("workspace").hidden = false;
     const selected = $("location").value;
     $("location").innerHTML =
       '<option value="">Все доступные точки</option>' +
@@ -112,6 +127,16 @@ async function load() {
       ? "Демонстрационные данные"
       : "Рабочая компания";
     $("workspace-demo").textContent = demo ? "Вернуться" : "Демо";
+    if (tab === "sales")
+      salesReport = await api(
+        (demo ? "/api/demo/sales" : "/api/sales") + "?" + salesParams(),
+      );
+    if (tab === "assortment")
+      catalogReport = await api(
+        (demo ? "/api/demo/products" : "/api/products") + "?" + catalogParams(),
+      );
+    $("welcome").hidden = true;
+    $("workspace").hidden = false;
     render();
   } finally {
     document.body.classList.remove("loading");
@@ -127,6 +152,8 @@ function allowed(t) {
 }
 function render() {
   if (!allowed(tab)) tab = "overview";
+  document.querySelector(".filters").hidden = tab === "assortment";
+  $("location").closest("label").hidden = tab === "sales";
   $("nav").innerHTML = Object.keys(titles)
     .filter(allowed)
     .map(
@@ -191,8 +218,7 @@ function planRows(plans) {
         "Добавьте план, чтобы отслеживать выполнение и отклонения.",
       );
 }
-function cards() {
-  const t = state.totals;
+function cards(t = state.totals) {
   return `<div class="cards">${[
     ["Продажи", money(t.sales), "За выбранный период", "hero"],
     ["Чеки", num(t.receipts), "Уникальные покупки", ""],
@@ -269,7 +295,7 @@ const views = {
       panel(
         "Результаты точек",
         "Сравнение в выбранном периоде",
-        groupTable(state.by_location),
+        locationOverviewTable(),
       )
     );
   },
@@ -285,39 +311,10 @@ const views = {
     );
   },
   sales() {
-    return (
-      cards() +
-      factorPanel() +
-      panel(
-        "Продажи в деталях",
-        "Чеки внутри категорий и товаров могут пересекаться: итоги числа чеков не суммируются.",
-        `<div class="metric-tabs">${[
-          ["by_category", "Категории"],
-          ["by_product", "Товары"],
-          ["by_location", "Точки"],
-        ]
-          .map(
-            ([v, l]) =>
-              `<button data-group="${v}" class="${salesGroup === v ? "active" : ""}">${l}</button>`,
-          )
-          .join("")}</div>` +
-          groupTable(state[salesGroup]) +
-          `<div class="small">Проданные единицы: ${num(state.totals.quantity)} ${esc(state.totals.unit || "")} · Единиц на чек: ${num(state.totals.basket)} · Возвраты: ${money(state.totals.refunds)} · Скидки: ${money(state.totals.discount)}</div>`,
-        action("Добавить товар", "product", "structure"),
-      ) +
-      panel(
-        "Справочник товаров",
-        "ID используются для загрузки по API",
-        table(
-          ["Товар / ID", "Категория", "Единица"],
-          state.products.map((p) => [
-            `${esc(p.name)}<span class="id">${esc(p.id)}</span>`,
-            esc(p.category),
-            esc(p.unit),
-          ]),
-        ),
-      )
-    );
+    return renderSales();
+  },
+  assortment() {
+    return renderAssortment();
   },
   team() {
     return (
@@ -493,6 +490,372 @@ function factorPanel() {
         ),
   );
 }
+function salesParams() {
+  const params = query();
+  params.set(
+    "group",
+    salesGroup === "by_product"
+      ? "product"
+      : salesGroup === "by_location"
+        ? "location"
+        : "category",
+  );
+  params.set("layout", salesLayout);
+  params.set("page", salesPage);
+  params.set("sort", salesSort);
+  if (salesCategory) params.set("category", salesCategory);
+  if (salesProduct) params.set("product_id", salesProduct);
+  if (salesSearch.trim()) params.set("q", salesSearch.trim());
+  if (demo && demoConfigured) params.set("configured", "1");
+  return params;
+}
+function catalogParams() {
+  const params = query();
+  params.set("page", catalogPage);
+  if (catalogSearch.trim()) params.set("q", catalogSearch.trim());
+  if (catalogCategory) params.set("category", catalogCategory);
+  if (demo && demoConfigured) params.set("configured", "1");
+  return params;
+}
+function clearDetailSelection() {
+  salesCategory = "";
+  salesProduct = "";
+  salesSearch = "";
+  salesPage = 1;
+  salesGroup = "by_category";
+  salesLayout = "summary";
+  salesPreset = "main";
+  catalogSearch = "";
+  catalogCategory = "";
+  catalogPage = 1;
+  salesReport = null;
+  catalogReport = null;
+}
+function activateTab(next) {
+  tab = next;
+  if (["sales", "assortment"].includes(tab))
+    load().catch((e) => toast(e.message));
+  else render();
+}
+const unitMoney = (n) =>
+  n === null || n === undefined
+    ? "—"
+    : new Intl.NumberFormat("ru-RU", {
+        style: "currency",
+        currency: "RUB",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(n / 100);
+const percentText = (v) => (v === null || v === undefined ? "—" : num(v) + "%");
+const changeMoney = (v) =>
+  v === null
+    ? "—"
+    : `<span class="${v < 0 ? "attention" : v > 0 ? "good" : "neutral"}">${v > 0 ? "+" : ""}${money(v)}</span>`;
+const changePercent = (v) =>
+  v === null
+    ? "—"
+    : `<span class="${v < 0 ? "attention" : v > 0 ? "good" : "neutral"}">${v > 0 ? "+" : ""}${num(v)}%</span>`;
+function pagination(report, kind) {
+  return `<div class="pagination"><span class="small">${report.total ? (report.page - 1) * report.page_size + 1 + "–" + Math.min(report.total, report.page * report.page_size) : 0} из ${report.total}</span><div class="actions"><button class="secondary" data-${kind}-page="${report.page - 1}" ${report.page <= 1 ? "disabled" : ""}>Назад</button><span class="small">${report.page} / ${report.pages}</span><button class="secondary" data-${kind}-page="${report.page + 1}" ${report.page >= report.pages ? "disabled" : ""}>Далее</button></div></div>`;
+}
+function categoryOptions(value, allLabel) {
+  const categories = [...new Set(state.products.map((p) => p.category))].sort(
+    (a, b) => a.localeCompare(b, "ru"),
+  );
+  return (
+    `<option value="">${allLabel}</option>` +
+    categories
+      .map(
+        (c) =>
+          `<option value="${esc(c)}" ${c === value ? "selected" : ""}>${esc(c)}</option>`,
+      )
+      .join("")
+  );
+}
+function locationOverviewTable() {
+  return table(
+    [
+      "Точка",
+      "Продажи",
+      "Чеки",
+      "Средний чек",
+      "Валовая прибыль",
+      "Маржа",
+      "Детализация",
+    ],
+    state.by_location.map((r) => [
+      `<button class="inline-link" data-sales-location="${esc(r.id)}" data-sales-drill="by_product">${esc(r.name)}</button>`,
+      money(r.sales),
+      num(r.receipts),
+      money(r.average),
+      money(r.profit),
+      percentText(r.margin),
+      `<div class="actions"><button class="secondary" data-sales-location="${esc(r.id)}" data-sales-drill="by_category">Категории</button><button class="secondary" data-sales-location="${esc(r.id)}" data-sales-drill="by_product">Товары</button></div>`,
+    ]),
+  );
+}
+function salesRowLabel(r) {
+  const title =
+    salesGroup === "by_location"
+      ? `<button class="inline-link" data-sales-location="${esc(r.id)}" data-sales-drill="by_product">${esc(r.name)}</button>`
+      : salesGroup === "by_category"
+        ? `<button class="inline-link" data-sales-category="${esc(r.name)}" data-row-location="${esc(r.location_id || "")}">${esc(r.name)}</button>`
+        : `<button class="inline-link" data-sales-product="${esc(r.id)}">${esc(r.name)}</button>`;
+  return (
+    title +
+    (r.sku ? `<span class="small"> · ${esc(r.sku)}</span>` : "") +
+    (r.status === "no_sales"
+      ? '<span class="pill attention">Нет продаж в выгрузке</span>'
+      : r.status === "new"
+        ? '<span class="pill">Без базы сравнения по позиции</span>'
+        : "")
+  );
+}
+function renderSales() {
+  const r = salesReport;
+  if (!r) return panel("Продажи", "", empty("Загружаем детализацию", ""));
+  const scopedProduct = state.products.find((p) => p.id === salesProduct);
+  const scope = [
+    locName($("location").value),
+    salesCategory,
+    scopedProduct?.name,
+  ]
+    .filter(Boolean)
+    .map(esc)
+    .join(" → ");
+  const controls = `<form id="sales-search-form" class="report-controls"><label>Точка<select id="sales-point"><option value="">Все доступные точки</option>${state.locations.map((l) => `<option value="${esc(l.id)}" ${l.id === $("location").value ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></label><label>Категория<select id="sales-category">${categoryOptions(salesCategory, "Все категории")}</select></label><label class="search-field">Найти товар<input name="sales_q" value="${esc(salesSearch)}" maxlength="160" placeholder="Название, SKU или код учётной системы"></label><button class="secondary" type="submit">Найти</button><button class="secondary" type="button" data-sales-clear>Сбросить детализацию</button></form>`;
+  const groups = `<div class="metric-tabs">${[
+    ["by_category", "Категории"],
+    ["by_product", "Товары"],
+    ["by_location", "Точки"],
+  ]
+    .map(
+      ([v, l]) =>
+        `<button data-group="${v}" class="${salesGroup === v ? "active" : ""}">${l}</button>`,
+    )
+    .join("")}</div>`;
+  const layouts = `<div class="row-between wrap"><div class="metric-tabs">${
+    salesGroup !== "by_location"
+      ? [
+          ["summary", "Сводно"],
+          ["locations", "По каждой точке"],
+        ]
+          .map(
+            ([v, l]) =>
+              `<button data-sales-layout="${v}" class="${salesLayout === v ? "active" : ""}">${l}</button>`,
+          )
+          .join("")
+      : ""
+  }</div><label>Сортировка<select id="sales-sort">${[
+    ["sales", "По продажам"],
+    ["sales_delta", "По снижению продаж"],
+    ["profit_delta", "По снижению прибыли"],
+    ["quantity_delta", "По снижению количества"],
+    ["name", "По названию"],
+  ]
+    .map(
+      ([v, l]) =>
+        `<option value="${v}" ${salesSort === v ? "selected" : ""}>${l}</option>`,
+    )
+    .join("")}</select></label></div>`;
+  const presets = `<div class="metric-tabs">${[
+    ["main", "Основное"],
+    ["quantity", "Чеки и количество"],
+    ["prices", "Цены и скидки"],
+    ["profit", "Прибыль"],
+  ]
+    .map(
+      ([v, l]) =>
+        `<button data-sales-preset="${v}" class="${salesPreset === v ? "active" : ""}">${l}</button>`,
+    )
+    .join("")}</div>`;
+  const columns = {
+    main: [
+      "Продажи",
+      "Δ ₽",
+      "Δ %",
+      "Количество",
+      "Чеки",
+      "Валовая прибыль",
+      "Доля продаж",
+    ],
+    quantity: [
+      "Продано ед.",
+      "Возвращено ед.",
+      "Количество нетто",
+      "Δ количества",
+      "Δ %",
+      "Чеки с объектом",
+      "Δ чеков",
+      "Доля чеков",
+    ],
+    prices: [
+      "Средняя цена, ₽",
+      "Δ цены",
+      "Сумма в чеке",
+      "Скидки, ₽",
+      "Доля скидок",
+      "Возвраты, ₽",
+      "Доля возвратов",
+    ],
+    profit: [
+      "Себестоимость",
+      "Валовая прибыль",
+      "Δ прибыли",
+      "Δ %",
+      "Маржа",
+      "Прибыль / ед.",
+      "Вклад количества, ₽",
+      "Вклад цены и состава, ₽",
+    ],
+  };
+  const data = r.items.map((row) => {
+    const f = row.current;
+    let values;
+    if (salesPreset === "quantity")
+      values = [
+        num(f.sold_quantity),
+        num(f.returned_quantity),
+        num(f.quantity),
+        num(row.quantity_delta),
+        changePercent(row.quantity_change),
+        num(f.receipts),
+        num(row.receipts_delta),
+        percentText(row.penetration),
+      ];
+    else if (salesPreset === "prices")
+      values = [
+        unitMoney(f.unit_price),
+        changePercent(row.price_change),
+        money(f.average),
+        money(f.discount),
+        percentText(f.discount_rate),
+        money(f.refunds),
+        percentText(f.refund_rate),
+      ];
+    else if (salesPreset === "profit")
+      values = [
+        money(f.cost),
+        money(f.profit),
+        changeMoney(row.profit_delta),
+        changePercent(row.profit_change),
+        percentText(f.margin),
+        money(f.profit_per_unit),
+        changeMoney(row.quantity_effect),
+        changeMoney(row.price_mix_effect),
+      ];
+    else
+      values = [
+        money(f.sales),
+        changeMoney(row.sales_delta),
+        changePercent(row.sales_change),
+        num(f.quantity) + (f.unit ? " " + esc(f.unit) : ""),
+        num(f.receipts),
+        money(f.profit),
+        percentText(row.sales_share),
+      ];
+    const prefix = [
+      ...(r.layout === "locations" ? [esc(row.location_name)] : []),
+      salesRowLabel(row),
+    ];
+    if (salesGroup === "by_location")
+      values.push(
+        `<div class="actions"><button class="secondary" data-sales-location="${esc(row.id)}" data-sales-drill="by_category">Категории</button><button class="secondary" data-sales-location="${esc(row.id)}" data-sales-drill="by_product">Товары</button></div>`,
+      );
+    return [...prefix, ...values];
+  });
+  const headers = [
+    ...(r.layout === "locations" ? ["Точка"] : []),
+    salesGroup === "by_location"
+      ? "Точка"
+      : salesGroup === "by_category"
+        ? "Категория"
+        : "Товар",
+    ...columns[salesPreset],
+    ...(salesGroup === "by_location" ? ["Детализация"] : []),
+  ];
+  const scopeNote = `<div class="notice"><strong>${scope}</strong>${salesProduct ? '<button class="inline-link" data-sales-reset-product> · Все товары</button>' : ""}<br>Сравнение: ${esc(r.period.previous_from)} — ${esc(r.period.previous_to)}. ${r.comparison_available ? "Дни с операциями: " + r.coverage.current_days + " в выбранном и " + r.coverage.previous_days + " в предыдущем периоде." : "Нет операций для сравнения в одном из периодов."}</div>`;
+  const declines = r.declines.length
+    ? r.declines
+        .slice(0, 3)
+        .map(
+          (x) =>
+            `<div class="attention-item"><h3>${esc(x.name)}${x.location_name ? " · " + esc(x.location_name) : ""}</h3><p>Изменение продаж ${money(x.sales_delta)} (${percentText(x.sales_change)}). Количество: ${num(x.quantity_delta)}. Изменение средней цены: ${percentText(x.price_change)}.</p><p>Изменение валовой прибыли: ${money(x.profit_delta)}.</p></div>`,
+        )
+        .join("")
+    : empty(
+        r.comparison_available
+          ? "В выбранном разрезе нет снижения продаж"
+          : "Для оценки просадок нужна база сравнения",
+        "Сравнение выполняется по загруженным операциям.",
+      );
+  return (
+    panel(
+      "Выбор разреза",
+      "Выберите точку и категорию или нажмите на объект в таблице.",
+      controls,
+    ) +
+    scopeNote +
+    cards(r.totals) +
+    panel(
+      "Продажи в деталях",
+      "Категория открывает её товары; товар — сравнение продаж по точкам.",
+      groups +
+        layouts +
+        presets +
+        (data.length
+          ? table(headers, data)
+          : empty(
+              "Нет операций по выбранным условиям",
+              "Измените поиск, период или фильтры.",
+            )) +
+        pagination(r, "sales") +
+        '<p class="small">Доли продаж и чеков рассчитаны от всей выбранной точки или доступной сети. Чеки с товарами и категориями пересекаются. «Сумма в чеке» — средняя сумма выбранного объекта, а не полный чек. Средняя цена рассчитана после скидок до возвратов; для категории она зависит также от состава продаж. Нетто — за вычетом возвратов. Пустые значения означают отсутствие данных или несовместимые единицы.</p>',
+    ) +
+    panel(
+      "Где снижается результат",
+      "Математическое сравнение, без выдуманных причин.",
+      declines,
+    ) +
+    panel(
+      "Разбор выбранного среза",
+      "Точка, категория и товар учитываются в анализе.",
+      `<div id="insights-output"></div><button class="secondary" data-insights ${demo ? "disabled" : ""}>Получить разбор</button>`,
+    )
+  );
+}
+function renderAssortment() {
+  const r = catalogReport;
+  if (!r) return panel("Ассортимент", "", empty("Загружаем справочник", ""));
+  const controls = `<form id="catalog-search-form" class="report-controls"><label class="search-field">Поиск<input name="catalog_q" value="${esc(catalogSearch)}" maxlength="160" placeholder="Название, SKU, внешний или внутренний ID"></label><label>Категория<select id="catalog-category">${categoryOptions(catalogCategory, "Все категории")}</select></label><button type="submit" class="secondary">Найти</button><button type="button" class="secondary" data-catalog-clear>Сбросить</button></form>`;
+  return panel(
+    "Ассортимент",
+    "Поиск и страницы по 50 товаров. Коды из учётных систем подтягиваются при синхронизации справочника.",
+    controls +
+      table(
+        [
+          "Товар",
+          "SKU / артикул",
+          "Категория",
+          "Коды учётных систем",
+          "Единица",
+          "",
+        ],
+        r.items.map((p) => [
+          `${esc(p.name)}<details class="small"><summary>Внутренний ID</summary><span class="id visible">${esc(p.id)}</span></details>`,
+          esc(p.sku || "—"),
+          esc(p.category),
+          p.external_ids
+            .map((c) => `<div>${esc(c.source)}: ${esc(c.external_id)}</div>`)
+            .join("") || "—",
+          esc(p.unit),
+          action("Редактировать", "product", "structure", p.id),
+        ]),
+      ) +
+      pagination(r, "catalog"),
+    `<div class="actions">${action("Добавить товар", "product", "structure")}<button class="secondary" data-tab="data">Импорт и интеграции</button></div>`,
+  );
+}
 function sample() {
   return {
     source: "my-pos",
@@ -551,6 +914,7 @@ function open(kind, id = "") {
       campaign: "campaigns",
       member: "members",
       employee: "employees",
+      product: "products",
     },
     r = id
       ? state[collection[kind]].find((x) => (x.id || x.user_id) === id)
@@ -582,11 +946,21 @@ function open(kind, id = "") {
       '<p class="small">Можно выбрать несколько точек или назначить их позже.</p></fieldset>';
   }
   if (kind === "product") {
-    title = "Новый товар или услуга";
+    title = id ? "Редактировать товар или услугу" : "Новый товар или услуга";
     fields =
-      input("name", "Название", "", "text", true) +
-      categoryField("Категория") +
-      input("unit", "Единица измерения", "шт.");
+      input("name", "Название", r.name || "", "text", true) +
+      input("sku", "SKU / артикул", r.sku || "") +
+      categoryField("Категория", r.category || "") +
+      input("unit", "Единица измерения", r.unit || "шт.");
+    if (id)
+      fields +=
+        '<p class="small full">Коды учётных систем: ' +
+        esc(
+          (r.external_ids || [])
+            .map((x) => x.source + ": " + x.external_id)
+            .join(", ") || "Появятся после синхронизации справочника",
+        ) +
+        "</p>";
   }
   if (kind === "plan") {
     title = id ? "Изменить план" : "Новый план";
@@ -959,13 +1333,115 @@ $("editor").addEventListener("submit", async (e) => {
     b.disabled = false;
   }
 });
+async function detailAction(button) {
+  if (button.dataset.salesLocation !== undefined) {
+    $("location").value = button.dataset.salesLocation;
+    salesGroup = button.dataset.salesDrill || "by_product";
+    tab = "sales";
+    salesPage = 1;
+    salesSearch = "";
+    return load();
+  }
+  if (button.dataset.salesCategory !== undefined) {
+    salesCategory = button.dataset.salesCategory;
+    if (button.dataset.rowLocation)
+      $("location").value = button.dataset.rowLocation;
+    salesProduct = "";
+    salesGroup = "by_product";
+    salesPage = 1;
+    salesSearch = "";
+    return load();
+  }
+  if (button.dataset.salesProduct) {
+    salesProduct = button.dataset.salesProduct;
+    salesGroup = "by_location";
+    $("location").value = "";
+    salesPage = 1;
+    salesSearch = "";
+    return load();
+  }
+  if (button.dataset.salesLayout) {
+    salesLayout = button.dataset.salesLayout;
+    salesPage = 1;
+    return load();
+  }
+  if (button.dataset.salesPreset) {
+    salesPreset = button.dataset.salesPreset;
+    return render();
+  }
+  if (button.dataset.salesPage) {
+    salesPage = Number(button.dataset.salesPage);
+    return load();
+  }
+  if (button.dataset.catalogPage) {
+    catalogPage = Number(button.dataset.catalogPage);
+    return load();
+  }
+  if (button.hasAttribute("data-sales-clear")) {
+    salesCategory = "";
+    salesProduct = "";
+    salesSearch = "";
+    salesPage = 1;
+    return load();
+  }
+  if (button.hasAttribute("data-sales-reset-product")) {
+    salesProduct = "";
+    salesPage = 1;
+    return load();
+  }
+  if (button.hasAttribute("data-catalog-clear")) {
+    catalogCategory = "";
+    catalogSearch = "";
+    catalogPage = 1;
+    return load();
+  }
+}
+$("content").addEventListener("submit", (e) => {
+  if (!["sales-search-form", "catalog-search-form"].includes(e.target.id))
+    return;
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  if (e.target.id === "sales-search-form") {
+    salesSearch = String(fd.get("sales_q") || "");
+    if (salesSearch.trim()) salesGroup = "by_product";
+    salesPage = 1;
+  } else {
+    catalogSearch = String(fd.get("catalog_q") || "");
+    catalogPage = 1;
+  }
+  load().catch((e) => toast(e.message));
+});
+$("content").addEventListener("change", (e) => {
+  if (e.target.id === "sales-point") {
+    $("location").value = e.target.value;
+    salesPage = 1;
+  } else if (e.target.id === "sales-category") {
+    salesCategory = e.target.value;
+    salesProduct = "";
+    salesPage = 1;
+  } else if (e.target.id === "sales-sort") {
+    salesSort = e.target.value;
+    salesPage = 1;
+  } else if (e.target.id === "catalog-category") {
+    catalogCategory = e.target.value;
+    catalogPage = 1;
+  } else return;
+  load().catch((e) => toast(e.message));
+});
 $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button");
   if (!b) return;
+  try {
+    await detailAction(b);
+  } catch (e) {
+    toast(e.message);
+  }
   if (b.hasAttribute("data-insights")) {
     b.disabled = true;
     try {
-      const r = await api("/api/insights?" + query());
+      const params = tab === "sales" ? salesParams() : query();
+      if (tab === "sales") params.set("sales", "1");
+      const r = await api("/api/insights?" + params);
       $("insights-output").innerHTML =
         '<span class="badge">' +
         (r.mode === "ai" ? "ИИ-анализ" : "Разбор по правилам") +
@@ -983,12 +1459,12 @@ $("content").addEventListener("click", async (e) => {
   }
   if (b.dataset.action) open(b.dataset.action, b.dataset.id);
   if (b.dataset.tab) {
-    tab = b.dataset.tab;
-    render();
+    activateTab(b.dataset.tab);
   }
   if (b.dataset.group) {
     salesGroup = b.dataset.group;
-    render();
+    salesPage = 1;
+    load().catch((e) => toast(e.message));
   }
   if (b.dataset.revoke && !demo) {
     try {
@@ -1003,19 +1479,25 @@ $("content").addEventListener("click", async (e) => {
 $("nav").addEventListener("click", (e) => {
   const b = e.target.closest("[data-tab]");
   if (b) {
-    tab = b.dataset.tab;
-    render();
+    activateTab(b.dataset.tab);
   }
 });
 $("apply").onclick = () => load().catch((e) => toast(e.message));
 $("demo").onclick = () => {
+  clearDetailSelection();
   demoConfigured = false;
   demo = true;
   load().catch((e) => toast(e.message));
 };
 $("workspace-demo").onclick = async () => {
   const previous = { demo, demoConfigured };
+  clearDetailSelection();
   $("location").value = "";
+  salesCategory = "";
+  salesProduct = "";
+  salesSearch = "";
+  salesPage = 1;
+  catalogPage = 1;
   if (!demo) {
     demo = true;
     demoConfigured = true;
@@ -1042,6 +1524,7 @@ $("exit-workspace").onclick = $("logout").onclick = async () => {
     if (!demo) await api("/api/logout", {});
     demo = false;
     demoConfigured = false;
+    clearDetailSelection();
     state = null;
     $("workspace").hidden = true;
     $("welcome").hidden = false;
@@ -1057,6 +1540,7 @@ $("login").onsubmit = async (e) => {
     await api("/api/login", Object.fromEntries(new FormData(e.target)));
     demo = false;
     demoConfigured = false;
+    clearDetailSelection();
     e.target.reset();
     await load();
   } catch (e) {

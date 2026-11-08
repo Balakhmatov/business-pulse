@@ -65,7 +65,8 @@ try {
   await page.locator("#workspace").waitFor({ state: "visible" });
   for (const name of [
     "Планы и KPI",
-    "Продажи и ассортимент",
+    "Продажи",
+    "Ассортимент",
     "Точки и команда",
     "Клиенты",
     "Маркетинг",
@@ -78,6 +79,83 @@ try {
       .click();
     await page.locator("#content .panel").first().waitFor();
   }
+  await page
+    .locator("#nav")
+    .getByRole("button", { name: "Продажи", exact: true })
+    .click();
+  await page.locator("#sales-search-form").waitFor();
+  await page.locator('[data-group="by_location"]').click();
+  const locationButton = page
+    .locator('#content [data-sales-location][data-sales-drill="by_category"]')
+    .first();
+  await locationButton.waitFor();
+  const selectedLocation = await locationButton.getAttribute(
+    "data-sales-location",
+  );
+  await locationButton.click();
+  await page.waitForFunction(
+    (id) => document.querySelector("#sales-point")?.value === id,
+    selectedLocation,
+  );
+  const categoryButton = page.locator("[data-sales-category]").first();
+  await categoryButton.waitFor();
+  const selectedCategory = await categoryButton.getAttribute(
+    "data-sales-category",
+  );
+  await categoryButton.click();
+  await page.waitForFunction(
+    (value) => document.querySelector("#sales-category")?.value === value,
+    selectedCategory,
+  );
+  const productButton = page.locator("[data-sales-product]").first();
+  await productButton.waitFor();
+  await productButton.click();
+  await page.waitForFunction(
+    () => document.querySelector("#sales-point")?.value === "",
+  );
+  await page.locator('[data-sales-preset="prices"]').click();
+  await page
+    .getByRole("columnheader", { name: "Средняя цена, ₽", exact: true })
+    .waitFor();
+  await page.screenshot({
+    path: "/tmp/business-pulse-sales-details-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    true,
+    "sales mobile overflow",
+  );
+  await page.screenshot({
+    path: "/tmp/business-pulse-sales-details-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page
+    .locator("#nav")
+    .getByRole("button", { name: "Ассортимент", exact: true })
+    .click();
+  await page.locator("[name=catalog_q]").waitFor();
+  await page.locator("[name=catalog_q]").fill("Шампунь");
+  await page
+    .locator("#catalog-search-form")
+    .getByRole("button", { name: "Найти", exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll("#content tbody tr").length === 1 &&
+      !document.body.classList.contains("loading"),
+  );
+  await page.getByRole("cell", { name: "Уход", exact: true }).waitFor();
+  assert.equal(await page.locator("#content tbody tr").count(), 1);
+  await page
+    .locator("#nav")
+    .getByRole("button", { name: "Обзор бизнеса", exact: true })
+    .click();
+  console.log("Sales drilldown, presets, assortment search and mobile passed");
   await page.screenshot({
     path: "/tmp/business-pulse-management-desktop.png",
     fullPage: true,
@@ -159,6 +237,25 @@ try {
   await page.locator("#dialog").waitFor({ state: "hidden" });
   assert.equal(s.snapshot(a).totals.sales, 100000);
   console.log("CSV passed");
+  await page
+    .locator("#nav")
+    .getByRole("button", { name: "Ассортимент", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Редактировать", exact: true })
+    .first()
+    .click();
+  await page.locator("#editor input[name=sku]").fill("ART-UI-001");
+  await page.locator("#save-dialog").click();
+  await page.locator("#dialog").waitFor({ state: "hidden" });
+  assert.equal(s.products(a, { q: "ART-UI-001" }).total, 1);
+  await page.locator("[name=catalog_q]").fill("ART-UI-001");
+  await page
+    .locator("#catalog-search-form")
+    .getByRole("button", { name: "Найти", exact: true })
+    .click();
+  await page.getByRole("cell", { name: "ART-UI-001", exact: true }).waitFor();
+
   // Exercise CSV quoting and the XLSX date decoder in the real browser.
   const parser = await page.evaluate(async () => {
     const { parseCSV } = await import(
