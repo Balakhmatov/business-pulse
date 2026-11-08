@@ -1,7 +1,8 @@
 export function createKpiUI(h) {
   const {esc,input,select,textarea,table,panel,action,format,num,api,readFile}=h;
   const state=()=>h.state(), labels=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
-  let compare='locations', metricFilter='', planFilter='all', chartPlan='', chartPoint=0;
+  let compare='locations', metricFilter='', planFilter='all', chartPlan='', chartPoint=0, chartMode='line';
+  try { if(localStorage.getItem('bp-kpi-chart-mode')==='bars')chartMode='bars'; } catch {}
   const factor=m=>state().metrics[m]?.unit==='money'?100:1;
   const customOptions=()=>state().kpi_definitions.map(d=>[d.id,d.label]);
   const locOptions=()=>[['','Вся компания'],...state().locations.map(l=>[l.id,l.name])];
@@ -30,17 +31,54 @@ export function createKpiUI(h) {
     })]));
   }
   function chart() {
-    const ps=plans();if(!ps.length)return '';
-    if(!ps.some(p=>p.id===chartPlan)) chartPlan=ps[0].id;
-    const p=ps.find(p=>p.id===chartPlan),pts=p.timeline;
-    if(!pts.length)return '<p class="small">Выберите показатель или нажмите «Обновить», чтобы загрузить график.</p>';
-    chartPoint=Math.max(0,Math.min(chartPoint,pts.length-1));
-    const width=Math.max(280,document.getElementById('content').clientWidth-60),height=230,left=75,right=width-20,top=22,bottom=190;
-    const vals=pts.flatMap(d=>[d.actual,d.plan,...(p.direction==='range'?[d.upper]:[])]).filter(v=>v!==null);
-    const lo=Math.min(0,...vals),hi=Math.max(...vals,1),x=i=>left+i/Math.max(1,pts.length-1)*(right-left),y=v=>bottom-(v-lo)/(hi-lo)*(bottom-top);
-    const path=key=>{let segment=false;return pts.map((d,i)=>{if(d[key]===null){segment=false;return '';}const cmd=segment?'L':'M';segment=true;return `${cmd}${x(i)},${y(d[key])}`;}).join(' ');};
-    const d=pts[chartPoint];
-    return select('kpi_chart','Показатель и план',ps.map(p=>[p.id,`${state().metrics[p.metric].label} · ${h.planName(p)} · ${p.start_on} — ${p.end_on}`]),chartPlan)+`<svg class="kpi-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="График план и факт">${[0,.5,1].map(f=>{const v=lo+(hi-lo)*f;return `<line x1="${left}" x2="${right}" y1="${y(v)}" y2="${y(v)}" stroke="#e7e9f1"/><text x="${left-8}" y="${y(v)+4}" text-anchor="end">${esc(format(v,p.metric))}</text>`;}).join('')}<path d="${path('plan')}" fill="none" stroke="#969cb0" stroke-width="2" stroke-dasharray="6 4"/>${p.direction==='range'?`<path d="${path('upper')}" fill="none" stroke="#969cb0" stroke-dasharray="6 4"/>`:''}<path d="${path('actual')}" fill="none" stroke="#665fe2" stroke-width="3"/>${pts.map((pt,i)=>`<circle cx="${x(i)}" cy="${pt.actual===null?y(pt.plan):y(pt.actual)}" r="${i===chartPoint?6:3}" fill="${pt.actual===null?'#969cb0':'#665fe2'}" data-kpi-point="${i}"/>`).join('')}<text x="${left}" y="220">${esc(p.start_on)}</text><text x="${right}" y="220" text-anchor="end">${esc(p.end_on)}</text></svg><label class="small">Выбрать дату<input type="range" name="kpi_point" min="0" max="${pts.length-1}" value="${chartPoint}"></label><div class="chart-readout"><strong>${esc(d.date)}</strong><span>Факт: ${format(d.actual,p.metric)} · Цель: ${format(d.plan,p.metric)}${p.direction==='range'?' — '+format(d.upper,p.metric):''}</span></div><p class="small">Сплошная линия — факт, пунктир — план. Длинные периоды показаны с укрупнением дат.</p>`;
+    const ps = plans();
+    if (!ps.length) return '';
+    if (!ps.some(p => p.id === chartPlan)) chartPlan = ps[0].id;
+    const p = ps.find(p => p.id === chartPlan), pts = p.timeline;
+    if (!pts.length) return '<p class="small">Выберите показатель или нажмите «Обновить», чтобы загрузить график.</p>';
+    chartPoint = Math.max(0, Math.min(chartPoint, pts.length - 1));
+    const width = Math.max(280, document.getElementById('content').clientWidth - 60);
+    const height = 230, left = 75, right = width - 20, top = 22, bottom = 190;
+    const vals = pts.flatMap(d => [d.actual, d.plan, ...(p.direction === 'range' ? [d.upper] : [])]).filter(Number.isFinite);
+    const lo = Math.min(0, ...vals), hi = Math.max(...vals, 1);
+    const slot = (right - left) / pts.length;
+    const x = i => chartMode === 'bars'
+      ? left + slot * (i + .5)
+      : pts.length === 1 ? (left + right) / 2 : left + i / (pts.length - 1) * (right - left);
+    const y = v => bottom - (v - lo) / (hi - lo) * (bottom - top);
+    const path = key => {
+      let segment = false;
+      return pts.map((d, i) => {
+        if (!Number.isFinite(d[key])) { segment = false; return ''; }
+        const cmd = segment ? 'L' : 'M'; segment = true;
+        return `${cmd}${x(i)},${y(d[key])}`;
+      }).join(' ');
+    };
+    const grid = [0, .5, 1].map(f => {
+      const v = lo + (hi - lo) * f;
+      return `<line x1="${left}" x2="${right}" y1="${y(v)}" y2="${y(v)}" stroke="#e7e9f1"/><text x="${left - 8}" y="${y(v) + 4}" text-anchor="end">${esc(format(v, p.metric))}</text>`;
+    }).join('');
+    let marks;
+    if (chartMode === 'bars') {
+      const barWidth = Math.max(.5, Math.min(18, slot * .32));
+      const gap = Math.min(3, slot * .08), zero = y(0);
+      const bar = (value, cx, kind, index) => {
+        if (!Number.isFinite(value)) return '';
+        const vy = y(value);
+        return `<rect x="${cx - barWidth / 2}" y="${Math.min(vy, zero)}" width="${barWidth}" height="${Math.max(1, Math.abs(vy - zero))}" class="kpi-bar ${kind}" data-kpi-bar="${kind}" data-kpi-point="${index}"/>`;
+      };
+      marks = pts.map((pt, i) => {
+        const planX = x(i) - (barWidth + gap) / 2;
+        const actualX = x(i) + (barWidth + gap) / 2;
+        return `<g>${i === chartPoint ? `<rect x="${left + i * slot}" y="${top}" width="${slot}" height="${bottom - top}" fill="#f0eeff"/>` : ''}${bar(pt.plan, planX, 'plan', i)}${p.direction === 'range' ? `<rect x="${planX - barWidth / 2}" y="${Math.min(y(pt.plan), y(pt.upper))}" width="${barWidth}" height="${Math.max(1, Math.abs(y(pt.upper) - y(pt.plan)))}" class="kpi-bar-range" data-kpi-range="${i}"/>` : ''}${bar(pt.actual, actualX, 'actual', i)}<rect x="${left + i * slot}" y="${top}" width="${slot}" height="${bottom - top}" fill="transparent" data-kpi-point="${i}"/></g>`;
+      }).join('');
+    } else {
+      marks = `<path d="${path('plan')}" fill="none" stroke="#969cb0" stroke-width="2" stroke-dasharray="6 4"/>${p.direction === 'range' ? `<path d="${path('upper')}" fill="none" stroke="#969cb0" stroke-dasharray="6 4"/>` : ''}<path d="${path('actual')}" fill="none" stroke="#665fe2" stroke-width="3"/>${pts.map((pt, i) => `<circle cx="${x(i)}" cy="${pt.actual === null ? y(pt.plan) : y(pt.actual)}" r="${i === chartPoint ? 6 : 3}" fill="${pt.actual === null ? '#969cb0' : '#665fe2'}" data-kpi-point="${i}"/>`).join('')}`;
+    }
+    const d = pts[chartPoint];
+    const cumulative = ['sales', 'receipts', 'quantity', 'profit'].includes(p.metric) || state().metrics[p.metric]?.aggregation === 'sum';
+    return select('kpi_chart', 'Показатель и план', ps.map(p => [p.id, `${state().metrics[p.metric].label} · ${h.planName(p)} · ${p.start_on} — ${p.end_on}`]), chartPlan) +
+      `<div class="metric-tabs kpi-chart-modes" role="group" aria-label="Вид графика">${[['line', 'Линии'], ['bars', 'Столбики']].map(([mode, label]) => `<button type="button" class="${chartMode === mode ? 'active' : ''}" data-kpi-chart-mode="${mode}" aria-pressed="${chartMode === mode}">${label}</button>`).join('')}</div><svg class="kpi-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="План и факт: ${chartMode === 'bars' ? 'столбики' : 'линии'}">${grid}${marks}<text x="${left}" y="220">${esc(p.start_on)}</text><text x="${right}" y="220" text-anchor="end">${esc(p.end_on)}</text></svg><label class="small">Выбрать дату<input type="range" name="kpi_point" min="0" max="${pts.length - 1}" value="${chartPoint}"></label><div class="chart-readout" aria-live="polite"><strong>${esc(d.date)}</strong><span>Факт: ${format(d.actual, p.metric)} · Цель: ${format(d.plan, p.metric)}${p.direction === 'range' ? ' — ' + format(d.upper, p.metric) : ''}</span></div><div class="kpi-chart-legend small"><span><i class="actual"></i>Факт</span><span><i class="plan"></i>${p.direction === 'range' ? 'План и допустимый диапазон' : 'План'}</span></div><p class="small">${cumulative ? 'Накопительный итог с начала плана.' : 'Значение показателя к выбранной дате.'} Длинные периоды показаны с укрупнением дат.</p>`;
   }
   function notifications() {
     const ns=state().notifications||[];
@@ -93,6 +131,13 @@ export function createKpiUI(h) {
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='business-pulse-kpi.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   async function click(b) {
+    if(['line','bars'].includes(b.dataset.kpiChartMode)) {
+      chartMode=b.dataset.kpiChartMode;
+      try {localStorage.setItem('bp-kpi-chart-mode',chartMode);} catch {}
+      h.render();
+      document.querySelector(`[data-kpi-chart-mode="${chartMode}"]`)?.focus({preventScroll:true});
+      return true;
+    }
     if(b.hasAttribute('data-kpi-template')){template();return true;}
     if(b.dataset.kpiCompare){compare=b.dataset.kpiCompare;h.render();return true;}
     if(b.hasAttribute('data-kpi-refresh')){await h.load();return true;}
@@ -118,7 +163,11 @@ export function createKpiUI(h) {
     return true;
   }
   function mount(){
-    document.querySelectorAll('[data-kpi-point]').forEach(el=>el.addEventListener('pointerenter',()=>{const index=Number(el.dataset.kpiPoint);if(index!==chartPoint){chartPoint=index;h.render();}}));
+    document.querySelectorAll('[data-kpi-point]').forEach(el=>{
+      const choose=()=>{const index=Number(el.dataset.kpiPoint);if(index!==chartPoint){chartPoint=index;h.render();}};
+      el.addEventListener('pointerenter',choose);
+      el.addEventListener('pointerdown',choose);
+    });
   }
   function editor(kind) {
     const form=document.getElementById('editor');

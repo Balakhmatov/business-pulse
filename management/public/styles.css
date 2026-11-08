@@ -986,3 +986,12 @@ details .id {
 .kpi-seen { opacity:.65; }
 .kpi-chart + label input { width:100%;accent-color:var(--purple); }
 @media(max-width:600px) { .weekday-weights { grid-template-columns:repeat(4,minmax(0,1fr)); } .kpi-toolbar label { min-width:0;flex:1 1 160px; } }
+.kpi-chart-modes { margin-top:16px; }
+.kpi-bar.actual { fill:#665fe2; }
+.kpi-bar.plan { fill:#969cb0; }
+.kpi-bar-range { fill:#969cb020;stroke:#969cb0;stroke-width:1; }
+.kpi-chart-legend { display:flex;gap:18px;flex-wrap:wrap;margin-top:14px; }
+.kpi-chart-legend span { display:inline-flex;align-items:center;gap:7px; }
+.kpi-chart-legend i { display:inline-block;width:10px;height:10px;border-radius:2px; }
+.kpi-chart-legend .actual { background:#665fe2; }
+.kpi-chart-legend .plan { background:#969cb0; }
