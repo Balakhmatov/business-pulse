@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy isolated Business Pulse management from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/business-pulse-management-deploy
+TimeoutStartSec=240
+UMask=0022

@@ -191,6 +191,21 @@ try {
     .click();
   await page.locator("#insights-output .badge").waitFor();
   console.log("Insights passed");
+  await page.locator("#workspace-demo").click();
+  await page.getByText("Демонстрационные данные", { exact: true }).waitFor();
+  await page
+    .getByRole("heading", { name: "Обзор бизнеса", exact: true })
+    .waitFor();
+  assert.ok(
+    await page
+      .locator("#content")
+      .textContent()
+      .then((t) => t.includes("Новая точка")),
+  );
+  assert.equal(s.snapshot(a).totals.sales, 100000);
+  await page.locator("#workspace-demo").click();
+  await page.getByText("Рабочая компания", { exact: true }).waitFor();
+  console.log("Configured demo and return passed");
   // Invite and use the same editor afterwards: acceptance must not retain a stale submit handler.
   const invite = s.invite(a, {
     email: "manager@example.test",

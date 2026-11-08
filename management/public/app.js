@@ -40,6 +40,7 @@ const icons = {
 let state = null,
   tab = "overview",
   demo = false,
+  demoConfigured = false,
   salesGroup = "by_category",
   editing = null,
   inviteToken = null,
@@ -92,7 +93,9 @@ const query = () =>
 async function load() {
   document.body.classList.add("loading");
   try {
-    state = await api((demo ? "/api/demo" : "/api/workspace") + "?" + query());
+    const params = query();
+    if (demo && demoConfigured) params.set("configured", "1");
+    state = await api((demo ? "/api/demo" : "/api/workspace") + "?" + params);
     $("welcome").hidden = true;
     $("workspace").hidden = false;
     const selected = $("location").value;
@@ -108,6 +111,7 @@ async function load() {
     $("mode").textContent = demo
       ? "Демонстрационные данные"
       : "Рабочая компания";
+    $("workspace-demo").textContent = demo ? "Вернуться" : "Демо";
     render();
   } finally {
     document.body.classList.remove("loading");
@@ -134,7 +138,7 @@ function render() {
   $("subtitle").textContent = titles[tab][1];
   $("content").innerHTML =
     (demo
-      ? '<div class="notice">Это пример с вымышленными данными. Создание и изменение объектов доступны после входа в свою компанию.</div>'
+      ? '<div class="notice">Это демонстрация с синтетическими продажами. Реальные данные компании не изменяются. Для редактирования нажмите «Вернуться».</div>'
       : "") + views[tab]();
 }
 function action(label, kind, permission, id = "") {
@@ -1005,13 +1009,39 @@ $("nav").addEventListener("click", (e) => {
 });
 $("apply").onclick = () => load().catch((e) => toast(e.message));
 $("demo").onclick = () => {
+  demoConfigured = false;
   demo = true;
   load().catch((e) => toast(e.message));
+};
+$("workspace-demo").onclick = async () => {
+  const previous = { demo, demoConfigured };
+  $("location").value = "";
+  if (!demo) {
+    demo = true;
+    demoConfigured = true;
+  } else {
+    demo = false;
+    demoConfigured = false;
+  }
+  try {
+    await load();
+  } catch (e) {
+    if (previous.demo && !previous.demoConfigured) {
+      state = null;
+      $("workspace").hidden = true;
+      $("welcome").hidden = false;
+    } else {
+      demo = previous.demo;
+      demoConfigured = previous.demoConfigured;
+      toast(e.message);
+    }
+  }
 };
 $("exit-workspace").onclick = $("logout").onclick = async () => {
   try {
     if (!demo) await api("/api/logout", {});
     demo = false;
+    demoConfigured = false;
     state = null;
     $("workspace").hidden = true;
     $("welcome").hidden = false;
@@ -1026,6 +1056,7 @@ $("login").onsubmit = async (e) => {
   try {
     await api("/api/login", Object.fromEntries(new FormData(e.target)));
     demo = false;
+    demoConfigured = false;
     e.target.reset();
     await load();
   } catch (e) {

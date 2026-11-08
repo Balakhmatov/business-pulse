@@ -4,7 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openStore, createService, fail } from "./core.mjs";
 import { createInsights } from "./insights.mjs";
-import { demoWorkspace } from "./demo.mjs";
+import { createHash } from "node:crypto";
+import { demoWorkspace, configuredDemo } from "./demo.mjs";
 const publicDir = fileURLToPath(new URL("./public/", import.meta.url));
 const COOKIE = "bp_management_session";
 const cookie = (req) =>
@@ -54,7 +55,8 @@ export function createApp({
   const service = createService(db),
     example = demo ? demoWorkspace() : null,
     attempts = new Map(),
-    insights = createInsights();
+    insights = createInsights(),
+    demoCache = new Map();
   function rate(req) {
     const key = req.socket.remoteAddress,
       now = Date.now();
@@ -96,15 +98,75 @@ export function createApp({
           ok: db.prepare("SELECT 1 AS n").get().n === 1,
           service: "business-pulse-management",
         });
-      if (p === "/api/demo" && req.method === "GET" && example)
+      if (p === "/api/demo" && req.method === "GET" && example) {
+        let workspace = example;
+        const filters = Object.fromEntries(url.searchParams);
+        if (url.searchParams.get("configured") === "1") {
+          const actor = service.actor(cookie(req));
+          if (!actor) fail("Войдите в компанию для демо на её структуре.", 401);
+          const { location_id, configured, ...range } = filters;
+          const live = service.snapshot(actor, range);
+          const config = {
+            actor: live.actor,
+            locations: live.locations,
+            products: live.products,
+            employees: live.employees,
+            plans: live.plans.map(
+              ({
+                id,
+                metric,
+                target,
+                start_on,
+                end_on,
+                location_id,
+                employee_id,
+                category,
+                product_id,
+              }) => ({
+                id,
+                metric,
+                target,
+                start_on,
+                end_on,
+                location_id,
+                employee_id,
+                category,
+                product_id,
+              }),
+            ),
+          };
+          const cacheKey = createHash("sha256")
+            .update(
+              JSON.stringify({
+                company: actor.company_id,
+                role: actor.role,
+                scope: actor.scope,
+                config,
+                range,
+              }),
+            )
+            .digest("hex");
+          workspace = demoCache.get(cacheKey);
+          if (!workspace) {
+            workspace = configuredDemo(config, range);
+            if (demoCache.size >= 6) {
+              const first = demoCache.keys().next().value;
+              demoCache.get(first).db.close();
+              demoCache.delete(first);
+            }
+            demoCache.set(cacheKey, workspace);
+          }
+        }
         return json(res, 200, {
-          ...example.service.snapshot(example.actor, {
-            from: example.start,
-            to: example.end,
-            ...Object.fromEntries(url.searchParams),
+          ...workspace.service.snapshot(workspace.actor, {
+            from: workspace.start,
+            to: workspace.end,
+            ...filters,
           }),
           demo: true,
+          demo_configured: Boolean(workspace.configured),
         });
+      }
       if (p === "/api/login" && req.method === "POST") {
         rate(req);
         const { token } = service.login(await body(req));
