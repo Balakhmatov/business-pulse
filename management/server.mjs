@@ -7,6 +7,12 @@ import { createInsights } from "./insights.mjs";
 import { createHash } from "node:crypto";
 import { demoWorkspace, configuredDemo } from "./demo.mjs";
 const publicDir = fileURLToPath(new URL("./public/", import.meta.url));
+// One content version for the complete UI, including imported modules and styles.
+// Changing any browser asset invalidates every browser/CDN entry point together.
+const assetFiles = ["index.html", "app.js", "kpi.js", "import.js", "styles.css"];
+const rawAssets = Object.fromEntries(assetFiles.map(file => [file, fs.readFileSync(path.join(publicDir, file), "utf8")]));
+const assetVersion = createHash("sha256").update(assetFiles.map(file => file + "\0" + rawAssets[file]).join("\0")).digest("hex").slice(0, 16);
+const assets = Object.fromEntries(assetFiles.map(file => [file, rawAssets[file].replaceAll("__BPM_ASSET_VERSION__", assetVersion)]));
 const COOKIE = "bp_management_session";
 const cookie = (req) =>
   (req.headers.cookie || "")
@@ -311,10 +317,12 @@ export function createApp({
             : "text/html";
       res.writeHead(200, {
         "Content-Type": mime + "; charset=utf-8",
-        "Cache-Control": "no-cache",
+        "Cache-Control": file !== "index.html" && url.searchParams.get("v") === assetVersion
+          ? "public, max-age=31536000, immutable"
+          : "no-store, max-age=0",
         "X-Content-Type-Options": "nosniff",
       });
-      fs.createReadStream(path.join(publicDir, file)).pipe(res);
+      res.end(assets[file]);
     } catch (e) {
       if (!res.headersSent)
         json(res, e.status || 500, {

@@ -205,9 +205,22 @@ test("subpath serves assets and API only under mount, with isolated cookie path"
   assert.equal(redirect.headers.get("location"), "/businesspulse/");
   assert.equal((await fetch(base + "/api/health")).status, 404);
   assert.equal((await fetch(base + "/businesspulse/api/health")).status, 200);
-  const html = await (await fetch(base + "/businesspulse/")).text();
-  assert.match(html, /href="\.\/styles.css"/);
-  assert.match(html, /src="\.\/app.js"/);
+  const pageResponse = await fetch(base + "/businesspulse/");
+  const html = await pageResponse.text();
+  assert.match(pageResponse.headers.get("cache-control"), /no-store/);
+  const version = html.match(/app\.js\?v=([a-f0-9]{16})/)[1];
+  assert.ok(html.includes("./styles.css?v=" + version));
+  assert.equal(html.includes("__BPM_ASSET_VERSION__"), false);
+  const script = await fetch(base + "/businesspulse/app.js?v=" + version);
+  assert.match(script.headers.get("cache-control"), /immutable/);
+  const scriptBody = await script.text();
+  assert.ok(scriptBody.includes("./kpi.js?v=" + version));
+  assert.ok(scriptBody.includes("./import.js?v=" + version));
+  assert.equal(scriptBody.includes("__BPM_ASSET_VERSION__"), false);
+  const kpiModule = await fetch(base + "/businesspulse/kpi.js?v=" + version);
+  assert.equal(kpiModule.status, 200);
+  assert.ok((await kpiModule.text()).includes("data-kpi-chart-mode"));
+  assert.match((await fetch(base + "/businesspulse/app.js")).headers.get("cache-control"), /no-store/);
   assert.equal((await fetch(base + "/businesspulse/import.js")).status, 200);
   const login = await fetch(base + "/businesspulse/api/login", {
     method: "POST",

@@ -1,5 +1,5 @@
-import { createKpiUI } from "./kpi.js";
-import { readFile, fields, tableToSales } from "./import.js";
+import { createKpiUI } from "./kpi.js?v=__BPM_ASSET_VERSION__";
+import { readFile, fields, tableToSales } from "./import.js?v=__BPM_ASSET_VERSION__";
 const baseURL = new URL("./", import.meta.url);
 const publicBase = baseURL.href.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
