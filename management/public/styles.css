@@ -765,3 +765,20 @@ progress::-moz-progress-bar {
     max-width: none;
   }
 }
+.employee-locations {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 12px 15px;
+  margin: 12px 0 0;
+  min-width: 0;
+}
+.employee-locations legend {
+  font-size: 12px;
+  font-weight: 650;
+  color: #5f6780;
+  padding: 0 5px;
+}
+.employee-locations .check-line {
+  font-weight: 500;
+  color: #252b45;
+}
