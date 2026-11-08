@@ -6,7 +6,7 @@ CONFIG=$(readlink -f /etc/nginx/sites-enabled/cityai)
 SNIPPET=/opt/business-pulse-management/management/deploy/nginx.conf
 if [[ ! -f "$CONFIG" || ! -f "$SNIPPET" ]]; then echo 'Configuration or management checkout missing'; exit 1; fi
 nginx -t
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3128/businesspulse/api/health
+curl --noproxy 127.0.0.1 --fail --silent --show-error --max-time 10 http://127.0.0.1:3128/businesspulse/api/health
 install -d -m 700 /var/backups/business-pulse-management
 BACKUP=$(mktemp /var/backups/business-pulse-management/cityai.XXXXXXXX.conf)
 cp -a -- "$CONFIG" "$BACKUP"
@@ -41,7 +41,9 @@ if ! systemctl reload nginx; then
     echo "Reload failed; original config restored from $BACKUP"
     exit 1
 fi
-if ! curl --fail --silent --show-error --max-time 15 --resolve cityai.site:443:127.0.0.1 https://cityai.site/businesspulse/api/health; then
+# Nginx reload is asynchronous: old workers can briefly answer 404.
+# Retry all HTTP failures before deciding to restore the previous config.
+if ! curl --noproxy cityai.site --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 1 --retry-max-time 30 --max-time 5 --resolve cityai.site:443:127.0.0.1 https://cityai.site/businesspulse/api/health; then
     cp -a -- "$BACKUP" "$CONFIG"
     nginx -t && systemctl reload nginx
     echo 'HTTPS health check failed; original route configuration restored.'
