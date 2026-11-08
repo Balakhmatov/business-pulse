@@ -61,7 +61,11 @@ let state = null,
   salesPage = 1,
   catalogSearch = "",
   catalogCategory = "",
-  catalogPage = 1;
+  catalogPage = 1,
+  chartMetric = "sales",
+  chartIndex = null,
+  chartContext = null,
+  chartObserver = null;
 const money = (n) =>
   n === null || n === undefined
     ? "—"
@@ -108,6 +112,7 @@ const query = () =>
     ...($("location").value ? { location_id: $("location").value } : {}),
   });
 async function load() {
+  chartIndex = null;
   document.body.classList.add("loading");
   try {
     const params = query();
@@ -151,6 +156,9 @@ function allowed(t) {
   );
 }
 function render() {
+  chartObserver?.disconnect();
+  chartObserver = null;
+  chartContext = null;
   if (!allowed(tab)) tab = "overview";
   document.querySelector(".filters").hidden = tab === "assortment";
   $("location").closest("label").hidden = tab === "sales";
@@ -167,6 +175,7 @@ function render() {
     (demo
       ? '<div class="notice">Это демонстрация с синтетическими продажами. Реальные данные компании не изменяются. Для редактирования нажмите «Вернуться».</div>'
       : "") + views[tab]();
+  mountMetricChart();
 }
 function action(label, kind, permission, id = "") {
   return state.permissions[permission]
@@ -218,43 +227,269 @@ function planRows(plans) {
         "Добавьте план, чтобы отслеживать выполнение и отклонения.",
       );
 }
+const chartMetrics = {
+  sales: { label: "Продажи", money: true, description: "С учётом возвратов" },
+  receipts: {
+    label: "Чеки",
+    money: false,
+    description: "Уникальные чеки продаж за каждый интервал",
+  },
+  average: {
+    label: "Средний чек",
+    money: true,
+    description: "Продажи / количество чеков за каждый интервал",
+  },
+  profit: {
+    label: "Валовая прибыль",
+    money: true,
+    description: "Продажи за вычетом себестоимости",
+  },
+};
+const chartLabel = (key) =>
+  key === "average" && tab === "sales" && (salesCategory || salesProduct)
+    ? "Сумма в чеке"
+    : chartMetrics[key].label;
 function cards(t = state.totals) {
-  return `<div class="cards">${[
-    ["Продажи", money(t.sales), "За выбранный период", "hero"],
-    ["Чеки", num(t.receipts), "Уникальные покупки", ""],
-    ["Средний чек", money(t.average), "С учётом возвратов", ""],
-    [
-      "Валовая прибыль",
-      money(t.profit),
-      t.cost_complete
-        ? "После себестоимости"
-        : "Нужна себестоимость всех строк",
-      "",
-    ],
-  ]
-    .map(
-      ([label, value, caption, cl]) =>
-        `<article class="card ${cl}"><div class="label">${label}</div><div class="value">${value}</div><div class="small">${caption}</div></article>`,
-    )
-    .join("")}</div>`;
+  return `<div class="cards" aria-label="Показатель графика">${["sales", "receipts", "average", "profit"].map((key) => `<button type="button" class="card metric-card ${chartMetric === key ? "hero selected" : ""}" data-chart-metric="${key}" aria-pressed="${chartMetric === key}" aria-label="Показать на графике: ${esc(chartLabel(key))}"><span class="label">${esc(chartLabel(key))}</span><span class="value">${chartMetrics[key].money ? money(t[key]) : num(t[key])}</span><span class="small">${key === "profit" && !t.cost_complete ? "Нужна себестоимость всех строк" : key === "receipts" ? "Уникальные покупки" : "За выбранный период"}</span></button>`).join("")}</div>`;
 }
-function chart() {
-  const rs = state.trend;
-  if (!rs.length)
-    return empty(
-      "Продажи появятся здесь",
-      "Подключите источник или загрузите данные.",
+const chartDate = (date, short = false) =>
+  new Intl.DateTimeFormat(
+    "ru-RU",
+    short
+      ? { day: "2-digit", month: "2-digit", timeZone: "UTC" }
+      : { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" },
+  ).format(new Date(date + "T00:00:00Z"));
+function chartValue(value, key, compact = false) {
+  if (value === null || value === undefined) return "—";
+  const cash = chartMetrics[key].money;
+  if (compact) {
+    return (
+      new Intl.NumberFormat("ru-RU", {
+        notation:
+          Math.abs(value / (cash ? 100 : 1)) >= 10000 ? "compact" : "standard",
+        maximumFractionDigits: cash ? 2 : 0,
+      }).format(value / (cash ? 100 : 1)) + (cash ? " ₽" : "")
     );
-  const vals = rs.map((r) => r.sales),
-    min = Math.min(0, ...vals),
-    max = Math.max(1, ...vals),
-    points = vals
-      .map(
-        (v, i) =>
-          `${20 + (i * 660) / Math.max(1, vals.length - 1)},${150 - ((v - min) / (max - min)) * 125}`,
-      )
-      .join(" ");
-  return `<svg class="chart" role="img" aria-label="Динамика продаж по дням" viewBox="0 0 700 170" preserveAspectRatio="none"><path d="M20 150H680" stroke="#e7e9f1"/><polyline points="${points}" fill="none" stroke="#7368e4" stroke-width="3" vector-effect="non-scaling-stroke"/></svg><div class="chart-caption"><span>${esc(rs[0].name)}</span><span>${esc(rs.at(-1).name)}</span></div>`;
+  }
+  return cash
+    ? new Intl.NumberFormat("ru-RU", {
+        style: "currency",
+        currency: "RUB",
+        maximumFractionDigits: 2,
+      }).format(value / 100)
+    : num(value);
+}
+function metricChart(series, meta) {
+  const points = series || [];
+  chartContext = {
+    points,
+    meta: meta || {
+      from: $("from").value,
+      to: $("to").value,
+      granularity: "day",
+    },
+    metric: chartMetric,
+  };
+  return (
+    `<div class="chart-period"><span>${esc(chartDate(chartContext.meta.from))} — ${esc(chartDate(chartContext.meta.to))}</span><span class="badge">${{ day: "По дням", week: "По неделям", month: "По месяцам" }[chartContext.meta.granularity] || "По дням"}</span></div>` +
+    (points.some((p) => p.operations > 0)
+      ? '<div id="metric-chart-host" class="metric-chart-host"></div><div class="chart-readout" aria-live="polite" aria-atomic="true"><div><span id="chart-readout-date" class="small"></span><strong id="chart-readout-value"></strong></div><span id="chart-readout-note" class="small"></span></div><p class="chart-instruction">Наведите или коснитесь графика. Стрелки ← → выбирают соседнюю точку.</p>'
+      : empty(
+          "Нет операций за выбранный период",
+          "Измените период или загрузите продажи.",
+        ))
+  );
+}
+function metricChartPanel(trend = state.trend, meta = state.trend_meta) {
+  return panel(
+    "Динамика: " + esc(chartLabel(chartMetric)),
+    chartMetrics[chartMetric].description,
+    metricChart(trend, meta),
+  );
+}
+function selectChartPoint(index) {
+  const c = chartContext;
+  if (!c || !c.points.length) return;
+  const next = Math.max(0, Math.min(c.points.length - 1, index));
+  if (c.selectionReady && c.selectedIndex === next) return;
+  c.selectedIndex = next;
+  c.selectionReady = true;
+  chartIndex = next;
+  const p = c.points[next],
+    value = p[c.metric],
+    svg = $("metric-chart");
+  if (svg && c.geometry) {
+    const x = c.geometry.x(next);
+    const cursor = svg.querySelector("[data-chart-cursor]");
+    cursor.setAttribute("x1", x);
+    cursor.setAttribute("x2", x);
+    svg
+      .querySelector("[data-chart-dot].selected")
+      ?.classList.remove("selected");
+    svg.querySelector(`[data-chart-dot="${next}"]`)?.classList.add("selected");
+    svg.setAttribute("aria-valuenow", String(next));
+    svg.setAttribute(
+      "aria-valuetext",
+      (p.from === p.to
+        ? chartDate(p.from)
+        : chartDate(p.from) + " — " + chartDate(p.to)) +
+        ": " +
+        chartValue(value, c.metric),
+    );
+  }
+  if ($("chart-readout-date"))
+    $("chart-readout-date").textContent =
+      (p.from === p.to
+        ? chartDate(p.from)
+        : chartDate(p.from) + " — " + chartDate(p.to)) +
+      " · " +
+      chartLabel(c.metric);
+  if ($("chart-readout-value"))
+    $("chart-readout-value").textContent = chartValue(value, c.metric);
+  if ($("chart-readout-note"))
+    $("chart-readout-note").textContent = p.future
+      ? "Дата ещё не наступила"
+      : !p.operations
+        ? "Нет операций в загрузке"
+        : value === null
+          ? c.metric === "profit"
+            ? "Не у всех операций есть себестоимость"
+            : "Нет чеков продаж для расчёта среднего"
+          : "По загруженным операциям";
+}
+function paintMetricChart(host) {
+  const c = chartContext;
+  if (!c) return;
+  c.selectionReady = false;
+  const key = c.metric,
+    actualValues = c.points
+      .filter((p) => p.operations > 0 && Number.isFinite(p[key]))
+      .map((p) => p[key]);
+  if (!actualValues.length) {
+    host.innerHTML = empty(
+      "Показатель не рассчитан",
+      key === "profit"
+        ? "Загрузите себестоимость продаж для расчёта валовой прибыли."
+        : "Нет чеков продаж для расчёта среднего значения.",
+    );
+    selectChartPoint(chartIndex ?? c.points.length - 1);
+    return;
+  }
+  const width = Math.max(300, host.clientWidth),
+    height = 245,
+    left = 66,
+    right = 18,
+    top = 18,
+    bottom = 200,
+    plotWidth = width - left - right;
+  const values = c.points.map((p) => p[key]).filter(Number.isFinite),
+    min = Math.min(0, ...values),
+    max = Math.max(0, ...values);
+  const raw = (max - min || 1) / 4,
+    pow = 10 ** Math.floor(Math.log10(raw)),
+    normalized = raw / pow;
+  const step = Math.max(
+    1,
+    (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) *
+      pow,
+  );
+  let low = Math.floor(min / step) * step,
+    high = Math.ceil(max / step) * step;
+  if (high === low) high = low + step;
+  const x = (i) =>
+      c.points.length === 1
+        ? left + plotWidth / 2
+        : left + (i * plotWidth) / (c.points.length - 1),
+    y = (v) => bottom - ((v - low) / (high - low)) * (bottom - top);
+  c.geometry = { width, left, right, plotWidth, x };
+  let grid = "";
+  for (
+    let tick = low, n = 0;
+    tick <= high + step / 10 && n < 9;
+    tick += step, n++
+  )
+    grid += `<line x1="${left}" x2="${width - right}" y1="${y(tick)}" y2="${y(tick)}" class="chart-grid ${tick === 0 ? "zero" : ""}"/><text x="${left - 9}" y="${y(tick) + 4}" text-anchor="end" class="chart-axis">${esc(chartValue(tick, key, true))}</text>`;
+  let path = "",
+    open = false;
+  for (const [i, p] of c.points.entries()) {
+    if (Number.isFinite(p[key])) {
+      path += (open ? " L" : " M") + x(i) + " " + y(p[key]);
+      open = true;
+    } else open = false;
+  }
+  const labelCount = Math.min(
+    c.points.length,
+    Math.max(2, Math.floor(plotWidth / 80) + 1),
+  );
+  const labels = [
+    ...new Set(
+      Array.from({ length: labelCount }, (_, i) =>
+        Math.round((i * (c.points.length - 1)) / Math.max(1, labelCount - 1)),
+      ),
+    ),
+  ]
+    .map((i) => {
+      const p = c.points[i],
+        label =
+          c.meta.granularity === "month"
+            ? new Intl.DateTimeFormat("ru-RU", {
+                month: "short",
+                year: "2-digit",
+                timeZone: "UTC",
+              }).format(new Date(p.from + "T00:00:00Z"))
+            : chartDate(p.from, true);
+      return `<text x="${x(i)}" y="${bottom + 26}" text-anchor="${c.points.length === 1 ? "middle" : i === 0 ? "start" : i === c.points.length - 1 ? "end" : "middle"}" class="chart-axis">${esc(label)}</text>`;
+    })
+    .join("");
+  const dots = c.points
+    .map((p, i) =>
+      Number.isFinite(p[key])
+        ? `<circle cx="${x(i)}" cy="${y(p[key])}" r="3.5" class="chart-dot" data-chart-dot="${i}"/>`
+        : "",
+    )
+    .join("");
+  host.innerHTML = `<svg id="metric-chart" class="interactive-chart" viewBox="0 0 ${width} ${height}" role="slider" tabindex="0" aria-label="График: ${esc(chartLabel(key))}. Выбор даты стрелками влево и вправо." aria-valuemin="0" aria-valuemax="${c.points.length - 1}" aria-valuenow="0"><g aria-hidden="true">${grid}<path d="${path}" class="chart-line"/><line data-chart-cursor x1="${left}" x2="${left}" y1="${top}" y2="${bottom}" class="chart-cursor"/>${dots}${labels}<rect x="${left - 6}" y="${top - 6}" width="${plotWidth + 12}" height="${bottom - top + 12}" fill="transparent" data-chart-surface/></g></svg>`;
+  const svg = $("metric-chart");
+  const move = (e) => {
+    const box = svg.getBoundingClientRect(),
+      px = ((e.clientX - box.left) * width) / box.width;
+    selectChartPoint(
+      c.points.length === 1
+        ? 0
+        : Math.round(((px - left) / plotWidth) * (c.points.length - 1)),
+    );
+  };
+  svg.addEventListener("pointermove", move);
+  svg.addEventListener("pointerdown", move);
+  svg.addEventListener("keydown", (e) => {
+    const index = chartIndex ?? c.points.length - 1;
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+      e.preventDefault();
+      selectChartPoint(
+        e.key === "Home"
+          ? 0
+          : e.key === "End"
+            ? c.points.length - 1
+            : index + (e.key === "ArrowLeft" ? -1 : 1),
+      );
+    }
+  });
+  selectChartPoint(chartIndex ?? c.points.length - 1);
+}
+function mountMetricChart() {
+  const host = $("metric-chart-host");
+  if (!host || !chartContext) return;
+  paintMetricChart(host);
+  if (typeof ResizeObserver !== "undefined") {
+    let width = host.clientWidth;
+    chartObserver = new ResizeObserver(() => {
+      if (Math.abs(host.clientWidth - width) > 1) {
+        width = host.clientWidth;
+        paintMetricChart(host);
+      }
+    });
+    chartObserver.observe(host);
+  }
 }
 const groupTable = (rows) =>
   table(
@@ -280,7 +515,7 @@ const views = {
       .slice(0, 3);
     return (
       cards() +
-      `<div class="grid-two">${panel("Динамика продаж", "С учётом возвратов", chart())}${panel("Требует внимания", "Отклонения от плана к выбранной дате", bad.length ? bad.map((p) => `<div class="attention-item"><h3>${esc(state.metrics[p.metric].label)} · ${esc(planName(p))}</h3><p>Факт ${format(p.actual, p.metric)}. Отклонение ${format(p.deviation, p.metric)}.</p><button class="inline-link" data-tab="plans">Открыть планы →</button></div>`).join("") : empty(state.plans.length ? "Нет отклонений от заданных целей" : "Добавьте планы", "Система сравнивает результат с планом на прошедшую часть периода."))}</div>` +
+      `<div class="grid-two">${metricChartPanel()}${panel("Требует внимания", "Отклонения от плана к выбранной дате", bad.length ? bad.map((p) => `<div class="attention-item"><h3>${esc(state.metrics[p.metric].label)} · ${esc(planName(p))}</h3><p>Факт ${format(p.actual, p.metric)}. Отклонение ${format(p.deviation, p.metric)}.</p><button class="inline-link" data-tab="plans">Открыть планы →</button></div>`).join("") : empty(state.plans.length ? "Нет отклонений от заданных целей" : "Добавьте планы", "Система сравнивает результат с планом на прошедшую часть периода."))}</div>` +
       panel(
         "Выполнение планов",
         "Планы оцениваются за собственный период, по выбранную дату включительно",
@@ -797,6 +1032,7 @@ function renderSales() {
     ) +
     scopeNote +
     cards(r.totals) +
+    metricChartPanel(r.trend.points, r.trend) +
     panel(
       "Продажи в деталях",
       "Категория открывает её товары; товар — сравнение продаж по точкам.",
@@ -1431,6 +1667,14 @@ $("content").addEventListener("change", (e) => {
 $("content").addEventListener("click", async (e) => {
   const b = e.target.closest("button");
   if (!b) return;
+  if (b.dataset.chartMetric && chartMetrics[b.dataset.chartMetric]) {
+    chartMetric = b.dataset.chartMetric;
+    render();
+    document
+      .querySelector(`[data-chart-metric="${chartMetric}"]`)
+      ?.focus({ preventScroll: true });
+    return;
+  }
   try {
     await detailAction(b);
   } catch (e) {

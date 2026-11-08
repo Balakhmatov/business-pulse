@@ -63,6 +63,79 @@ try {
   await page.goto(root + "/");
   await page.getByRole("button", { name: "Посмотреть пример" }).click();
   await page.locator("#workspace").waitFor({ state: "visible" });
+  await page.locator("#metric-chart").waitFor();
+  assert.ok((await page.locator("[data-chart-dot]").count()) > 0);
+  const chartBox = await page.locator("#metric-chart").boundingBox();
+  await page.mouse.move(chartBox.x + 85, chartBox.y + 100);
+  const selectedDate = await page.locator("#chart-readout-date").textContent();
+  const selectedValue = await page
+    .locator("#chart-readout-value")
+    .textContent();
+  assert.ok(selectedDate.includes("Продажи"));
+  assert.ok(selectedValue.includes("₽"));
+  await page.locator('[data-chart-metric="receipts"]').click();
+  await page
+    .getByRole("heading", { name: "Динамика: Чеки", exact: true })
+    .waitFor();
+  assert.equal(
+    await page
+      .locator('[data-chart-metric="receipts"]')
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(
+    (await page.locator("#chart-readout-value").textContent()).includes("₽"),
+    false,
+  );
+  const afterSwitch = await page.locator("#chart-readout-date").textContent();
+  assert.equal(afterSwitch.split(" · ")[0], selectedDate.split(" · ")[0]);
+  await page.locator("#metric-chart").focus();
+  await page.keyboard.press("End");
+  const lastDate = await page.locator("#chart-readout-date").textContent();
+  await page.keyboard.press("Home");
+  assert.notEqual(
+    await page.locator("#chart-readout-date").textContent(),
+    lastDate,
+  );
+  await page.locator('[data-chart-metric="average"]').click();
+  await page
+    .getByRole("heading", { name: "Динамика: Средний чек", exact: true })
+    .waitFor();
+  await page.locator('[data-chart-metric="profit"]').click();
+  await page
+    .getByRole("heading", { name: "Динамика: Валовая прибыль", exact: true })
+    .waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator("#metric-chart").scrollIntoViewIfNeeded();
+  const mobileChart = await page.locator("#metric-chart").boundingBox();
+  await page.mouse.click(mobileChart.x + 80, mobileChart.y + 100);
+  assert.ok(
+    (await page.locator("#chart-readout-date").textContent()).includes(
+      "Валовая прибыль",
+    ),
+  );
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    true,
+    "interactive chart mobile overflow",
+  );
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.screenshot({
+    path: "/tmp/business-pulse-interactive-chart-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.locator('[data-chart-metric="sales"]').click();
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.screenshot({
+    path: "/tmp/business-pulse-interactive-chart-desktop.png",
+    fullPage: true,
+  });
+  console.log(
+    "Interactive chart metric switches, hover, keyboard and mobile passed",
+  );
   for (const name of [
     "Планы и KPI",
     "Продажи",

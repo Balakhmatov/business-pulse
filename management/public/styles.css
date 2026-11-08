@@ -846,3 +846,126 @@ details .id {
 .table-wrap .actions {
   flex-wrap: nowrap;
 }
+.metric-card {
+  text-align: left;
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    box-shadow 0.15s,
+    background 0.15s,
+    transform 0.15s;
+}
+.metric-card:not(.hero) {
+  background: #fff;
+  color: inherit;
+}
+.metric-card:not(.hero):hover {
+  background: #f9f8ff;
+  box-shadow: 0 0 0 2px #dedafc;
+}
+.metric-card .label,
+.metric-card .value,
+.metric-card .small {
+  display: block;
+}
+.metric-card.selected {
+  box-shadow: 0 0 0 2px #635ce3;
+}
+.chart-period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 7px;
+  color: #626b84;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+.metric-chart-host {
+  width: 100%;
+  min-width: 0;
+  min-height: 245px;
+}
+.interactive-chart {
+  display: block;
+  width: 100%;
+  height: 245px;
+  touch-action: pan-y;
+}
+.chart-axis {
+  fill: #8a93a8;
+  font-size: 11px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.chart-grid {
+  stroke: #eff0f7;
+  stroke-width: 1;
+}
+.chart-grid.zero {
+  stroke: #dce0ec;
+}
+.chart-line {
+  fill: none;
+  stroke: #7868ec;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart-dot {
+  fill: #fff;
+  stroke: #7868ec;
+  stroke-width: 2;
+}
+.chart-dot.selected {
+  fill: #6655df;
+  stroke: #fff;
+  stroke-width: 2.5;
+  r: 5.5px;
+}
+.chart-cursor {
+  stroke: #aaa0e9;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+.chart-readout {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  min-height: 77px;
+}
+.chart-readout > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.chart-readout strong {
+  font-size: 20px;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+}
+.chart-readout > span {
+  display: block;
+  margin-top: 7px;
+}
+.chart-instruction {
+  font-size: 10px;
+  margin: 7px 0 0;
+  color: #929ab0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .metric-card {
+    transition: none;
+  }
+}
+@media (max-width: 760px) {
+  .chart-readout strong {
+    font-size: 19px;
+  }
+  .chart-axis {
+    font-size: 10px;
+  }
+}

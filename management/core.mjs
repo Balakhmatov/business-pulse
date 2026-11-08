@@ -1,3 +1,4 @@
+import { buildTrend } from "./trend.mjs";
 import { buildSalesReport } from "./sales-analytics.mjs";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -914,6 +915,7 @@ export function createService(db) {
     });
     return {
       ...report,
+      trend: buildTrend(current, { from, to, aggregate, asOf: today() }),
       period: {
         from,
         to,
@@ -1096,9 +1098,22 @@ export function createService(db) {
       by_employee: group(rs, "employee_id", "employee_name"),
       by_category: group(rs, "category", "category"),
       by_product: group(rs, "product_id", "product_name"),
-      trend: group(rs, "sold_on", "sold_on").sort((a, b) =>
-        a.id.localeCompare(b.id),
-      ),
+      trend: buildTrend(rs, {
+        from: rangeFrom,
+        to: rangeTo,
+        aggregate,
+        asOf: today(),
+      }).points,
+      trend_meta: {
+        from: rangeFrom,
+        to: rangeTo,
+        granularity:
+          days(rangeFrom, rangeTo) <= 45
+            ? "day"
+            : days(rangeFrom, rangeTo) <= 180
+              ? "week"
+              : "month",
+      },
       keys: can(a, "integrations")
         ? list("keys", a.company_id).map(({ token_hash, ...k }) => k)
         : [],
