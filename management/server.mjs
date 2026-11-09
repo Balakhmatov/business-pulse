@@ -53,6 +53,7 @@ export function createApp({
   secure = origin.startsWith("https:"),
   demo = true,
   basePath = "",
+  environment = "production",
 }) {
   const mount = basePath.replace(/\/$/, "");
   if (mount && !/^\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+$/.test(mount))
@@ -149,6 +150,10 @@ export function createApp({
       if (mount && !url.pathname.startsWith(mount + "/"))
         return json(res, 404, { error: "Маршрут не найден." });
       const p = mount ? url.pathname.slice(mount.length) : url.pathname;
+      if (environment === "stage") {
+        res.setHeader("X-Business-Pulse-Environment", "stage");
+        res.setHeader("X-Robots-Tag", "noindex, nofollow");
+      }
       res.setHeader("Referrer-Policy", "no-referrer");
       res.setHeader("X-Frame-Options", "DENY");
       res.setHeader(
@@ -322,7 +327,9 @@ export function createApp({
           : "no-store, max-age=0",
         "X-Content-Type-Options": "nosniff",
       });
-      res.end(assets[file]);
+      res.end(file === "index.html" && environment === "stage"
+        ? assets[file].replace("<body>", '<body data-environment="stage"><aside class="stage-banner" role="status">STAGE · Среда разработки · Отдельные данные</aside>').replace("</title>", " · STAGE</title>")
+        : assets[file]);
     } catch (e) {
       if (!res.headersSent)
         json(res, e.status || 500, {
@@ -350,6 +357,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     db,
     origin,
     basePath: process.env.BPM_BASE_PATH || "",
+    environment: process.env.BPM_ENV === "stage" ? "stage" : "production",
   });
   app.listen(port, "127.0.0.1", () =>
     console.log("Business Pulse management listening on 127.0.0.1:" + port),

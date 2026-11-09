@@ -1,6 +1,8 @@
 # Бизнес Пульс: отдельная управленческая версия
 
-Рабочая ветка: `feature/management-workspace`. Новые файлы находятся только в `management/`.
+**Текущая схема разработки:** `dev` → отдельный stage с автодеплоем; `production` → текущий кабинет с ручным выпуском. Однократная настройка VPS и таблица ресурсов: [deploy/STAGING.md](deploy/STAGING.md). До настройки VPS прежняя схема развёртывания остаётся активной.
+
+Разработка: `dev`; стабильная версия: `production`. Ветка `feature/management-workspace` зафиксирована для совместимости. Файлы расширенной версии находятся в `management/`.
 Действующий `main`, его `api/server.mjs`, GitHub Pages, база `pulse.db`, таймер и Quorum не изменяются.
 Это самостоятельный сервер расширенной версии из того же репозитория, с собственной схемой и авторизацией.
 Аккаунты и операции существующей версии автоматически не копируются.
@@ -125,7 +127,7 @@ BPM_BASE_PATH=/businesspulse
 ```
 
 Необязательно `BPM_OPENAI_API_KEY`, `BPM_AI_MODEL`. Не подключайте env старого бота или платёжного сервиса. Путь учитывается в ссылках, API, приглашениях и cookie; Nginx передаёт его без обрезания.
-Автодеплой старого приложения продолжает следить только за main. Для автоматического обновления выполните `bash /opt/business-pulse-management/management/deploy/install-autodeploy.sh`. Таймер проверяет `feature/management-workspace` каждые 30 секунд. Проверки запускаются в отдельном временном каталоге от имени пользователя приложения; затем останавливается только management-служба, делается SQLite backup и обновляется код. При провале health-check возвращаются предыдущий код и база. Неудачный SHA не повторяется до следующего коммита. Локальные правки и non-fast-forward блокируют обновление. Nginx, старый Business Pulse и Quorum не обновляются. Бэкапы и состояние: `/var/lib/business-pulse-management/deploy-state`. Журнал: `journalctl -u business-pulse-management-deploy.service -n 50 --no-pager`.
+**Прежняя схема, заменённая разделением production/stage:** автодеплой старого приложения продолжает следить только за main. Старую команду ниже не использовать для новой настройки; следуйте [deploy/STAGING.md](deploy/STAGING.md). В прежней схеме для автоматического обновления использовалась команда `bash /opt/business-pulse-management/management/deploy/install-autodeploy.sh`. Таймер проверяет `feature/management-workspace` каждые 30 секунд. Проверки запускаются в отдельном временном каталоге от имени пользователя приложения; затем останавливается только management-служба, делается SQLite backup и обновляется код. При провале health-check возвращаются предыдущий код и база. Неудачный SHA не повторяется до следующего коммита. Локальные правки и non-fast-forward блокируют обновление. Nginx, старый Business Pulse и Quorum не обновляются. Бэкапы и состояние: `/var/lib/business-pulse-management/deploy-state`. Журнал: `journalctl -u business-pulse-management-deploy.service -n 50 --no-pager`.
 Ссылка с главной cityai.site в этой ветке не меняется: исходники главной находятся вне этого репозитория.
 
 ## Проверки

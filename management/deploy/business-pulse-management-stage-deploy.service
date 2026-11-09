@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy Business Pulse dev to isolated STAGE
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/business-pulse-management-stage-deploy
+TimeoutStartSec=240
+UMask=0022

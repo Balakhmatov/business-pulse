@@ -1,0 +1,26 @@
+[Unit]
+Description=Business Pulse STAGE (dev branch, isolated database)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=business-pulse-stage
+Group=business-pulse-stage
+WorkingDirectory=/opt/business-pulse-management-stage
+EnvironmentFile=/etc/business-pulse-management-stage/app.env
+Environment=BPM_PORT=3129
+Environment=BPM_ENV=stage
+Environment=BPM_DB_FILE=/var/lib/business-pulse-management-stage/management.db
+ExecStart=/usr/local/bin/node-business-pulse /opt/business-pulse-management-stage/management/server.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/business-pulse-management-stage
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

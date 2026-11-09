@@ -997,3 +997,6 @@ details .id {
 .kpi-chart-legend .plan { background:#969cb0; }
 .kpi-chart-scroll { width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch; }
 .kpi-chart-scroll .kpi-chart { width:auto;max-width:none;height:280px; }
+
+body[data-environment="stage"] { padding-top:32px; }
+.stage-banner { position:fixed;top:0;left:0;right:0;z-index:1000;min-height:32px;display:flex;align-items:center;justify-content:center;padding:6px 12px;background:#f4dfa0;color:#53400a;font-size:12px;font-weight:700;letter-spacing:.3px; }
