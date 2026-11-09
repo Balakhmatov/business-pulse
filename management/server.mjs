@@ -328,7 +328,7 @@ export function createApp({
         "X-Content-Type-Options": "nosniff",
       });
       res.end(file === "index.html" && environment === "stage"
-        ? assets[file].replace("<body>", '<body data-environment="stage"><aside class="stage-banner" role="status">STAGE · Среда разработки · Отдельные данные</aside>').replace("</title>", " · STAGE</title>")
+        ? assets[file].replace("<body>", '<body data-environment="stage"><div class="stage-banner" role="status">STAGE · Среда разработки · Отдельные данные</div>').replace("</title>", " · STAGE</title>")
         : assets[file]);
     } catch (e) {
       if (!res.headersSent)

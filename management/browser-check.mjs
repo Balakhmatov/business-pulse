@@ -26,7 +26,8 @@ const location = s.save(a, "locations", { name: "Первая точка" }).id,
   }).id;
 const basePath = process.env.BPM_BASE_PATH || "";
 const root = origin + basePath;
-const app = createApp({ db, origin, basePath });
+const stageMode = process.env.BPM_ENV === "stage";
+const app = createApp({ db, origin, basePath, environment:stageMode ? "stage" : "production" });
 app.listen(port, "127.0.0.1");
 await once(app, "listening");
 const browser = await chromium.launch({
@@ -60,9 +61,22 @@ try {
     if (m.type() === "error" && !m.text().includes("401"))
       errors.push(m.text());
   });
+  async function checkStageLayout() {
+    if(!stageMode)return;
+    const banner=await page.locator('.stage-banner').boundingBox();
+    const sidebar=await page.locator('#workspace > aside').boundingBox();
+    assert.ok(banner&&banner.height<=34&&Math.abs(banner.width-page.viewportSize().width)<2,'Stage indicator must be a thin full-width top strip');
+    assert.equal(await page.locator('aside').count(),1,'Only the navigation sidebar uses aside styles');
+    assert.ok(sidebar.y>=banner.y+banner.height-1,'Stage strip must not cover navigation');
+    const button=page.locator('#nav [data-tab=overview]');
+    const box=await button.boundingBox();
+    assert.ok(await button.isVisible());
+    assert.ok(await page.evaluate(({x,y})=>Boolean(document.elementFromPoint(x,y)?.closest('#nav')),{x:box.x+box.width/2,y:box.y+box.height/2}),'Navigation is unobstructed');
+  }
   await page.goto(root + "/");
   await page.getByRole("button", { name: "Посмотреть пример" }).click();
   await page.locator("#workspace").waitFor({ state: "visible" });
+  await checkStageLayout();
   await page.locator("#metric-chart").waitFor();
   assert.ok((await page.locator("[data-chart-dot]").count()) > 0);
   const chartBox = await page.locator("#metric-chart").boundingBox();
@@ -106,6 +120,8 @@ try {
     .getByRole("heading", { name: "Динамика: Валовая прибыль", exact: true })
     .waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(()=>scrollTo(0,0));
+  await checkStageLayout();
   await page.locator("#metric-chart").scrollIntoViewIfNeeded();
   const mobileChart = await page.locator("#metric-chart").boundingBox();
   await page.mouse.click(mobileChart.x + 80, mobileChart.y + 100);

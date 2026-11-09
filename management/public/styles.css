@@ -999,4 +999,6 @@ details .id {
 .kpi-chart-scroll .kpi-chart { width:auto;max-width:none;height:280px; }
 
 body[data-environment="stage"] { padding-top:32px; }
-.stage-banner { position:fixed;top:0;left:0;right:0;z-index:1000;min-height:32px;display:flex;align-items:center;justify-content:center;padding:6px 12px;background:#f4dfa0;color:#53400a;font-size:12px;font-weight:700;letter-spacing:.3px; }
+.stage-banner { position:fixed;top:0;left:0;right:0;z-index:1000;height:32px;display:flex;align-items:center;justify-content:center;padding:6px 12px;background:#ece9ff;color:#544aab;font-size:12px;font-weight:700;letter-spacing:.3px;white-space:nowrap;overflow:hidden; }
+body[data-environment="stage"] .layout, body[data-environment="stage"] .welcome { min-height:calc(100vh - 32px); }
+@media (min-width:761px) { body[data-environment="stage"] .layout > aside { top:32px;height:calc(100vh - 32px); } }

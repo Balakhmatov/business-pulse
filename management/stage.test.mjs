@@ -57,7 +57,10 @@ test('stage has its own login and data, visible stage label and production rejec
   const base=app=>'http://127.0.0.1:'+app.address().port+'/businesspulse';
   const html=await fetch(base(stageApp)+'/');
   assert.equal(html.headers.get('x-business-pulse-environment'),'stage');assert.match(html.headers.get('x-robots-tag'),/noindex/);
-  assert.match(await html.text(),/data-environment="stage"/);
+  const stageHtml=await html.text();
+  assert.match(stageHtml,/data-environment="stage"/);
+  assert.match(stageHtml,/<div class="stage-banner"/);
+  assert.equal(stageHtml.includes('<aside class="stage-banner"'),false);
   const normal=await fetch(base(prodApp)+'/');assert.equal(normal.headers.get('x-business-pulse-environment'),null);assert.equal((await normal.text()).includes('data-environment="stage"'),false);
   const login=await fetch(base(prodApp)+'/api/login',{method:'POST',headers:{Origin:'https://cityai.site','Content-Type':'application/json'},body:JSON.stringify({email:'owner@isolation.test',password:'test-password-12345'})});
   const cookie=login.headers.get('set-cookie').split(';')[0];
