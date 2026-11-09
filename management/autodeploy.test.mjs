@@ -288,3 +288,23 @@ test('stage and manual release validate from an accessible candidate directory, 
     assert.equal(r.status,0,r.stdout+r.stderr);assert.equal(f.git(['rev-parse','HEAD'],f.repo),next);
   }
 });
+
+test('freeze configures production tracking in the original single-branch clone and is repeatable',t=>{
+  const f=freezeFixture(t);
+  f.git(['config','--replace-all','remote.origin.fetch','+refs/heads/feature/management-workspace:refs/remotes/origin/feature/management-workspace'],f.repo);
+  const before=fs.readFileSync(path.join(f.store,'management.db'));
+  const worker=path.join(f.root,'freeze.sh'),fixed=fs.readFileSync(worker,'utf8');
+  const broken=fixed.replace(/# The original installer used --single-branch\.[\s\S]*?(?=git -C "\$REPO" fetch --quiet origin refs\/heads\/production)/,'');
+  fs.writeFileSync(worker,broken);
+  const failed=f.freeze();assert.notEqual(failed.status,0);assert.match(failed.stderr,/cannot set up tracking/);
+  fs.writeFileSync(worker,fixed);
+  const r=f.freeze();assert.equal(r.status,0,r.stdout+r.stderr);
+  assert.equal(f.git(['rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}'],f.repo),'origin/production');
+  assert.equal(f.git(['rev-parse','HEAD'],f.repo),f.old);
+  assert.deepEqual(fs.readFileSync(path.join(f.store,'management.db')),before);
+  const fetches=f.git(['config','--get-all','remote.origin.fetch'],f.repo);
+  assert.ok(fetches.includes('+refs/heads/production:refs/remotes/origin/production'));
+  const again=f.freeze();assert.equal(again.status,0,again.stdout+again.stderr);
+  assert.equal(f.git(['config','--get-all','remote.origin.fetch'],f.repo),fetches);
+  assert.equal(/(?:start|stop|restart) business-pulse-management.service/.test(fs.readFileSync(path.join(f.root,'service.log'),'utf8')),false);
+});

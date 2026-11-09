@@ -23,6 +23,15 @@ if [[ "$BRANCH" == feature/management-workspace ]]; then
 elif [[ "$BRANCH" != production ]]; then
     echo 'Unexpected production checkout branch'; exit 1
 fi
+# The original installer used --single-branch. A one-off explicit fetch creates
+# origin/production, but Git cannot infer tracking until its refspec is registered.
+TRACKED=0
+while IFS= read -r SPEC; do
+    if [[ "${SPEC#+}" == 'refs/heads/production:refs/remotes/origin/production' || "${SPEC#+}" == 'refs/heads/*:refs/remotes/origin/*' ]]; then TRACKED=1; fi
+done < <(git -C "$REPO" config --get-all remote.origin.fetch || true)
+if [[ "$TRACKED" == 0 ]]; then
+    git -C "$REPO" config --add remote.origin.fetch '+refs/heads/production:refs/remotes/origin/production'
+fi
 git -C "$REPO" fetch --quiet origin refs/heads/production:refs/remotes/origin/production
 [[ $(git -C "$REPO" rev-parse origin/production) == "$CURRENT" ]] || { echo 'Remote production differs from the running checkout; refusing to change app code'; exit 1; }
 if [[ "$BRANCH" != production ]]; then
@@ -33,6 +42,7 @@ if [[ "$BRANCH" != production ]]; then
         git -C "$REPO" switch -c production --track origin/production
     fi
 fi
+git -C "$REPO" branch --set-upstream-to=origin/production production
 [[ $(git -C "$REPO" rev-parse HEAD) == "$CURRENT" ]]
 systemctl is-active --quiet business-pulse-management.service
 curl --noproxy 127.0.0.1 -fsS --max-time 10 http://127.0.0.1:3128/businesspulse/api/health
