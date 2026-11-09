@@ -86,6 +86,8 @@ trap rollback ERR
 
 echo "Checking management revision $NEW"
 git -C "$REPO" archive "$NEW" management | tar -x --no-same-owner -C "$CANDIDATE"
+# Validation always runs from a directory traversable by the service user.
+cd "$CANDIDATE"
 runuser -u "$SERVICE_USER" -- "$NODE" --check "$CANDIDATE/management/server.mjs"
 runuser -u "$SERVICE_USER" -- "$NODE" --check "$CANDIDATE/management/public/app.js"
 shopt -s nullglob

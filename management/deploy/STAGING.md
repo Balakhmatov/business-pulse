@@ -83,3 +83,17 @@ systemctl status business-pulse-management-stage.service --no-pager
 - Stage: https://stage.cityai.site/businesspulse/api/health
 
 Создание веток в GitHub и публикация файлов сами по себе не выполняют настройку VPS. До успешного выполнения команды выше stage не считается установленным, а старый таймер — выключенным.
+
+## Повтор установки после ошибки запуска тестов
+
+Установщик, runner stage и ручной release задают доступный рабочий каталог перед `runuser`. Это нужно при запуске из `/root`: Node test runner создаёт дочерние процессы, которым недоступен каталог вызывающего root. Установщик дополнительно проверяет запуск дочернего Node до основных тестов.
+
+Если первая установка остановилась на `spawn ... EACCES`, обновите **только stage-checkout** и повторите:
+
+```bash
+git -C /opt/business-pulse-management-stage pull --ff-only origin dev &&
+bash /opt/business-pulse-management-stage/management/deploy/install-stage.sh &&
+bash /opt/business-pulse-management-stage/management/deploy/create-stage-owner.sh
+```
+
+До прохождения тестов установщик не переключает production-ветку и не отключает её таймер. При неуспешной проверке дочернего Node сообщение включает рабочий каталог и путь executable для дальнейшей диагностики.

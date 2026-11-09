@@ -72,8 +72,14 @@ test('stage owner helper skips existing stage owners without asking for or chang
   const dbFile=root+'/stage.db',db=openStore(dbFile);createService(db).owner({company:'Stage',name:'Stage',email:'stage@owner.test',password:'test-password-12345'});db.close();
   fs.writeFileSync(root+'/id','#!/bin/sh\necho 0\n',{mode:0o755});
   fs.writeFileSync(root+'/runuser','#!/bin/sh\nshift 3\nexec "$@"\n',{mode:0o755});
-  const source=fs.readFileSync(new URL('./deploy/create-stage-owner.sh',import.meta.url),'utf8').replaceAll('/var/lib/business-pulse-management-stage/management.db',dbFile).replaceAll('/usr/local/bin/node-business-pulse',process.execPath);
+  const source=fs.readFileSync(new URL('./deploy/create-stage-owner.sh',import.meta.url),'utf8').replaceAll('/var/lib/business-pulse-management-stage/management.db',dbFile).replaceAll('/usr/local/bin/node-business-pulse',process.execPath).replaceAll('/opt/business-pulse-management-stage',root);
   fs.writeFileSync(root+'/owner.sh',source);
   const r=spawnSync('bash',[root+'/owner.sh'],{encoding:'utf8',timeout:10000,env:{...process.env,PATH:root+':'+process.env.PATH}});
   assert.equal(r.status,0,r.stdout+r.stderr);assert.match(r.stdout,/already has an owner/);
+});
+
+test('stage installer changes to the public checkout before runuser child-process checks and tests',()=>{
+  const script=fs.readFileSync(new URL('./deploy/install-stage.sh',import.meta.url),'utf8');
+  const cd=script.indexOf('cd "$REPO"'),fork=script.indexOf('Stage Node child-process check failed'),tests=script.indexOf('"$NODE" --test');
+  assert.ok(cd>=0&&cd<fork&&fork<tests);
 });

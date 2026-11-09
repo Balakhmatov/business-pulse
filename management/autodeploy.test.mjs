@@ -115,12 +115,13 @@ export function fixture(t, profile = "legacy") {
     bin,
     old,
     git,
-    deploy: () => {
+    deploy: (opts = {}) => {
       const env = { ...process.env };
       delete env.NODE_TEST_CONTEXT;
       return spawnSync("bash", [worker], {
         encoding: "utf8",
         timeout: 20000,
+        cwd: opts.cwd,
         env,
       });
     },
@@ -276,4 +277,14 @@ test('freeze rejects an unreviewed running revision without changing app code or
   assert.equal(f.git(['branch','--show-current'],f.repo),'feature/management-workspace');
   assert.equal(f.git(['rev-parse','HEAD'],f.repo),f.old);
   assert.equal(/(?:start|stop|restart) business-pulse-management.service/.test(fs.readFileSync(path.join(f.root,'service.log'),'utf8')),false);
+});
+
+test('stage and manual release validate from an accessible candidate directory, not the root caller cwd',t=>{
+  for(const profile of ['stage','production']) {
+    const f=fixture(t,profile),privateDir=path.join(f.root,'root-only');fs.mkdirSync(privateDir,{mode:0o700});
+    // Model runuser's inherited private cwd without needing root/setgroups in CI.
+    fs.writeFileSync(path.join(f.bin,'runuser'),`#!/usr/bin/env bash\nif [[ "$PWD" == '${privateDir}' ]]; then echo 'EACCES: private inherited cwd' >&2; exit 13; fi\nshift 3\nexec "$@"\n`,{mode:0o755});
+    const next=f.update(),r=f.deploy({cwd:privateDir});
+    assert.equal(r.status,0,r.stdout+r.stderr);assert.equal(f.git(['rev-parse','HEAD'],f.repo),next);
+  }
 });

@@ -32,6 +32,10 @@ flock -x -w 240 8
 chmod 755 "$REPO"
 find "$REPO/management" -type d -exec chmod 755 {} +
 find "$REPO/management" -type f \( -name '*.mjs' -o -name '*.js' -o -name '*.html' -o -name '*.css' \) -exec chmod 644 {} +
+# runuser preserves the caller's cwd. Node's test runner forks children,
+# which cannot chdir into /root as the unprivileged stage user.
+cd "$REPO"
+runuser -u "$STAGE_USER" -- "$NODE" -e 'const {spawnSync}=require("node:child_process");const r=spawnSync(process.execPath,["--version"],{cwd:process.cwd(),encoding:"utf8"});if(r.error||r.status!==0){console.error("Stage Node child-process check failed:",r.error?.code||r.status,"cwd:",process.cwd(),"node:",process.execPath);process.exit(1)}console.log("Stage Node subprocess:",r.stdout.trim())'
 runuser -u "$STAGE_USER" -- "$NODE" --test "$REPO"/management/*.test.mjs
 if ! systemctl is-active --quiet "$SERVICE"; then
     python3 - <<'PYPORT'
